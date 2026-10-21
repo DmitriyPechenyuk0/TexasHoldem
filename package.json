@@ -1,0 +1,22 @@
+{
+	"name": "texas-holdem",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@12.14.0",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"dev": "pnpm --filter \"./packages/*\" build && pnpm -r --parallel dev",
+		"build": "pnpm -r build",
+		"lint": "pnpm -r lint",
+		"typecheck": "pnpm -r typecheck",
+		"test": "pnpm -r test",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
+	},
+	"devDependencies": {
+		"prettier": "^3.9.10",
+		"typescript": "^6.0.3"
+	}
+}

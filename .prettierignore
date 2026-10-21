@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+dist
+coverage
+.next
+out
+next-env.d.ts
+*.md
+pnpm-workspace.yaml

@@ -1,0 +1,23 @@
+{
+	"name": "@holdem/engine",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Pure TypeScript No-Limit Hold'em game engine",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run --passWithNoTests"
+	},
+	"devDependencies": {
+		"typescript": "^6.0.3",
+		"vitest": "^5.0.5"
+	}
+}
