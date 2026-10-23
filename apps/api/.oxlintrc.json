@@ -2,9 +2,25 @@
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
 	"rules": {
 		"typescript/no-explicit-any": "off",
-		"typescript/no-floating-promises": "error"
+		"typescript/no-floating-promises": "error",
+		"no-restricted-properties": [
+			"error",
+			{
+				"object": "process",
+				"property": "env",
+				"message": "Read configuration through AppConfig (src/config) instead."
+			}
+		]
 	},
 	"env": {
 		"node": true
-	}
+	},
+	"overrides": [
+		{
+			"files": ["src/config/load-config.ts"],
+			"rules": {
+				"no-restricted-properties": "off"
+			}
+		}
+	]
 }
