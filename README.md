@@ -30,7 +30,13 @@ chore(deps): update nestjs to 12.2
 
 ### Branches
 
-Work is trunk-based on `master`. Short-lived branches are named `feat/<short-name>`, `fix/<short-name>` or `chore/<short-name>`. Putting the Linear key in the name links the branch to its issue: `feat/pok-25-env-config`.
+- `dev` is the trunk: every change reaches it through a pull request from a short-lived branch.
+- `master` holds stable versions only. It moves forward through a release pull request from `dev`.
+- Branches are named `feat/<short-name>`, `fix/<short-name>` or `chore/<short-name>`. Putting the Linear key in the name links the branch to its issue, for example `feat/pok-25-env-config`.
+
+Pull requests into `dev` are squash-merged, so their title becomes the commit and must follow the conventions above. CI checks the title. Put `Closes POK-<n>` in the description.
+
+Release pull requests (`dev` → `master`) use a merge commit, so both branches share history. Use a title like `chore(release): v0.2.0`.
 
 ### Git hooks
 
