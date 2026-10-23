@@ -31,6 +31,10 @@ public/               static files
 - **Pages first.** Code starts inside the page that needs it (`_pages/<page>/ui`, `model`, `api`). It moves down to `widgets`, `features` or `entities` only when a second page needs it, and to `shared` only if it has no business meaning.
 - **One alias**: `@/` is `src/`, e.g. `@/_pages/home` and `@/shared/api`.
 
+## Checks
+
+`pnpm --filter @holdem/web lint:fsd` runs [Steiger](https://github.com/feature-sliced/steiger) with the recommended FSD rules on `src`: imports only go down, no cross-imports between slices, no sidestepping a public API, consistent naming. It is part of `pnpm lint`, the pre-commit hook and CI. The only exception, in `steiger.config.mjs`, is the layer-name check for `_app` and `_pages`: every other rule already treats them as the app and pages layers.
+
 ## Configuration and contracts
 
 - Environment variables are read only in `src/shared/config`: `publicEnv` from `@/shared/config`, `serverEnv` from `@/shared/config/index.server` (enforced by lint).
