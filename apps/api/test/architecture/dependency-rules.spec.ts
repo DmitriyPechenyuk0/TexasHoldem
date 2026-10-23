@@ -136,6 +136,14 @@ describe("dependency rules", () => {
 			"application-uses-no-io-libraries: src/modules/table/application/commands/take-seat.handler.ts -> drizzle-orm",
 		],
 		[
+			"a command handler using the Redis client",
+			{
+				"src/modules/table/application/commands/take-seat.handler.ts":
+					'import { createClient } from "@redis/client";\nexport const handler = createClient;\n',
+			},
+			"application-uses-no-io-libraries: src/modules/table/application/commands/take-seat.handler.ts -> @redis/client",
+		],
+		[
 			"a query handler using a repository",
 			{
 				"src/modules/table/infrastructure/table.repository.ts":

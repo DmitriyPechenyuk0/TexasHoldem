@@ -32,6 +32,7 @@
 		"@nestjs/platform-express": "^12.2.0",
 		"@nestjs/platform-socket.io": "^12.2.0",
 		"@nestjs/websockets": "^12.2.0",
+		"@redis/client": "^6.3.0",
 		"drizzle-orm": "1.0.0-rc.5",
 		"pg": "^8.23.1",
 		"reflect-metadata": "^0.2.2",
