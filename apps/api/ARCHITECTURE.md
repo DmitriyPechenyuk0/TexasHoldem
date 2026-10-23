@@ -32,12 +32,15 @@ A layer folder exists only once it has content. `modules/system` is the referenc
 | domain         | business rules as plain TypeScript                     | its own domain, `shared/domain`, `@holdem/engine` |
 | application    | command, query and event handlers; ports they need     | domain, `shared/domain`, `shared/application`     |
 | infrastructure | adapters that implement ports                          | application, domain, `shared/*`                   |
-| presentation   | controllers and gateways that translate transport ↔ bus | application messages, `shared/*`                  |
+| presentation   | controllers and gateways that translate transport ↔ bus | application messages, `shared/{domain,application,presentation}` |
 
-- Domain code imports nothing from NestJS, Drizzle or any I/O library, and never reads the clock, randomness or config: they come in as arguments.
-- Query handlers may skip the domain and read tables directly through the database client (ADR-003). That is the one place where application code touches infrastructure.
-- A context never imports another context's internals. Contexts talk through integration events or application-level query ports (Context Map).
-- These rules are meant to be enforced by a dependency lint check, not by review alone.
+- Domain code imports nothing from NestJS, I/O libraries or Node built-ins, and never reads the clock, randomness or config: they come in as arguments.
+- Command and event handlers reach adapters only through ports and import no I/O library (Drizzle, Redis, socket.io, S3, mail).
+- Query handlers may skip the domain and read tables directly through `shared/infrastructure/database` (ADR-003). That is the one place where application code touches infrastructure.
+- A context never imports another context's internals, only its `index.ts`: the application-level API and integration events it chooses to expose (Context Map).
+- `shared` imports no module, nothing imports `main.ts` or `app.module.ts` except tests, there are no cycles, and production code imports no tests or dev dependencies.
+
+`pnpm --filter @holdem/api lint:deps` checks all of this with dependency-cruiser. It also runs in `pnpm lint`, the pre-commit hook and CI. The rules live in `.dependency-cruiser.ts`, and `test/architecture` has a test for each one.
 
 ## Commands, queries, handlers
 
