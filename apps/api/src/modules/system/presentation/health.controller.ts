@@ -1,15 +1,10 @@
+import type {
+	LivenessResponse,
+	ReadinessResponse,
+} from "@holdem/shared/contracts/system";
 import { Controller, Get, ServiceUnavailableException } from "@nestjs/common";
 import { QueryBus } from "@nestjs/cqrs";
 import { GetReadinessQuery } from "../application/queries/get-readiness/get-readiness.query.js";
-
-export interface LivenessResponse {
-	readonly status: "ok";
-}
-
-export interface ReadinessResponse {
-	readonly status: "ready" | "not-ready";
-	readonly checks: Readonly<Record<string, "up" | "down">>;
-}
 
 @Controller("health")
 export class HealthController {

@@ -4,10 +4,15 @@
 	"private": true,
 	"description": "Contracts and types shared between web and api",
 	"type": "module",
+	"sideEffects": false,
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
+		},
+		"./contracts/*": {
+			"types": "./dist/contracts/*/index.d.ts",
+			"default": "./dist/contracts/*/index.js"
 		}
 	},
 	"scripts": {

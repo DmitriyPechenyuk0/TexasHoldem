@@ -1,3 +1,7 @@
+import {
+	LivenessResponse,
+	ReadinessResponse,
+} from "@holdem/shared/contracts/system";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import type { App } from "supertest/types.js";
@@ -33,16 +37,18 @@ describe("Health (e2e)", () => {
 		});
 
 		it("GET /health reports the process as alive", async () => {
-			await request(app.getHttpServer())
+			const response = await request(app.getHttpServer())
 				.get("/health")
-				.expect(200, { status: "ok" });
+				.expect(200);
+
+			expect(LivenessResponse.parse(response.body)).toEqual({ status: "ok" });
 		});
 
 		it("GET /health/ready reports every dependency as up", async () => {
 			const response = await waitForReadiness(app, 200);
 
 			expect(response.status).toBe(200);
-			expect(response.body).toEqual({
+			expect(ReadinessResponse.parse(response.body)).toEqual({
 				status: "ready",
 				checks: { database: "up", redis: "up" },
 			});
@@ -73,7 +79,7 @@ describe("Health (e2e)", () => {
 			await proxy.stop();
 			const down = await waitForReadiness(app, 503);
 			expect(down.status).toBe(503);
-			expect(down.body).toEqual({
+			expect(ReadinessResponse.parse(down.body)).toEqual({
 				status: "not-ready",
 				checks: { database: "up", redis: "down" },
 			});
