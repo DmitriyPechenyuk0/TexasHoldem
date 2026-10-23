@@ -19,6 +19,10 @@
 		"infra:up": "docker compose up -d --wait && docker compose run --rm s3-init",
 		"infra:down": "docker compose down",
 		"infra:reset": "docker compose --profile init down -v --remove-orphans && pnpm infra:up",
+		"db:generate": "pnpm --filter @holdem/api db:generate",
+		"db:migrate": "pnpm --filter @holdem/api db:migrate",
+		"db:check": "pnpm --filter @holdem/api db:check",
+		"db:studio": "pnpm --filter @holdem/api db:studio",
 		"prepare": "husky"
 	},
 	"devDependencies": {
