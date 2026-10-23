@@ -8,7 +8,7 @@
 			{
 				"object": "process",
 				"property": "env",
-				"message": "Read configuration through AppConfig (src/config) instead."
+				"message": "Read configuration through AppConfig (src/shared/infrastructure/config) instead."
 			}
 		]
 	},
@@ -17,7 +17,7 @@
 	},
 	"overrides": [
 		{
-			"files": ["src/config/load-config.ts"],
+			"files": ["src/shared/infrastructure/config/load-config.ts"],
 			"rules": {
 				"no-restricted-properties": "off"
 			}

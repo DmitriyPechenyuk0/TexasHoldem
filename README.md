@@ -1,5 +1,9 @@
 # Texas Hold'em
 
+## Documentation
+
+- [API architecture](apps/api/ARCHITECTURE.md): layers, CQRS conventions, naming and error handling.
+
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/). A `commit-msg` hook runs commitlint on every commit; it is installed by `pnpm install`.

@@ -1,6 +1,9 @@
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";
-import { ConfigError, loadConfig } from "./config/index.js";
+import {
+	ConfigError,
+	loadConfig,
+} from "@/shared/infrastructure/config/index.js";
 
 async function bootstrap() {
 	const config = loadConfig();

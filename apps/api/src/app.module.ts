@@ -1,17 +1,24 @@
 import { type DynamicModule, Module } from "@nestjs/common";
-import { AppController } from "./app.controller.js";
-import { AppService } from "./app.service.js";
-import { type AppConfig, ConfigModule } from "./config/index.js";
+import { CqrsModule } from "@nestjs/cqrs";
+import { SystemModule } from "@/modules/system/system.module.js";
+import {
+	type AppConfig,
+	ConfigModule,
+} from "@/shared/infrastructure/config/index.js";
+import { SharedModule } from "@/shared/shared.module.js";
 
-@Module({
-	controllers: [AppController],
-	providers: [AppService],
-})
+/** Composition root: the only module that knows every other one. */
+@Module({})
 export class AppModule {
 	static forRoot(config: AppConfig): DynamicModule {
 		return {
 			module: AppModule,
-			imports: [ConfigModule.forRoot(config)],
+			imports: [
+				ConfigModule.forRoot(config),
+				CqrsModule.forRoot(),
+				SharedModule,
+				SystemModule,
+			],
 		};
 	}
 }

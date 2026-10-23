@@ -1,4 +1,4 @@
-import { exampleEnv } from "../../test/support/example-config.js";
+import { exampleEnv } from "../../../../test/support/example-config.js";
 import { ConfigError, parseConfig } from "./load-config.js";
 
 const problemsOf = (

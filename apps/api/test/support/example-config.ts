@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
-import { type AppConfig, parseConfig } from "../../src/config/index.js";
+import {
+	type AppConfig,
+	parseConfig,
+} from "@/shared/infrastructure/config/index.js";
 
 export const exampleEnv = (): Record<string, string> =>
 	parseEnv(
