@@ -5,8 +5,8 @@ import { EnvError } from "@/shared/config/validate-env";
 // Both modules are loaded even if one fails, so every problem is reported at once.
 export async function register() {
 	const results = await Promise.allSettled([
-		import("@/shared/config/public-env"),
-		import("@/shared/config/server-env"),
+		import("@/shared/config"),
+		import("@/shared/config/index.server"),
 	]);
 	const failures = results.flatMap((result) =>
 		result.status === "rejected" ? [result.reason] : [],

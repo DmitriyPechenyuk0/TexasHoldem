@@ -3,6 +3,8 @@
 ## Documentation
 
 - [API architecture](apps/api/ARCHITECTURE.md): layers, CQRS conventions, naming and error handling.
+- [Web architecture](apps/web/ARCHITECTURE.md): Feature-Sliced Design layout and import rules.
+- [Shared contracts](packages/shared/README.md): REST and socket contracts used by both apps.
 
 ## Commit conventions
 
