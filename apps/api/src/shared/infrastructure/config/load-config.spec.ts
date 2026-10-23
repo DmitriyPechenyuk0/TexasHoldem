@@ -138,3 +138,28 @@ describe("parseDatabaseConfig", () => {
 		).toThrow(ConfigError);
 	});
 });
+
+describe("log settings", () => {
+	it("default to readable debug output in development and JSON info elsewhere", () => {
+		expect(parseConfig(exampleEnv()).log).toEqual({
+			level: "debug",
+			pretty: true,
+		});
+		expect(
+			parseConfig({ ...exampleEnv(), NODE_ENV: "production" }).log,
+		).toEqual({ level: "info", pretty: false });
+	});
+
+	it("take LOG_LEVEL when it is set and reject unknown levels", () => {
+		expect(
+			parseConfig({
+				...exampleEnv(),
+				NODE_ENV: "production",
+				LOG_LEVEL: "warn",
+			}).log,
+		).toEqual({ level: "warn", pretty: false });
+		expect(problemsOf({ ...exampleEnv(), LOG_LEVEL: "loud" })).toEqual([
+			expect.stringMatching(/^LOG_LEVEL: /),
+		]);
+	});
+});

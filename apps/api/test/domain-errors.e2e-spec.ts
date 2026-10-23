@@ -33,8 +33,6 @@ describe("Domain error mapping (e2e)", () => {
 
 	beforeAll(async () => {
 		app = await createTestApp({ controllers: [ProbeController] });
-		// The unexpected error is logged with its stack trace by design; keep the test output clean.
-		app.useLogger(false);
 	});
 
 	afterAll(async () => {

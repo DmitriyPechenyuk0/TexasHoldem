@@ -1,4 +1,5 @@
 import { NestFactory } from "@nestjs/core";
+import { Logger } from "nestjs-pino";
 import { AppModule } from "./app.module.js";
 import {
 	ConfigError,
@@ -11,7 +12,11 @@ const SHUTDOWN_SIGNALS = ["SIGTERM", "SIGINT"];
 
 async function bootstrap() {
 	const config = loadConfig();
-	const app = await NestFactory.create(AppModule.forRoot(config));
+	// Buffered until pino takes over, so even bootstrap messages are structured.
+	const app = await NestFactory.create(AppModule.forRoot(config), {
+		bufferLogs: true,
+	});
+	app.useLogger(app.get(Logger));
 
 	// On these signals Nest stops accepting requests, runs the shutdown hooks
 	// (database pool, Redis connections) and then exits.
