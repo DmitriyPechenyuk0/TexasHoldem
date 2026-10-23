@@ -107,11 +107,12 @@ const config: IConfiguration = {
 		{
 			name: "production-code-uses-no-dev-dependencies",
 			comment:
-				"Production code does not import dev dependencies, which are absent from a production install.",
+				"Production code does not import dev dependencies, which are absent from a production install. Type-only imports (e.g. from @types/express) are erased at build time and allowed.",
 			severity: "error",
 			from: { path: "^src/", pathNot: "\\.spec\\.ts$" },
 			to: {
 				dependencyTypes: ["npm-dev"],
+				dependencyTypesNot: ["type-only"],
 			},
 		},
 		{

@@ -21,9 +21,29 @@ describe("Problem", () => {
 				title: "Bad Request",
 				status: 400,
 				code: "request.invalid",
-				errors: [{ path: ["seats", 0], message: "Too small" }],
+				errors: [
+					{ path: ["seats", 0], code: "too_small", message: "Too small" },
+				],
 			}).errors,
-		).toEqual([{ path: ["seats", 0], message: "Too small" }]);
+		).toEqual([
+			{ path: ["seats", 0], code: "too_small", message: "Too small" },
+		]);
+	});
+
+	it("carries interpolation params for the translated message and the request id", () => {
+		expect(
+			Problem.parse({
+				type: "about:blank",
+				title: "Conflict",
+				status: 409,
+				code: "table.seat-taken",
+				params: { seat: 3, table: "Main" },
+				requestId: "edge-7f3a",
+			}),
+		).toMatchObject({
+			params: { seat: 3, table: "Main" },
+			requestId: "edge-7f3a",
+		});
 	});
 
 	it("only describes error statuses and always carries a code", () => {
