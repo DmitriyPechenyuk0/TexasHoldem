@@ -13,7 +13,10 @@
 		"typecheck": "pnpm -r typecheck",
 		"test": "pnpm -r test",
 		"format": "prettier --write .",
-		"format:check": "prettier --check ."
+		"format:check": "prettier --check .",
+		"infra:up": "docker compose up -d --wait && docker compose run --rm s3-init",
+		"infra:down": "docker compose down",
+		"infra:reset": "docker compose --profile init down -v --remove-orphans && pnpm infra:up"
 	},
 	"devDependencies": {
 		"prettier": "^3.9.10",
