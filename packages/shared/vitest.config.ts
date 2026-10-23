@@ -10,8 +10,8 @@ export default defineConfig({
 			// Every source file counts, including ones no test imports.
 			include: ["src/**/*.ts"],
 			exclude: ["src/**/*.spec.ts"],
-			// Starting baseline for the contracts. Raise it as coverage grows.
-			thresholds: { lines: 90, statements: 90, functions: 90, branches: 90 },
+			// Just under the current 100%: a contract that no test imports fails the gate.
+			thresholds: { lines: 95, statements: 95, functions: 95, branches: 95 },
 		},
 	},
 });
