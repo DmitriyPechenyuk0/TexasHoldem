@@ -78,8 +78,9 @@ jobs:
       - name: Apply migrations
         run: pnpm db:migrate
 
-      - run: pnpm test:coverage
-      - run: pnpm --filter @holdem/api test:e2e
+      # Every package's tests with coverage gates; for the api that includes the e2e suite.
+      - name: Test with coverage
+        run: pnpm test:coverage
 
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
