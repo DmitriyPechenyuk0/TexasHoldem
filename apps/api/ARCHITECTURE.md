@@ -116,6 +116,33 @@ export class SeatTakenError extends DomainError {
 
 - Anything else is a bug: Nest answers 500 without details. Global filters do not reach WebSocket gateways, so gateways get their own mapping.
 
+## Persistence
+
+Each context owns its tables. Its schema lives in `infrastructure/persistence/schema.ts` and builds tables with `contextTable`, which adds the context prefix and maps camelCase properties to snake_case columns:
+
+```ts
+// modules/lobby/infrastructure/persistence/schema.ts
+const table = contextTable("lobby");
+
+export const lobbyTables = table("tables", {
+	id: uuid().primaryKey().defaultRandom(),
+	smallBlind: integer().notNull(), // column small_blind
+}); // table lobby_tables
+```
+
+- Repositories and query handlers get the Drizzle client with `@InjectDatabase() private readonly db: Database`.
+- A context never reads another context's tables (Context Map).
+- Migrations are generated from the schemas and committed in `migrations/`:
+
+| Command            | Does                                                                |
+| ------------------ | ------------------------------------------------------------------- |
+| `pnpm db:generate` | writes a migration for schema changes (`--name add-lobby-tables`)    |
+| `pnpm db:migrate`  | applies pending migrations to `DATABASE_URL`                        |
+| `pnpm db:check`    | warns when migrations and schemas disagree                          |
+| `pnpm db:studio`   | opens Drizzle Studio                                                |
+
+CI applies the migrations and fails when a schema change has no migration.
+
 ## Imports
 
 - Inside a module, use relative paths: `./take-seat.command.js`.
@@ -127,3 +154,4 @@ export class SeatTakenError extends DomainError {
 - Unit-test handlers by constructing them with fakes for their ports; no Nest container needed.
 - Unit-test domain code with plain inputs and outputs (Given/When/Then for deciders).
 - e2e tests boot the real app through `createTestApp()` from `test/support`, configured from `.env.example`.
+- Tests that touch the database call `createTestDatabase()`: it creates a fresh `holdem_test_*` database with every migration applied, and `drop()` removes it. Pass its `url` to `createTestApp({ config: { database: { url } } })`. They need the services from `pnpm infra:up`.

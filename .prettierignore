@@ -6,3 +6,4 @@ out
 next-env.d.ts
 *.md
 pnpm-workspace.yaml
+apps/api/migrations
