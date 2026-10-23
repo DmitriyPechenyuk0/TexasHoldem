@@ -28,7 +28,8 @@ import { TableId, Chips } from "@holdem/shared";
 - **Document the endpoint** on the response schema: `/** GET /system/time: … */`.
 - **The inferred type is what the receiver gets after parsing.** When a schema coerces or defaults (`PageQuery.limit` arrives as text), the sender builds `z.input<typeof Schema>`.
 - **Ids are branded UUIDs** (`UserId`, `TableId`, `HandId`), so the compiler rejects one where another is expected. Every id the api generates is a UUID, including Better Auth user ids.
-- **Error responses are `Problem`** (RFC 9457, `application/problem+json`). Clients switch on `code`, never on `title` or `detail`.
+- **Error responses are `Problem`** (RFC 9457, `application/problem+json`). Clients switch on `code` and translate it as the message key, filling in `params`; `title` and `detail` are English fallbacks. Invalid requests list their fields in `errors`.
+- **Socket commands reply with an `Ack`**: `{ ok: true, data }` or `{ ok: false, error: Problem }`. Build its schema with `ackOf(DataSchema)`.
 - **No domain logic.** Schemas describe the shape and the basic ranges of data. Rules such as "a raise must be at least the last raise" belong to `@holdem/engine` and the api.
 - **No runtime dependency besides zod, and nothing Node-only**: the package runs in the browser. The build has no Node types, so `process`, `Buffer` or `node:*` imports fail it, and a test checks `dependencies`.
 - **Every contract is tested**: coverage must stay at 95% or more, so a contract that no test imports fails `pnpm test:coverage`.

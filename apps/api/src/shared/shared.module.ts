@@ -8,14 +8,14 @@ import {
 import { DatabaseHealthIndicator } from "./infrastructure/database/index.js";
 import { RedisHealthIndicator } from "./infrastructure/redis/index.js";
 import { SystemClock } from "./infrastructure/system-clock.js";
-import { DomainErrorFilter } from "./presentation/domain-error.filter.js";
+import { ProblemFilter } from "./presentation/problem.filter.js";
 
 /** Cross-cutting building blocks available to every module. */
 @Global()
 @Module({
 	providers: [
 		{ provide: Clock, useClass: SystemClock },
-		{ provide: APP_FILTER, useClass: DomainErrorFilter },
+		{ provide: APP_FILTER, useClass: ProblemFilter },
 		{
 			provide: HEALTH_INDICATORS,
 			inject: [DatabaseHealthIndicator, RedisHealthIndicator],

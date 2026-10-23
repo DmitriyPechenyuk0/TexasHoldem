@@ -94,27 +94,35 @@ constructor(private readonly clock: Clock) {}
 
 ## Errors
 
-Expected business failures are subclasses of `DomainError`. Each one sets a `kind` and a stable `code` (`<context>.<case>`):
+Expected business failures are subclasses of `DomainError`. Each one sets a `kind` and a stable `code` (`<context>.<case>`), which is also the key clients translate. `params` fill in the translated message:
 
 ```ts
 export class SeatTakenError extends DomainError {
 	readonly kind = "conflict";
 	readonly code = "table.seat-taken";
+
+	constructor(seat: number) {
+		super(`Seat ${seat} is taken`, { params: { seat } });
+	}
 }
 ```
 
 - Domain code returns `Result<T, E>` (`ok(value)` / `err(error)`) instead of throwing, so rules stay pure and easy to test.
 - The handler unwraps it and throws the error: `if (!result.ok) throw result.error;`.
-- Presentation maps the kind to a status. Over HTTP, `DomainErrorFilter` replies with `{ statusCode, code, message }`:
+- Every failed request is answered by `ProblemFilter` with RFC 9457 problem details (`application/problem+json`, the `Problem` schema in `@holdem/shared`). `problemFor()` holds the mapping:
 
-| kind             | HTTP |
-| ---------------- | ---- |
-| `not-found`      | 404  |
-| `conflict`       | 409  |
-| `rule-violation` | 422  |
-| `forbidden`      | 403  |
+| Thrown                                                 | HTTP | `code`                                        |
+| ------------------------------------------------------ | ---- | --------------------------------------------- |
+| invalid request (`@ValidBody` / `@ValidQuery` / `@ValidParam`) | 400  | `request.invalid`, plus `errors` per field     |
+| `DomainError` of kind `not-found` / `conflict` / `rule-violation` / `forbidden` | 404 / 409 / 422 / 403 | its own code, plus `params`           |
+| `UnauthorizedException` / `ForbiddenException`         | 401 / 403 | `auth.unauthenticated` / `auth.forbidden` |
+| unknown route, malformed or oversized body             | 404 / 400 / 413 | `http.not-found` / `request.bad` / `request.too-large` |
+| anything else: a bug                                   | 500  | `internal`, no detail, logged with its stack  |
 
-- Anything else is a bug: Nest answers 500 without details. Global filters do not reach WebSocket gateways, so gateways get their own mapping.
+- Each problem carries the request path as `instance` and the `requestId` from the logs.
+- Validate every request part with its contract: `@ValidBody(TakeSeatRequest) body: TakeSeatRequest`. Handlers receive the parsed value, with unknown keys dropped.
+- Socket gateways are not reached by global filters. They reply `ackFailure(error)`, `{ ok: false, error: Problem }`, from the same mapping, and log the error when `problemFor(error).unexpected`.
+- A deliberate non-error status, such as readiness answering 503, is set on the response rather than thrown.
 
 ## Persistence
 

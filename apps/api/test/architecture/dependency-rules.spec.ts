@@ -247,6 +247,18 @@ describe("dependency rules", () => {
 		expect(await violationsIn(files)).toEqual([expected]);
 	});
 
+	it("allow type-only imports of dev dependencies, which the build erases", async () => {
+		expect(
+			await violationsIn({
+				"package.json": JSON.stringify({
+					devDependencies: { "@nestjs/testing": "*" },
+				}),
+				"src/shared/infrastructure/testing.ts":
+					'import type { TestingModule } from "@nestjs/testing";\nexport type Testing = TestingModule;\n',
+			}),
+		).toEqual([]);
+	});
+
 	it("reject dependency cycles", async () => {
 		expect(
 			await violationsIn({
