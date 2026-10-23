@@ -27,3 +27,11 @@ chore(deps): update nestjs to 12.2
 ### Branches
 
 Work is trunk-based on `master`. Short-lived branches are named `feat/<short-name>`, `fix/<short-name>` or `chore/<short-name>`. Putting the Linear key in the name links the branch to its issue: `feat/pok-25-env-config`.
+
+### Git hooks
+
+Husky installs the hooks on `pnpm install`:
+
+- `pre-commit` runs lint-staged: Prettier on every staged file, plus ESLint for `apps/web` and oxlint for `apps/api`. Each package owns its `lint-staged.config.*`, which extends the root one.
+- `commit-msg` runs commitlint.
+- `pre-push` runs `pnpm typecheck`.
