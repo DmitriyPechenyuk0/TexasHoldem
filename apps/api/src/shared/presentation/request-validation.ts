@@ -1,5 +1,6 @@
 import type { ProblemFieldError } from "@holdem/shared";
 import { Body, Param, type PipeTransform, Query } from "@nestjs/common";
+import { MessageBody } from "@nestjs/websockets";
 import type { z } from "zod";
 
 /** A request that does not match its contract. Answered with 400 and every invalid field. */
@@ -52,3 +53,7 @@ export const ValidParam = (
 	name: string,
 	schema: z.ZodType,
 ): ParameterDecorator => Param(name, new ZodValidationPipe(schema, [name]));
+
+/** `@ValidPayload(PingEvent.payload) payload: PingPayload` in a socket gateway. */
+export const ValidPayload = (schema: z.ZodType): ParameterDecorator =>
+	MessageBody(new ZodValidationPipe(schema));

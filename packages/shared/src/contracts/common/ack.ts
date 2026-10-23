@@ -1,13 +1,19 @@
 import { z } from "zod";
 import { Problem } from "./problem.js";
 
-/**
- * Reply to a socket command: the result, or the same `Problem` an HTTP endpoint would answer with.
- * Check `ok` to narrow it.
- */
-export type Ack<Data> =
-	| { readonly ok: true; readonly data: Data }
-	| { readonly ok: false; readonly error: Problem };
+export interface AckSuccess<Data> {
+	readonly ok: true;
+	readonly data: Data;
+}
+
+/** The same `Problem` an HTTP endpoint would answer with. */
+export interface AckFailure {
+	readonly ok: false;
+	readonly error: Problem;
+}
+
+/** Reply to a socket command: the result or the problem. Check `ok` to narrow it. */
+export type Ack<Data> = AckSuccess<Data> | AckFailure;
 
 export const ackOf = <Data extends z.ZodType>(data: Data) =>
 	z.discriminatedUnion("ok", [
