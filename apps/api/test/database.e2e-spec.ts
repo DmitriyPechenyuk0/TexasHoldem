@@ -80,8 +80,10 @@ describe("Database (e2e)", () => {
 			config: { database: { url: second.url } },
 		});
 		const db = app.get<Database>(DATABASE);
-		// Open the pooled connection inside an HTTP request, as production does.
-		await request(app.getHttpServer()).get("/health/ready").expect(200);
+		// Open the pooled connection inside an HTTP request, as production does. Only the database
+		// check matters here: Redis may still be connecting, which would turn the status into 503.
+		const readiness = await request(app.getHttpServer()).get("/health/ready");
+		expect(readiness.body.checks.database).toBe("up");
 
 		const terminated = await first.db.execute<{ count: number }>(
 			sql`select count(pg_terminate_backend(pid))::int as count from pg_stat_activity

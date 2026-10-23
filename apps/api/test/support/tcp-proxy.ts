@@ -1,8 +1,13 @@
 import net from "node:net";
 
+export interface TcpProxyOptions {
+	/** Holds every new connection this long before reaching the target, like a slow network. */
+	readonly connectDelayMs?: number;
+}
+
 /**
- * Forwards a local port to a real service, so a test can take the service "down" and bring it
- * back on the same address without touching the shared docker compose container.
+ * Forwards a local port to a real service, so a test can take the service "down", bring it back on
+ * the same address or slow it down, without touching the shared docker compose container.
  */
 export class TcpProxy {
 	private server: net.Server | undefined;
@@ -11,6 +16,7 @@ export class TcpProxy {
 
 	constructor(
 		private readonly target: { readonly host: string; readonly port: number },
+		private readonly options: TcpProxyOptions = {},
 	) {}
 
 	get url(): string {
@@ -20,16 +26,24 @@ export class TcpProxy {
 	/** Listens on a free port the first time, then on the same port again. */
 	async start(): Promise<void> {
 		const server = net.createServer((client) => {
-			const upstream = net.connect(this.target.port, this.target.host);
-			for (const socket of [client, upstream]) {
-				this.sockets.add(socket);
-				socket.on("close", () => this.sockets.delete(socket));
-				socket.on("error", () => {
-					client.destroy();
-					upstream.destroy();
-				});
+			this.track(client);
+			const forward = () => {
+				const upstream = net.connect(this.target.port, this.target.host);
+				this.track(upstream);
+				upstream.on("error", () => client.destroy());
+				client.on("error", () => upstream.destroy());
+				client.pipe(upstream).pipe(client);
+				client.resume();
+			};
+
+			const delay = this.options.connectDelayMs ?? 0;
+			if (delay === 0) {
+				forward();
+				return;
 			}
-			client.pipe(upstream).pipe(client);
+			client.pause();
+			const timer = setTimeout(forward, delay);
+			client.once("close", () => clearTimeout(timer));
 		});
 		await new Promise<void>((resolve, reject) => {
 			server.once("error", reject);
@@ -53,5 +67,11 @@ export class TcpProxy {
 				resolve();
 			}
 		});
+	}
+
+	private track(socket: net.Socket): void {
+		this.sockets.add(socket);
+		socket.on("close", () => this.sockets.delete(socket));
+		socket.on("error", () => socket.destroy());
 	}
 }
