@@ -168,6 +168,13 @@ CI applies the migrations and fails when a schema change has no migration.
 
 ## Tests
 
+| Command              | Runs                                                       | Needs `pnpm infra:up` |
+| -------------------- | ---------------------------------------------------------- | --------------------- |
+| `pnpm test`          | unit tests (`*.spec.ts`)                                   | no                    |
+| `pnpm test:e2e`      | e2e tests (`*.e2e-spec.ts`)                                | yes                   |
+| `pnpm test:coverage` | both, with one coverage report in `coverage/` and its gate | yes                   |
+
+- Coverage counts every file in `src` except `main.ts`, so untested files lower it too. The thresholds in `vitest.config.ts` are a baseline just under the current numbers: raise them when coverage grows, never lower them to make a change pass. `packages/engine` requires 100%.
 - Unit-test handlers by constructing them with fakes for their ports; no Nest container needed.
 - Unit-test domain code with plain inputs and outputs (Given/When/Then for deciders).
 - e2e tests boot the real app through `createTestApp()` from `test/support`, configured from `.env.example`.
