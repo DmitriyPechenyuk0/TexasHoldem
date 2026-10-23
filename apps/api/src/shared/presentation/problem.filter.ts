@@ -12,7 +12,7 @@ import { problemFor } from "./problem.js";
 /**
  * Answers every failed HTTP request with a problem+json body. It replaces Nest's default
  * handler, so it also logs unexpected errors with their stack. Global filters do not reach
- * WebSocket gateways; they build acks with `ackFailure`.
+ * WebSocket gateways, whose `@RealtimeGateway` decorator adds `AckExceptionFilter` instead.
  */
 @Catch()
 export class ProblemFilter implements ExceptionFilter {
@@ -32,6 +32,11 @@ export class ProblemFilter implements ExceptionFilter {
 		});
 		if (unexpected) {
 			this.logger.error(error);
+		}
+		// A failure in the middle of a response: the status is gone, so only end it, as Nest does.
+		if (httpAdapter.isHeadersSent(response)) {
+			httpAdapter.end(response);
+			return;
 		}
 
 		httpAdapter.setHeader(response, "content-type", PROBLEM_CONTENT_TYPE);

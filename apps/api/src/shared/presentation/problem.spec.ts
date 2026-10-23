@@ -7,7 +7,6 @@ import {
 	UnauthorizedException,
 } from "@nestjs/common";
 import { DomainError, type DomainErrorKind } from "../domain/domain-error.js";
-import { ackFailure } from "./ack.js";
 import { problemFor } from "./problem.js";
 import { RequestValidationError } from "./request-validation.js";
 
@@ -138,13 +137,4 @@ describe("problemFor", () => {
 			});
 		},
 	);
-});
-
-describe("ackFailure", () => {
-	it("wraps the same problem for a socket reply", () => {
-		expect(ackFailure(new ProbeError("conflict"))).toEqual({
-			ok: false,
-			error: expect.objectContaining({ status: 409, code: "table.seat-taken" }),
-		});
-	});
 });

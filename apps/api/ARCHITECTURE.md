@@ -121,8 +121,29 @@ export class SeatTakenError extends DomainError {
 
 - Each problem carries the request path as `instance` and the `requestId` from the logs.
 - Validate every request part with its contract: `@ValidBody(TakeSeatRequest) body: TakeSeatRequest`. Handlers receive the parsed value, with unknown keys dropped.
-- Socket gateways are not reached by global filters. They reply `ackFailure(error)`, `{ ok: false, error: Problem }`, from the same mapping, and log the error when `problemFor(error).unexpected`.
+- Socket gateways are not reached by global filters. `@RealtimeGateway` adds `AckExceptionFilter`, which replies `{ ok: false, error: Problem }` from the same mapping and logs unexpected errors.
 - A deliberate non-error status, such as readiness answering 503, is set on the response rather than thrown.
+
+## Realtime
+
+Gateways live in `presentation/` like controllers, and serve one namespace of `@holdem/shared/realtime`:
+
+```ts
+@RealtimeGateway(systemNamespace)
+export class SystemGateway {
+	constructor(private readonly queryBus: QueryBus) {}
+
+	@SubscribeMessage(PingEvent.name)
+	async ping(@ValidPayload(PingEvent.payload) { sentAt }: PingPayload): Promise<Ack<PingAck>> {
+		const { now } = await this.queryBus.execute(new GetServerTimeQuery());
+		return { ok: true, data: { sentAt, serverTime: now.toISOString() } };
+	}
+}
+```
+
+- Validate every payload with `@ValidPayload(Event.payload)`: an invalid one is answered with a 400 problem before the handler runs.
+- A command returns its `Ack`; a thrown error becomes `{ ok: false, error: Problem }`. Gateways, like controllers, only send messages to the buses.
+- socket.io shares the HTTP server and its CORS policy (`WEB_ORIGIN`, with credentials). `configureApp()` sets both, for `main.ts` and the e2e tests alike.
 
 ## Persistence
 

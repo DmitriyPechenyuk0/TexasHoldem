@@ -1,3 +1,4 @@
+import { AsyncResource } from "node:async_hooks";
 import { Injectable, Logger, type OnApplicationShutdown } from "@nestjs/common";
 import { createClient } from "@redis/client";
 import { AppConfig } from "../config/index.js";
@@ -23,19 +24,27 @@ export class RedisConnections implements OnApplicationShutdown {
 		const client: Redis = createClient({ url: this.config.redis.url, name });
 
 		// Without an `error` listener, a lost connection crashes the process. Warn once per outage.
+		// Listeners are bound to this context, so the lines never carry the requestId of whichever
+		// request was running when the socket event fired.
 		let reportedOutage = false;
-		client.on("error", (error: Error) => {
-			if (!reportedOutage) {
-				reportedOutage = true;
-				this.logger.warn(`${name} is unavailable: ${error.message}`);
-			}
-		});
-		client.on("ready", () => {
-			if (reportedOutage) {
-				reportedOutage = false;
-				this.logger.log(`${name} reconnected`);
-			}
-		});
+		client.on(
+			"error",
+			AsyncResource.bind((error: Error) => {
+				if (!reportedOutage) {
+					reportedOutage = true;
+					this.logger.warn(`${name} is unavailable: ${error.message}`);
+				}
+			}),
+		);
+		client.on(
+			"ready",
+			AsyncResource.bind(() => {
+				if (reportedOutage) {
+					reportedOutage = false;
+					this.logger.log(`${name} reconnected`);
+				}
+			}),
+		);
 
 		this.clients.add(client);
 		// Failures are reported through `error` and retried by the reconnect strategy.

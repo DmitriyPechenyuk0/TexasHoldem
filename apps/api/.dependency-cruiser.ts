@@ -92,10 +92,10 @@ const config: IConfiguration = {
 		{
 			name: "composition-root-is-a-leaf",
 			comment:
-				"Only main.ts and tests import the composition root; modules never reach back into it.",
+				"Only main.ts and tests import the composition root (app.module.ts, configure-app.ts); modules never reach back into it.",
 			severity: "error",
 			from: { path: "^src/(?:modules|shared)/" },
-			to: { path: "^src/(?:main|app\\.module)\\.ts$" },
+			to: { path: "^src/(?:main|app\\.module|configure-app)\\.ts$" },
 		},
 		{
 			name: "no-circular",

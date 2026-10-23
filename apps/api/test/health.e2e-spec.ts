@@ -5,6 +5,7 @@ import {
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import type { App } from "supertest/types.js";
+import { captureLogs } from "./support/capture-logs.js";
 import { createTestApp } from "./support/create-test-app.js";
 import { exampleConfig } from "./support/example-config.js";
 import { TcpProxy } from "./support/tcp-proxy.js";
@@ -74,6 +75,7 @@ describe("Health (e2e)", () => {
 		});
 
 		it("reports 503 while Redis is down and 200 once it is back", async () => {
+			const { lines } = captureLogs();
 			expect((await waitForReadiness(app, 200)).status).toBe(200);
 
 			await proxy.stop();
@@ -89,6 +91,13 @@ describe("Health (e2e)", () => {
 			const back = await waitForReadiness(app, 200);
 			expect(back.status).toBe(200);
 			expect(back.body.checks).toEqual({ database: "up", redis: "up" });
+
+			// One warning per outage and one line on recovery, attributed to no request.
+			const redisLines = lines.filter((line) => line.context === "Redis");
+			expect(redisLines.map((line) => line.level)).toEqual(["warn", "info"]);
+			for (const line of redisLines) {
+				expect(line).not.toHaveProperty("requestId");
+			}
 		});
 	});
 

@@ -5,8 +5,10 @@ import {
 	Get,
 	type INestApplication,
 	Post,
+	Res,
 	UnauthorizedException,
 } from "@nestjs/common";
+import type { Response } from "express";
 import request from "supertest";
 import type { App } from "supertest/types.js";
 import { z } from "zod";
@@ -68,6 +70,12 @@ class ProbeController {
 		throw new ForbiddenException("Only the host can close the table");
 	}
 
+	@Get("stream-crash")
+	streamCrash(@Res() response: Response): never {
+		response.status(200).write("first chunk;");
+		throw new Error("boom in the middle of a stream");
+	}
+
 	@Get("crash")
 	crash(): never {
 		throw new Error("boom: connection string postgres://holdem:secret@db");
@@ -75,13 +83,12 @@ class ProbeController {
 }
 
 describe("Problems (e2e)", () => {
-	const { destination, lines } = captureLogs();
+	const { lines } = captureLogs();
 	let app: INestApplication<App>;
 
 	beforeAll(async () => {
 		app = await createTestApp({
 			controllers: [ProbeController],
-			logs: destination,
 		});
 	});
 
@@ -236,6 +243,24 @@ describe("Problems (e2e)", () => {
 					err: expect.objectContaining({
 						message: expect.stringContaining("boom"),
 						stack: expect.stringContaining("ProbeController.crash"),
+					}),
+				}),
+			);
+		});
+
+		it("end a response that had already started, instead of failing in the filter", async () => {
+			lines.length = 0;
+			const response = await request(app.getHttpServer())
+				.get("/probe/stream-crash")
+				.expect(200);
+
+			expect(response.text).toBe("first chunk;");
+			expect(lines).toContainEqual(
+				expect.objectContaining({
+					level: "error",
+					context: "ProblemFilter",
+					err: expect.objectContaining({
+						message: "boom in the middle of a stream",
 					}),
 				}),
 			);

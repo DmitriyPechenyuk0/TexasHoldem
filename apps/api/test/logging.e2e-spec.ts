@@ -68,14 +68,13 @@ class ProbeController {
 }
 
 describe("Logging (e2e)", () => {
-	const { destination, lines } = captureLogs();
+	const { lines } = captureLogs();
 	let app: INestApplication<App>;
 
 	beforeAll(async () => {
 		app = await createTestApp({
 			controllers: [ProbeController],
 			providers: [TakeSeatHandler],
-			logs: destination,
 		});
 	});
 

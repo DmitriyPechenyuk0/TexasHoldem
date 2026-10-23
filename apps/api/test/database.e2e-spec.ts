@@ -1,8 +1,11 @@
 import { sql } from "drizzle-orm";
+import request from "supertest";
 import {
 	DATABASE,
 	type Database,
 } from "@/shared/infrastructure/database/index.js";
+import { APPLICATION_NAME } from "@/shared/infrastructure/database/database.module.js";
+import { captureLogs } from "./support/capture-logs.js";
 import { createTestApp } from "./support/create-test-app.js";
 import {
 	createTestDatabase,
@@ -69,6 +72,40 @@ describe("Database (e2e)", () => {
 				message: expect.stringMatching(/after calling end on the pool/),
 			},
 		});
+	});
+
+	it("survives the server dropping an idle connection, as on a Postgres restart", async () => {
+		const { lines } = captureLogs();
+		const app = await createTestApp({
+			config: { database: { url: second.url } },
+		});
+		const db = app.get<Database>(DATABASE);
+		// Open the pooled connection inside an HTTP request, as production does.
+		await request(app.getHttpServer()).get("/health/ready").expect(200);
+
+		const terminated = await first.db.execute<{ count: number }>(
+			sql`select count(pg_terminate_backend(pid))::int as count from pg_stat_activity
+				where datname = ${second.name} and application_name = ${APPLICATION_NAME}`,
+			"objects",
+		);
+		expect(terminated).toEqual([{ count: 1 }]);
+
+		const deadline = Date.now() + 5_000;
+		while (
+			!lines.some((line) =>
+				String(line.msg).startsWith("Idle database connection lost"),
+			) &&
+			Date.now() < deadline
+		) {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		const warning = lines.find((line) => line.context === "Database");
+		expect(warning).toMatchObject({ level: "warn" });
+		// The loss belongs to no request, even though a request opened the connection.
+		expect(warning).not.toHaveProperty("requestId");
+		// The pool opens a fresh connection for the next query.
+		expect(await currentDatabase(db)).toBe(second.name);
+		await app.close();
 	});
 
 	it("drops the database", async () => {
