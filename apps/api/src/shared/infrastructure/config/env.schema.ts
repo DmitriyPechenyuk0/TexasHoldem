@@ -30,6 +30,9 @@ export const envSchema = z
 			.enum(["development", "test", "production"])
 			.default("development"),
 		PORT: port.default(4000),
+		LOG_LEVEL: z
+			.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
+			.optional(),
 		WEB_ORIGIN: httpUrl.refine(
 			(value) => !URL.canParse(value) || new URL(value).origin === value,
 			"must be a bare origin such as http://localhost:3000, without a path or trailing slash",
@@ -68,6 +71,11 @@ export const envSchema = z
 	.transform((env): AppConfig => ({
 		nodeEnv: env.NODE_ENV,
 		port: env.PORT,
+		log: {
+			level:
+				env.LOG_LEVEL ?? (env.NODE_ENV === "development" ? "debug" : "info"),
+			pretty: env.NODE_ENV === "development",
+		},
 		webOrigin: env.WEB_ORIGIN,
 		database: { url: env.DATABASE_URL },
 		redis: { url: env.REDIS_URL },

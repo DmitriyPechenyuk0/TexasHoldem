@@ -144,6 +144,14 @@ describe("dependency rules", () => {
 			"application-uses-no-io-libraries: src/modules/table/application/commands/take-seat.handler.ts -> @redis/client",
 		],
 		[
+			"a command handler using the logging backend",
+			{
+				"src/modules/table/application/commands/take-seat.handler.ts":
+					'import { PinoLogger } from "nestjs-pino";\nexport const handler = PinoLogger;\n',
+			},
+			"application-uses-no-io-libraries: src/modules/table/application/commands/take-seat.handler.ts -> nestjs-pino",
+		],
+		[
 			"a query handler using a repository",
 			{
 				"src/modules/table/infrastructure/table.repository.ts":

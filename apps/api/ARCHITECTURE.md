@@ -151,6 +151,15 @@ CI applies the migrations and fails when a schema change has no migration.
 - A new dependency gets a `HealthIndicator` adapter next to its client, listed under `HEALTH_INDICATORS` in `SharedModule`.
 - SIGTERM and SIGINT stop the HTTP server and run the `onApplicationShutdown` hooks, which close the database pool and Redis. A process that has not exited after 10 s is stopped.
 
+## Logging
+
+- Log through Nest's `Logger` (`private readonly logger = new Logger(TakeSeatHandler.name)`). pino sits behind it. Pass fields as an object: `this.logger.log({ msg: "seat taken", tableId, seat })`.
+- Every line written while handling an HTTP request carries its `requestId`: the incoming `x-request-id` when it is plain, otherwise a new UUID, echoed back in the response.
+- Socket handlers wrap their work in `LogContext.run({ connectionId, tableId }, () => …)`, the port in `shared/application`. The fields then reach every line inside, across awaits.
+- Every command is logged at debug level with its name, `durationMs` and `outcome`: `succeeded`, `rejected` (a domain error, with its `code`) or `failed`.
+- Request lines contain the method, the path without the query string and the client address. Headers, query strings and bodies are never logged. Known secret keys in logged objects (`password`, `token`, `secret`, …, up to three levels deep) are replaced with `[redacted]`. Still, do not log credentials.
+- Health checks are not logged. `LOG_LEVEL` sets the level: by default `debug` with readable lines in development, `info` with JSON lines elsewhere.
+
 ## Imports
 
 - Inside a module, use relative paths: `./take-seat.command.js`.
