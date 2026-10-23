@@ -16,9 +16,14 @@
 		"format:check": "prettier --check .",
 		"infra:up": "docker compose up -d --wait && docker compose run --rm s3-init",
 		"infra:down": "docker compose down",
-		"infra:reset": "docker compose --profile init down -v --remove-orphans && pnpm infra:up"
+		"infra:reset": "docker compose --profile init down -v --remove-orphans && pnpm infra:up",
+		"prepare": "husky"
 	},
 	"devDependencies": {
+		"@commitlint/cli": "^21.2.4",
+		"@commitlint/config-conventional": "^21.2.4",
+		"@commitlint/types": "^21.2.3",
+		"husky": "^9.1.7",
 		"prettier": "^3.9.10",
 		"typescript": "^6.0.3"
 	}
