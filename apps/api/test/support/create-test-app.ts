@@ -19,7 +19,8 @@ export async function createTestApp({
 	...extra
 }: TestAppOptions = {}): Promise<INestApplication<App>> {
 	const moduleRef = await Test.createTestingModule({
-		imports: [AppModule.forRoot({ ...exampleConfig(), ...config })],
+		// exampleConfig() returns a fresh object, so overriding it in place is safe.
+		imports: [AppModule.forRoot(Object.assign(exampleConfig(), config))],
 		...extra,
 	}).compile();
 

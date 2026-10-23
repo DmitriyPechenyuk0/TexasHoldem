@@ -143,6 +143,14 @@ export const lobbyTables = table("tables", {
 
 CI applies the migrations and fails when a schema change has no migration.
 
+## Redis, health and shutdown
+
+- The shared Redis client comes through `@InjectRedis() private readonly redis: Redis`. Pub/sub subscribers and blocking commands need a dedicated connection: `RedisConnections.open("<purpose>")`, which the app closes on shutdown.
+- Clients connect in the background and reconnect on their own, so a Redis outage neither blocks startup nor crashes the process.
+- `GET /health` is liveness and never touches a dependency. `GET /health/ready` asks every `HealthIndicator` (2 s each) and answers 503 when one is down.
+- A new dependency gets a `HealthIndicator` adapter next to its client, listed under `HEALTH_INDICATORS` in `SharedModule`.
+- SIGTERM and SIGINT stop the HTTP server and run the `onApplicationShutdown` hooks, which close the database pool and Redis. A process that has not exited after 10 s is stopped.
+
 ## Imports
 
 - Inside a module, use relative paths: `./take-seat.command.js`.

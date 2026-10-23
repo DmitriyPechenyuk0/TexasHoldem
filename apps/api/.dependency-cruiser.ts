@@ -9,7 +9,7 @@ const ENGINE = "(?:^|/)packages/engine/|^@holdem/engine(?:/|$)";
 
 // Libraries that only adapters may use, matched installed (…/node_modules/<name>/) or not yet installed (<name>).
 const IO_LIBRARIES =
-	"(?:^|/node_modules/)(?:drizzle-orm|pg|postgres|ioredis|redis|socket\\.io|@aws-sdk/[^/]+|nodemailer|better-auth)(?:/|$)";
+	"(?:^|/node_modules/)(?:drizzle-orm|pg|postgres|ioredis|redis|@redis/[^/]+|socket\\.io|@aws-sdk/[^/]+|nodemailer|better-auth)(?:/|$)";
 
 const config: IConfiguration = {
 	forbidden: [

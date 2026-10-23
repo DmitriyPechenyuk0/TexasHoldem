@@ -7,9 +7,13 @@ import {
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { AppConfig } from "../config/index.js";
+import { DatabaseHealthIndicator } from "./database-health.indicator.js";
 import { DATABASE } from "./database.js";
 
 const POOL = Symbol("Pool");
+
+// Without it, pg waits forever for a connection to an unreachable host.
+const CONNECTION_TIMEOUT_MS = 5_000;
 
 @Global()
 @Module({
@@ -18,15 +22,19 @@ const POOL = Symbol("Pool");
 			provide: POOL,
 			inject: [AppConfig],
 			useFactory: (config: AppConfig) =>
-				new Pool({ connectionString: config.database.url }),
+				new Pool({
+					connectionString: config.database.url,
+					connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+				}),
 		},
 		{
 			provide: DATABASE,
 			inject: [POOL],
 			useFactory: (pool: Pool) => drizzle({ client: pool }),
 		},
+		DatabaseHealthIndicator,
 	],
-	exports: [DATABASE],
+	exports: [DATABASE, DatabaseHealthIndicator],
 })
 export class DatabaseModule implements OnApplicationShutdown {
 	constructor(@Inject(POOL) private readonly pool: Pool) {}
