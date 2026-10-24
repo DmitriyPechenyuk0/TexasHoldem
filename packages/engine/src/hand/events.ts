@@ -1,4 +1,5 @@
-import type { Card } from "../cards/index.js";
+import type { Card, Rank } from "../cards/index.js";
+import type { HandCategory } from "../evaluator/index.js";
 import type { Chips, HandPlayer, SeatIndex } from "./config.js";
 
 // Every event is plain JSON: a `type`, a schema version `v`, and data. A schema change bumps `v`
@@ -13,6 +14,15 @@ export interface Pot {
 	readonly amount: Chips;
 	/** Seats still in the hand that can win it. */
 	readonly eligibleSeats: readonly SeatIndex[];
+}
+
+/** A winning hand as the table shows it. */
+export interface ShownHand {
+	readonly category: HandCategory;
+	/** The five cards that play, in the order they are compared (kickers last). */
+	readonly cards: readonly Card[];
+	/** The ranks its name needs, for the client to localize ("Kings full of sevens": K, 7). */
+	readonly ranks: readonly Rank[];
 }
 
 export type HandEvent =
@@ -113,6 +123,8 @@ export type HandEvent =
 			readonly winners: readonly {
 				readonly seat: SeatIndex;
 				readonly amount: Chips;
+				/** The hand that won it, when the winner showed it; absent for a hand never shown. */
+				readonly hand?: ShownHand;
 			}[];
 	  }
 	| {

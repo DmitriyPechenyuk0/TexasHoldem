@@ -5,6 +5,15 @@ import { AppConfig } from "../config/index.js";
 import type { Redis } from "./redis.js";
 
 /**
+ * How long a command may take, waiting in the offline queue included. Redis answers in well under
+ * a millisecond, so a command still pending after this is failed instead of hanging its caller.
+ */
+export const REDIS_COMMAND_TIMEOUT_MS = 2_000;
+
+/** Commands waiting while Redis is unreachable; beyond this, new ones fail at once instead of piling up. */
+const MAX_QUEUED_COMMANDS = 10_000;
+
+/**
  * Opens and owns every Redis connection. Pub/sub subscribers and blocking commands need a
  * connection of their own; everything else shares the one behind `@InjectRedis()`.
  */
@@ -16,12 +25,18 @@ export class RedisConnections implements OnApplicationShutdown {
 	constructor(private readonly config: AppConfig) {}
 
 	/**
-	 * Connects in the background: a Redis outage must not block startup, and commands wait
-	 * in the offline queue until the client is ready. The client reconnects on its own.
+	 * Connects in the background: a Redis outage must not block startup, and commands wait in the
+	 * offline queue until the client is ready, up to `REDIS_COMMAND_TIMEOUT_MS`. The client
+	 * reconnects on its own. A connection for blocking commands will need a longer timeout.
 	 */
 	open(purpose: string): Redis {
 		const name = `holdem-api:${purpose}`;
-		const client: Redis = createClient({ url: this.config.redis.url, name });
+		const client: Redis = createClient({
+			url: this.config.redis.url,
+			name,
+			commandsQueueMaxLength: MAX_QUEUED_COMMANDS,
+			commandOptions: { timeout: REDIS_COMMAND_TIMEOUT_MS },
+		});
 
 		// Without an `error` listener, a lost connection crashes the process. Warn once per outage.
 		// Listeners are bound to this context, so the lines never carry the requestId of whichever

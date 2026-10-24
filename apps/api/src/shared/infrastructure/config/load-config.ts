@@ -1,6 +1,11 @@
 import type { z } from "zod";
 import type { AppConfig } from "./app-config.js";
-import { databaseEnvSchema, ENV_PAIRS, envSchema } from "./env.schema.js";
+import {
+	databaseEnvSchema,
+	ENV_PAIRS,
+	envSchema,
+	productionProblems,
+} from "./env.schema.js";
 
 type EnvSource = Readonly<Record<string, string | undefined>>;
 type EnvPairs = readonly (readonly [string, string])[];
@@ -23,10 +28,12 @@ function validate<Output>(
 	schema: z.ZodType<Output>,
 	source: EnvSource,
 	pairs: EnvPairs = [],
+	extraProblems: (env: Record<string, string>) => string[] = () => [],
 ): Output {
 	const env = Object.fromEntries(
 		Object.entries(source).filter(
-			([, value]) => value !== undefined && value !== "",
+			(entry): entry is [string, string] =>
+				entry[1] !== undefined && entry[1] !== "",
 		),
 	);
 
@@ -44,6 +51,7 @@ function validate<Output>(
 					? [`${first}: is required when ${second} is set`]
 					: [],
 		),
+		...extraProblems(env),
 	].sort();
 
 	if (!result.success || problems.length > 0) {
@@ -53,7 +61,7 @@ function validate<Output>(
 }
 
 export function parseConfig(source: EnvSource): AppConfig {
-	return validate(envSchema, source, ENV_PAIRS);
+	return validate(envSchema, source, ENV_PAIRS, productionProblems);
 }
 
 export function parseDatabaseConfig(source: EnvSource): AppConfig["database"] {

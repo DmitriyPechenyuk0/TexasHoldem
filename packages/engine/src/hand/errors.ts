@@ -3,6 +3,7 @@ import type { Chips, SeatIndex } from "./config.js";
 
 /** Which part of a `HandConfig` is wrong. */
 export type InvalidConfigReason =
+	| "hand-id"
 	| "player-count"
 	| "seats"
 	| "player-ids"

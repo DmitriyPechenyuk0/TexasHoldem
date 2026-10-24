@@ -4,11 +4,11 @@ description: Install Node.js from `engines`, pnpm from `packageManager`, and the
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: package.json
 
-    - uses: pnpm/setup@v3
+    - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
       with:
         cache: true
         require-lockfile: true

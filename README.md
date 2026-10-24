@@ -2,7 +2,7 @@
 
 No-Limit Texas Hold'em in the browser: sit down at a cash table with friends, share a private table by link, or just watch. Chips are virtual and free, so anyone can play at any time.
 
-The project is in early development. The foundation (monorepo, API and web skeletons, quality gates) is done; the poker engine comes next.
+The project is in early development. Done: the foundation (monorepo, API and web skeletons, quality gates) and the poker engine, which plays a whole hand by the rules from the blinds to the showdown, with side pots, a provably fair shuffle and what each player may see ([packages/engine](packages/engine/README.md)). Next: sign-in and player profiles, then the realtime table.
 
 **Planned for the first release:** cash tables with a 20-second turn timer and a time bank, private tables by link or code with an optional password, spectators, provably fair shuffles, sign-in with email or Google, GitHub and Discord, player profiles, friends and table chat, in English and Russian.
 
@@ -15,7 +15,7 @@ The project is in early development. The foundation (monorepo, API and web skele
 | Engine | A pure, deterministic TypeScript package shared by the server and the client |
 | Contracts | zod schemas for every REST endpoint and socket event, shared by both apps |
 | Data | PostgreSQL 18, Redis 8, S3-compatible storage (RustFS locally), SMTP (Mailpit locally) |
-| Tooling | pnpm workspaces, TypeScript 6, Vitest, ESLint and Steiger (web), oxlint and dependency-cruiser (api), Prettier, Husky, commitlint, GitHub Actions |
+| Tooling | pnpm workspaces, TypeScript 6, Vitest, ESLint and Steiger (web), oxlint (api, engine, shared), dependency-cruiser (api), Prettier, Husky, commitlint, GitHub Actions |
 
 ## Repository layout
 
@@ -78,7 +78,7 @@ Run from the repository root:
 | --- | --- |
 | `pnpm dev` | Builds `packages/*`, then runs every workspace in watch mode |
 | `pnpm build` | Production build of every workspace |
-| `pnpm lint` | ESLint, Steiger and the message catalog check for web; oxlint and the dependency rules for the api |
+| `pnpm lint` | ESLint, Steiger and the message catalog check for web; oxlint and the dependency rules for the api; oxlint for the packages |
 | `pnpm typecheck` | TypeScript in every workspace |
 | `pnpm test` | Unit tests of every workspace |
 | `pnpm test:coverage` | All tests with coverage gates, including the api end-to-end suite (needs `pnpm infra:up`) |
@@ -135,13 +135,13 @@ chore(deps): update nestjs to 12.2
 
 Pull requests into `dev` are squash-merged, so their title becomes the commit and must follow the conventions above. CI checks the title. Put `Closes POK-<n>` in the description.
 
-Release pull requests (`dev` → `master`) use a merge commit, so both branches share history. Use a title like `chore(release): v0.2.0`.
+Release pull requests (`dev` → `master`) use a merge commit, so both branches share history. Use a title like `chore(release): v0.2.0`. Every `package.json` in the workspace carries the release version: bump them all together on `dev` before the release pull request, then tag the merge on `master` (`v0.2.0`).
 
 ### Git hooks
 
 Husky installs the hooks on `pnpm install`:
 
-- `pre-commit` runs lint-staged: Prettier on every staged file, plus ESLint for `apps/web` and oxlint for `apps/api`. Each package owns its `lint-staged.config.*`, which extends the root one.
+- `pre-commit` runs lint-staged: Prettier on every staged file, plus ESLint for `apps/web` and oxlint for `apps/api`, `packages/engine` and `packages/shared`. Each package owns its `lint-staged.config.*`, which extends the root one.
 - `commit-msg` runs commitlint.
 - `pre-push` runs `pnpm typecheck`.
 

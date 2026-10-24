@@ -40,7 +40,7 @@ export function sha256(message: Uint8Array): Uint8Array {
 	view.setUint32(padded.length - 4, bitLength >>> 0);
 
 	const hash = [...INITIAL_HASH];
-	const schedule: number[] = new Array(64).fill(0);
+	const schedule = Array.from({ length: 64 }, () => 0);
 	const word = (index: number) => schedule[index] as number;
 	for (let offset = 0; offset < padded.length; offset += BLOCK_BYTES) {
 		for (let t = 0; t < 16; t++) {

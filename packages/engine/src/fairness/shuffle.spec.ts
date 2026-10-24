@@ -185,7 +185,7 @@ describe("shuffleDeck", () => {
 		{ tags: ["slow"], timeout: 60_000 },
 		() => {
 			const shuffles = 52 * 300;
-			const counts = new Array<number>(52 * 52).fill(0);
+			const counts = Array.from({ length: 52 * 52 }, () => 0);
 			for (let index = 0; index < shuffles; index++) {
 				shuffleDeck(seedOf(index)).forEach((card, position) => {
 					counts[position * 52 + card]! += 1;

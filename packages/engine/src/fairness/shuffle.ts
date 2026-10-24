@@ -48,7 +48,7 @@ export function createRandomStream(seed: Uint8Array): () => number {
 				seed,
 				concatBytes(DECK_STREAM_LABEL, uint32BigEndian(blockIndex++)),
 			);
-			block = new DataView(bytes.buffer);
+			block = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 			offset = 0;
 		}
 		const value = block.getUint32(offset);

@@ -1,6 +1,6 @@
 import { type Problem, PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import { z } from "zod";
-import { ApiError, NetworkError } from "./errors";
+import { ApiError, NetworkError, RequestTimeoutError } from "./errors";
 import { createHttpClient } from "./http";
 
 const client = createHttpClient({
@@ -159,7 +159,38 @@ describe("createHttpClient", () => {
 				signal: controller.signal,
 			}),
 		).rejects.toBe(abort);
-		expect(lastRequest().init.signal).toBe(controller.signal);
+		// The caller's signal is combined with the timeout, so cancelling it cancels the fetch.
+		expect(lastRequest().init.signal?.aborted).toBe(true);
+	});
+
+	it("gives up on an api that does not answer in time", async () => {
+		fetchMock.mockImplementation(
+			(_url, init) =>
+				new Promise((_resolve, reject) =>
+					init?.signal?.addEventListener("abort", () =>
+						reject(init.signal?.reason),
+					),
+				),
+		);
+		const impatient = createHttpClient({
+			baseUrl: "http://api.test",
+			timeoutMs: 20,
+		});
+
+		const error = await impatient
+			.request("/system/time", { schema: Item })
+			.catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(RequestTimeoutError);
+		expect(error).toMatchObject({ code: "network.timeout" });
+	});
+
+	it("rejects a successful answer that is not JSON as outside its contract", async () => {
+		fetchMock.mockResolvedValue(new Response("<html>", { status: 200 }));
+
+		await expect(
+			client.request("/tables/t1", { schema: Item }),
+		).rejects.toThrow("GET /tables/t1 answered outside its contract");
 	});
 
 	it("rejects an answer that breaks its contract", async () => {

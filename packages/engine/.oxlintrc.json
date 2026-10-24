@@ -1,0 +1,41 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"rules": {
+		"typescript/no-floating-promises": "error",
+		// ADR-001: the engine is pure and deterministic. Randomness and time come in as input.
+		"no-restricted-properties": [
+			"error",
+			{
+				"object": "Math",
+				"property": "random",
+				"message": "The engine has no randomness of its own: take a seed or a deck as input (ADR-001)."
+			},
+			{
+				"object": "Date",
+				"property": "now",
+				"message": "The engine has no clock: take the time as input (ADR-001)."
+			}
+		],
+		"no-restricted-globals": [
+			"error",
+			{
+				"name": "process",
+				"message": "The engine runs in the browser too and does no I/O (ADR-001)."
+			},
+			{
+				"name": "Date",
+				"message": "The engine has no clock: take the time as input (ADR-001)."
+			}
+		]
+	},
+	"overrides": [
+		{
+			"files": ["src/**/*.spec.ts", "examples/**"],
+			"env": { "node": true },
+			"rules": {
+				"no-restricted-globals": "off",
+				"no-restricted-properties": "off"
+			}
+		}
+	]
+}

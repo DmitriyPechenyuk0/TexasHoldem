@@ -1,9 +1,10 @@
-import type { Card } from "../cards/index.js";
+import { type Card, parseCards, type Rank } from "../cards/index.js";
+import type { HandCategory } from "../evaluator/index.js";
 import { given, play } from "../testing/hand-harness.js";
 import { handConfig, handStarted, players } from "../testing/hand-fixtures.js";
 import type { ActionKind, HandCommand } from "./commands.js";
 import type { HandConfig } from "./config.js";
-import type { HandEvent, Street } from "./events.js";
+import type { HandEvent, ShownHand, Street } from "./events.js";
 import { replayHand } from "./evolve.js";
 import type { ActiveHand } from "./state.js";
 
@@ -51,19 +52,35 @@ const dealt = (
 
 const showdown: HandEvent = { type: "ShowdownStarted", v: 1 };
 
-const awarded = (seat: number, amount: number): HandEvent => ({
+const awarded = (
+	seat: number,
+	amount: number,
+	hand?: ShownHand,
+): HandEvent => ({
 	type: "PotAwarded",
 	v: 1,
 	pot: 0,
-	winners: [{ seat, amount }],
+	winners: [{ seat, amount, ...(hand ? { hand } : {}) }],
 });
 
-/** Pot 0 split between these winners, as [seat, amount], clockwise from the button. */
-const split = (...winners: [number, number][]): HandEvent => ({
+const shownHand = (
+	category: HandCategory,
+	cards: string,
+	ranks: Rank[],
+): ShownHand => ({ category, cards: parseCards(cards), ranks });
+
+// What the unshuffled deck deals at the showdowns below. Three-handed, the board is 3s 4c 4d 4s 5d;
+// heads-up it is 3d 3h 3s 4d 4s, and both players play the board's full house.
+const foursFullWith3c = shownHand("full-house", "4s 4d 4c 3s 3c", ["4", "3"]);
+const foursFullWith3d = shownHand("full-house", "4s 4d 4c 3s 3d", ["4", "3"]);
+const threesFull = shownHand("full-house", "3s 3h 3d 4s 4d", ["3", "4"]);
+
+/** Pot 0 split between these winners, as [seat, amount, hand], clockwise from the button. */
+const split = (...winners: [number, number, ShownHand][]): HandEvent => ({
 	type: "PotAwarded",
 	v: 1,
 	pot: 0,
-	winners: winners.map(([seat, amount]) => ({ seat, amount })),
+	winners: winners.map(([seat, amount, hand]) => ({ seat, amount, hand })),
 });
 
 /** The player turns up the cards at these deck positions. */
@@ -154,7 +171,7 @@ describe("closing a betting round (RULES §5, §6)", () => {
 				shown(1, 0, 3),
 				shown(2, 1, 4),
 				shown(0, 2, 5),
-				split([2, 15], [0, 15]),
+				split([2, 15, foursFullWith3c], [0, 15, foursFullWith3d]),
 				ended(1005, 990, 1005),
 			]);
 		const state = stateOf(play(river, ...checkAround));
@@ -289,7 +306,7 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 				shown(0, 1, 3),
 				shown(1, 0, 2),
 				...headsUpRunOut,
-				split([1, 1000], [0, 1000]),
+				split([1, 1000, threesFull], [0, 1000, threesFull]),
 				ended(1000, 1000),
 			]);
 	});
@@ -305,7 +322,7 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 				shown(0, 1, 3),
 				shown(1, 0, 2),
 				...headsUpRunOut,
-				split([1, 400], [0, 400]),
+				split([1, 400, threesFull], [0, 400, threesFull]),
 				ended(1000, 400),
 			]);
 	});
@@ -345,7 +362,7 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 				shown(1, 0, 2),
 				shown(0, 1, 3),
 				...headsUpRunOut,
-				split([1, 5], [0, 5]),
+				split([1, 5, threesFull], [0, 5, threesFull]),
 				ended(5, 10),
 			]);
 	});
@@ -366,7 +383,7 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 			shown(1, 0, 2),
 			shown(0, 1, 3),
 			...headsUpRunOut,
-			split([1, 10], [0, 10]),
+			split([1, 10, threesFull], [0, 10, threesFull]),
 			ended(10, 10),
 		]);
 	});
@@ -389,7 +406,7 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 				shown(0, 1, 3),
 				dealt("river", 10, 11),
 				showdown,
-				split([1, 1000], [0, 1000]),
+				split([1, 1000, threesFull], [0, 1000, threesFull]),
 				ended(1000, 1000),
 			]);
 	});
@@ -456,7 +473,7 @@ describe("side pots (RULES §9)", () => {
 				dealt("river", 12, 13),
 				showdown,
 				// Fours full of threes beat fours full of twos.
-				awarded(0, 300),
+				awarded(0, 300, foursFullWith3d),
 				ended(300, 900, 900),
 			]);
 	});

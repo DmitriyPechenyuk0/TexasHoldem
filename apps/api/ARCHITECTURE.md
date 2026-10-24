@@ -175,7 +175,7 @@ CI applies the migrations and fails when a schema change has no migration.
 ## Redis, health and shutdown
 
 - The shared Redis client comes through `@InjectRedis() private readonly redis: Redis`. Pub/sub subscribers and blocking commands need a dedicated connection: `RedisConnections.open("<purpose>")`, which the app closes on shutdown.
-- Clients connect in the background and reconnect on their own, so a Redis outage neither blocks startup nor crashes the process.
+- Clients connect in the background and reconnect on their own, so a Redis outage neither blocks startup nor crashes the process. Meanwhile commands wait in a bounded queue and fail after 2 s (`REDIS_COMMAND_TIMEOUT_MS`), so a caller never hangs; a connection for blocking commands will need a longer timeout.
 - `GET /health` is liveness and never touches a dependency. `GET /health/ready` asks every `HealthIndicator` (2 s each) and answers 503 when one is down.
 - A new dependency gets a `HealthIndicator` adapter next to its client, listed under `HEALTH_INDICATORS` in `SharedModule`.
 - SIGTERM and SIGINT stop the HTTP server and run the `onApplicationShutdown` hooks, which close the database pool and Redis. A process that has not exited after 10 s is stopped.
@@ -186,8 +186,14 @@ CI applies the migrations and fails when a schema change has no migration.
 - Every line written while handling an HTTP request carries its `requestId`: the incoming `x-request-id` when it is plain, otherwise a new UUID, echoed back in the response.
 - Socket handlers wrap their work in `LogContext.run({ connectionId, tableId }, () => …)`, the port in `shared/application`. The fields then reach every line inside, across awaits.
 - Every command is logged at debug level with its name, `durationMs` and `outcome`: `succeeded`, `rejected` (a domain error, with its `code`) or `failed`.
-- Request lines contain the method, the path without the query string and the client address. Headers, query strings and bodies are never logged. Known secret keys in logged objects (`password`, `token`, `secret`, …, up to three levels deep) are replaced with `[redacted]`. Still, do not log credentials.
+- Request lines contain the method, the path without the query string and the client address (from `X-Forwarded-For` only for the proxies `TRUST_PROXY` trusts). Headers, query strings and bodies are never logged. Secret-looking keys in logged objects (`password`, `token`, `secret`, `Authorization`, `set-cookie`, …, in any case and at any depth) are replaced with `[redacted]`. Still, do not log credentials.
+- Lines go to stdout through a buffer, so logging never blocks the event loop; what is left in it is written synchronously when the process exits.
 - Health checks are not logged. `LOG_LEVEL` sets the level: by default `debug` with readable lines in development, `info` with JSON lines elsewhere.
+
+## HTTP and sockets
+
+- `configureApp` (shared by `main.ts` and the e2e tests) sets the security headers (helmet), CORS for `WEB_ORIGIN` with credentials, `trust proxy` and the socket.io adapter.
+- socket.io refuses a connection whose `Origin` is not `WEB_ORIGIN`: CORS alone would let a page on another origin open a socket with the visitor's cookies (cross-site WebSocket hijacking). Clients without an `Origin` are not browsers and are let through. A message larger than `MAX_MESSAGE_BYTES` (64 KiB) closes the connection.
 
 ## Imports
 
