@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# next-intl message declarations (generated on dev, build and typegen)
+*.d.json.ts

@@ -1,0 +1,18 @@
+{
+	"metadata": {
+		"title": "Texas Hold'em",
+		"description": "No-Limit Texas Hold'em with friends, right in the browser."
+	},
+	"localeSwitcher": {
+		"label": "Language",
+		"locales": {
+			"en": "English",
+			"ru": "Русский"
+		}
+	},
+	"notFound": {
+		"title": "Page not found",
+		"description": "There is no table here. Check the link or go back to the start.",
+		"home": "Back to the start"
+	}
+}

@@ -6,9 +6,14 @@ The web app follows [Feature-Sliced Design 2.1](https://feature-sliced.design) w
 
 ```
 app/                  Next.js routing only: route files that re-export from src, plus favicon.ico
-  layout.tsx          export { metadata, RootLayout as default } from "@/_app";
-  page.tsx            export { HomePage as default } from "@/_pages/home";
+  [locale]/           every page lives under its locale; layout.tsx here is the root layout
+    layout.tsx        export { generateMetadata, generateStaticParams, LocaleLayout as default } from "@/_app";
+    page.tsx          export { HomePage as default } from "@/_pages/home";
+    not-found.tsx     localized 404 for notFound() under a locale
+    [...rest]/        any unmatched path under a locale, so its 404 is localized too
 instrumentation.ts    runs at server start; validates the environment
+proxy.ts              sends unprefixed URLs to a locale (next-intl middleware)
+scripts/              repository checks, e.g. check-messages.mjs
 src/
   _app/               FSD app layer: root layout, providers, global styles
   _pages/             FSD pages layer: one slice per page, e.g. _pages/home
@@ -34,6 +39,18 @@ public/               static files
 ## Checks
 
 `pnpm --filter @holdem/web lint:fsd` runs [Steiger](https://github.com/feature-sliced/steiger) with the recommended FSD rules on `src`: imports only go down, no cross-imports between slices, no sidestepping a public API, consistent naming. It is part of `pnpm lint`, the pre-commit hook and CI. The only exception, in `steiger.config.mjs`, is the layer-name check for `_app` and `_pages`: every other rule already treats them as the app and pages layers.
+
+## i18n
+
+[next-intl](https://next-intl.dev) with locale routing; the locales are `en` (default) and `ru`.
+
+- **Every URL carries its locale** (`/en/...`, `/ru/...`, `localePrefix: "always"`) rather than a cookie-only locale: pages render statically per locale, and a shared link opens in the language it was sent in. `proxy.ts` redirects `/` and unprefixed paths by the `NEXT_LOCALE` cookie, then by `Accept-Language`, then to English. An unknown path under a locale gets the localized 404 (`[...rest]`). Paths with a file extension skip the proxy, so `/foo.txt` lands in `[locale]` with an unknown locale and gets the built-in Next.js 404: the check runs in the root layout, which has no not-found boundary above it.
+- **Messages** live in `src/shared/i18n/messages/<locale>/<namespace>.json`, one namespace per page or slice (`home`, `common`, ...). A new namespace is added to `messages/index.ts` for every locale.
+- **Keys are type-checked**: English is the source catalog, `app-config.ts` augments next-intl with its shape, and the plugin generates `*.d.json.ts` declarations (git-ignored) so `t()` also checks ICU arguments. Another locale missing a key is a type error.
+- **Navigation** goes through `@/shared/i18n` (`Link`, `useRouter`, `redirect`, ...), which keeps the current locale. `LocaleSwitcher` from `@/shared/ui` links to the current page in every locale.
+- **Server error codes** (`Problem.code` from `@holdem/shared`) get translated on the client by their code, never shown as the server's text; their namespace arrives with the first page that shows one.
+
+`pnpm --filter @holdem/web lint:i18n` (`scripts/check-messages.mjs`, part of `pnpm lint`, the pre-commit hook and CI) fails when a locale has a missing or extra namespace or key, an empty or invalid ICU text, or ICU arguments that differ from English. ESLint (`i18next/no-literal-string`) rejects literal text in JSX and in readable attributes (`alt`, `aria-label`, `placeholder`, `title`, ...).
 
 ## Configuration and contracts
 
