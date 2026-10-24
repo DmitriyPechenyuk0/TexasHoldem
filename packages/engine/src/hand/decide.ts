@@ -4,8 +4,10 @@ import type { ActionKind, HandCommand } from "./commands.js";
 import { type HandConfig, MAX_PLAYERS, MIN_PLAYERS } from "./config.js";
 import type { HandError, InvalidConfigReason } from "./errors.js";
 import type { HandEvent } from "./events.js";
+import { replayHand } from "./evolve.js";
 import { blindSeats, clockwiseFrom } from "./positions.js";
 import type { ActiveHand, HandState, PlayerState } from "./state.js";
+import { advanceHand } from "./streets.js";
 
 export type Decision =
 	| { readonly ok: true; readonly events: readonly HandEvent[] }
@@ -269,11 +271,7 @@ function revealAtShowdown(
 		: accept({ type: "CardsMucked", v: 1, seat });
 }
 
-/**
- * Decides what a command means for the hand: the events it causes, or why it is rejected
- * (ADR-002). Pure and synchronous; it never changes `state`.
- */
-export function decide(command: HandCommand, state: HandState): Decision {
+function decideCommand(command: HandCommand, state: HandState): Decision {
 	if (command.type === "StartHand") {
 		return state.status === "idle"
 			? startHand(command.config)
@@ -298,4 +296,18 @@ export function decide(command: HandCommand, state: HandState): Decision {
 		case "MuckCards":
 			return revealAtShowdown(state, command.seat, false);
 	}
+}
+
+/**
+ * Decides what a command means for the hand: the events it causes, or why it is rejected
+ * (ADR-002). An accepted command also carries what follows from it on its own, such as the next
+ * street once it closes a betting round. Pure and synchronous; it never changes `state`.
+ */
+export function decide(command: HandCommand, state: HandState): Decision {
+	const decision = decideCommand(command, state);
+	if (!decision.ok) {
+		return decision;
+	}
+	const after = replayHand(decision.events, state);
+	return accept(...decision.events, ...advanceHand(after));
 }

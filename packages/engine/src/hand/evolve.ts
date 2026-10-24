@@ -165,10 +165,12 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 			return { ...hand, toAct: nextToAct(hand, hand.buttonSeat) };
 		}
 		case "UncalledBetReturned": {
+			// With chips behind again, the bettor is no longer all-in.
 			const hand = updatePlayer(active(state, event), event.seat, (player) => ({
 				stack: player.stack + event.amount,
 				bet: player.bet - event.amount,
 				committed: player.committed - event.amount,
+				allIn: false,
 			}));
 			return {
 				...hand,
@@ -180,6 +182,7 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 			return {
 				...hand,
 				players: hand.players.map((player) => ({ ...player, bet: 0 })),
+				currentBet: 0,
 				pots: event.pots.map((pot) => ({ ...pot, awarded: false })),
 				toAct: null,
 			};
