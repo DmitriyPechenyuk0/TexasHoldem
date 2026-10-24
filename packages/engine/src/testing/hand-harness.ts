@@ -33,3 +33,22 @@ export function given(history: readonly HandEvent[]) {
 		},
 	};
 }
+
+/**
+ * Runs commands one after another from `history`, each against the state the previous ones left,
+ * and returns the whole history. Fails the test with the error code if any command is rejected.
+ */
+export function play(
+	history: readonly HandEvent[],
+	...commands: HandCommand[]
+): HandEvent[] {
+	const events = [...history];
+	for (const command of commands) {
+		const decision = decide(command, replayHand(events));
+		if (!decision.ok) {
+			throw new Error(`${command.type} was rejected: ${decision.error.code}`);
+		}
+		events.push(...decision.events);
+	}
+	return events;
+}

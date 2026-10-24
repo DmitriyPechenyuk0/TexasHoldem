@@ -1,10 +1,11 @@
 import { type Card, CARD_COUNT, isCard } from "../cards/index.js";
-import type { HandCommand } from "./commands.js";
+import { type LegalActions, legalActions } from "./betting.js";
+import type { ActionKind, HandCommand } from "./commands.js";
 import { type HandConfig, MAX_PLAYERS, MIN_PLAYERS } from "./config.js";
 import type { HandError, InvalidConfigReason } from "./errors.js";
 import type { HandEvent } from "./events.js";
 import { blindSeats, clockwiseFrom } from "./positions.js";
-import type { ActiveHand, HandState } from "./state.js";
+import type { ActiveHand, HandState, PlayerState } from "./state.js";
 
 export type Decision =
 	| { readonly ok: true; readonly events: readonly HandEvent[] }
@@ -130,6 +131,119 @@ function startHand(config: HandConfig): Decision {
 	return { ok: true, events };
 }
 
+/**
+ * A bet or raise to a total of `to` (RULES §8): the minimum bet is the big blind, a raise adds at
+ * least the last full bet or raise, and a player short of either may only go all-in for less.
+ */
+function aggress(
+	legal: LegalActions,
+	player: PlayerState,
+	wanted: "bet" | "raise" | undefined,
+	to: number | undefined,
+): Decision {
+	const { aggression } = legal;
+	if (!aggression) {
+		return reject({ code: "hand.raise-not-allowed" });
+	}
+	if (wanted && wanted !== aggression.kind) {
+		return reject({
+			code: wanted === "bet" ? "hand.illegal-bet" : "hand.illegal-raise",
+		});
+	}
+	if (to === undefined || !Number.isSafeInteger(to)) {
+		return reject({ code: "hand.invalid-amount" });
+	}
+	if (to > aggression.maxTo) {
+		return reject({
+			code: "hand.insufficient-chips",
+			params: { maxTo: aggression.maxTo },
+		});
+	}
+	if (to < aggression.minTo) {
+		return reject({
+			code:
+				aggression.kind === "bet"
+					? "hand.bet-too-small"
+					: "hand.raise-too-small",
+			params: { minTo: aggression.minTo },
+		});
+	}
+	return accept({
+		type: "PlayerActed",
+		v: 1,
+		seat: player.seat,
+		action: aggression.kind,
+		amount: to - player.bet,
+		allIn: to === aggression.maxTo,
+	});
+}
+
+/** A player's action on their turn, checked against exactly what `legalActions` offers. */
+function act(
+	hand: ActiveHand,
+	seat: number,
+	action: ActionKind,
+	amount?: number,
+): Decision {
+	const legal = legalActions(hand, seat);
+	if (!legal) {
+		return reject({ code: "hand.not-your-turn", params: { seat } });
+	}
+	const player = hand.players.find(
+		(candidate) => candidate.seat === seat,
+	) as PlayerState;
+	const acted = (kind: "fold" | "check" | "call", chips: number): Decision =>
+		accept({
+			type: "PlayerActed",
+			v: 1,
+			seat,
+			action: kind,
+			amount: chips,
+			allIn: kind === "call" && chips === player.stack,
+		});
+
+	switch (action) {
+		case "fold":
+			return acted("fold", 0);
+		case "check":
+			return legal.canCheck
+				? acted("check", 0)
+				: reject({
+						code: "hand.illegal-check",
+						params: { callAmount: legal.callAmount },
+					});
+		case "call":
+			return legal.callAmount > 0
+				? acted("call", legal.callAmount)
+				: reject({ code: "hand.nothing-to-call" });
+		case "all-in":
+			// All-in for no more than the bet faced is a call; for more, a bet or raise of everything.
+			return player.bet + player.stack <= hand.currentBet
+				? acted("call", player.stack)
+				: aggress(legal, player, undefined, player.bet + player.stack);
+		case "bet":
+		case "raise":
+			return aggress(legal, player, action, amount);
+	}
+}
+
+/** The turn timer ran out (POK-54): the player checks when that is free, otherwise folds. */
+function timeout(hand: ActiveHand, seat: number): Decision {
+	const legal = legalActions(hand, seat);
+	if (!legal) {
+		return reject({ code: "hand.not-your-turn", params: { seat } });
+	}
+	return accept({
+		type: "PlayerActed",
+		v: 1,
+		seat,
+		action: legal.canCheck ? "check" : "fold",
+		amount: 0,
+		allIn: false,
+		auto: true,
+	});
+}
+
 function revealAtShowdown(
 	hand: ActiveHand,
 	seat: number,
@@ -171,12 +285,9 @@ export function decide(command: HandCommand, state: HandState): Decision {
 	}
 	switch (command.type) {
 		case "Act":
+			return act(state, command.seat, command.action, command.amount);
 		case "Timeout":
-			// Betting arrives with POK-49: until then every action is refused.
-			return reject({
-				code: "hand.not-your-turn",
-				params: { seat: command.seat },
-			});
+			return timeout(state, command.seat);
 		case "ShowCards":
 			return revealAtShowdown(state, command.seat, true);
 		case "MuckCards":

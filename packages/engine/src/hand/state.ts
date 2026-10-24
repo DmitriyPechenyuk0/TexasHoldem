@@ -12,6 +12,8 @@ export interface PlayerState {
 	/** Every chip put in this hand: antes, blinds and bets, collected or not. */
 	readonly committed: Chips;
 	readonly holeCards: readonly [Card, Card] | null;
+	/** Has acted on this street; posting a blind does not count. */
+	readonly acted: boolean;
 	readonly folded: boolean;
 	readonly allIn: boolean;
 	readonly shown: boolean;
