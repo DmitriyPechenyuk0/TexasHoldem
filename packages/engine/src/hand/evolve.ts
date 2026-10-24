@@ -70,6 +70,7 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 					committed: 0,
 					holeCards: null,
 					acted: false,
+					actedAt: 0,
 					folded: false,
 					allIn: false,
 					shown: false,
@@ -129,7 +130,7 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 				(player) => player.seat === event.seat,
 			) as PlayerState;
 			// Only a full raise sets a new minimum; a short all-in does not (RULES §8, TDA 43).
-			const hand: ActiveHand =
+			const raised: ActiveHand =
 				bet > acted.currentBet
 					? {
 							...acted,
@@ -138,6 +139,10 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 							lastAggressor: event.seat,
 						}
 					: acted;
+			// Whether a later short all-in reopens the betting for this player is measured from here.
+			const hand = updatePlayer(raised, event.seat, () => ({
+				actedAt: raised.currentBet,
+			}));
 			return { ...hand, toAct: nextToAct(hand, event.seat) };
 		}
 		case "StreetDealt": {
@@ -147,6 +152,7 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 				players: previous.players.map((player) => ({
 					...player,
 					acted: false,
+					actedAt: 0,
 				})),
 				board: [...previous.board, ...event.cards],
 				nextCard: previous.nextCard + 1 + event.cards.length,

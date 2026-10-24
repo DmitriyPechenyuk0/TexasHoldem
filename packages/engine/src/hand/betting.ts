@@ -23,6 +23,17 @@ export function needsToAct(hand: ActiveHand, player: PlayerState): boolean {
 	return opponentCanBet && !player.acted;
 }
 
+/**
+ * Whether this player may still raise (RULES §8, TDA 47): always before they have acted on the
+ * street; afterwards only once the bet has gone up by at least a full raise since they acted. Short
+ * all-ins add up, so two of them together can reopen the betting.
+ */
+export const bettingReopened = (
+	hand: ActiveHand,
+	player: PlayerState,
+): boolean =>
+	!player.acted || hand.currentBet - player.actedAt >= hand.minRaise;
+
 /** The next player clockwise from `seat` the round waits for, or null when the round is complete. */
 export const nextToAct = (
 	hand: ActiveHand,
@@ -49,7 +60,10 @@ export interface LegalActions {
 	readonly canCheck: boolean;
 	/** Chips a call adds, capped at the stack (then it is an all-in call); 0 with nothing to call. */
 	readonly callAmount: Chips;
-	/** Null when no bet or raise is possible, e.g. every opponent is all-in. */
+	/**
+	 * Null when no bet or raise is possible: every opponent is all-in, the stack does not cover more
+	 * than the call, or a short all-in did not reopen the betting for this player (TDA 47).
+	 */
 	readonly aggression: Aggression | null;
 }
 
@@ -73,7 +87,11 @@ export function legalActions(
 	);
 
 	let aggression: Aggression | null = null;
-	if (opponentCanRespond && maxTo > hand.currentBet) {
+	if (
+		opponentCanRespond &&
+		maxTo > hand.currentBet &&
+		bettingReopened(hand, player)
+	) {
 		const kind = hand.currentBet === 0 ? "bet" : "raise";
 		const fullMin =
 			kind === "bet" ? hand.bigBlind : hand.currentBet + hand.minRaise;

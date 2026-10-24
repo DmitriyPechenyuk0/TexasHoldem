@@ -14,6 +14,8 @@ export interface PlayerState {
 	readonly holeCards: readonly [Card, Card] | null;
 	/** Has acted on this street; posting a blind does not count. */
 	readonly acted: boolean;
+	/** The highest bet on the street right after this player last acted (TDA 47). */
+	readonly actedAt: Chips;
 	readonly folded: boolean;
 	readonly allIn: boolean;
 	readonly shown: boolean;

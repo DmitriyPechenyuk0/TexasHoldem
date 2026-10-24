@@ -84,6 +84,7 @@ describe("evolve", () => {
 			committed: 0,
 			holeCards: null,
 			acted: false,
+			actedAt: 0,
 			folded: false,
 			allIn: false,
 			shown: false,

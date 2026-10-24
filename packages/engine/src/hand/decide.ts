@@ -1,5 +1,5 @@
 import { type Card, CARD_COUNT, isCard } from "../cards/index.js";
-import { type LegalActions, legalActions } from "./betting.js";
+import { bettingReopened, type LegalActions, legalActions } from "./betting.js";
 import type { ActionKind, HandCommand } from "./commands.js";
 import { type HandConfig, MAX_PLAYERS, MIN_PLAYERS } from "./config.js";
 import type { HandError, InvalidConfigReason } from "./errors.js";
@@ -136,6 +136,7 @@ function startHand(config: HandConfig): Decision {
  * least the last full bet or raise, and a player short of either may only go all-in for less.
  */
 function aggress(
+	hand: ActiveHand,
 	legal: LegalActions,
 	player: PlayerState,
 	wanted: "bet" | "raise" | undefined,
@@ -143,7 +144,11 @@ function aggress(
 ): Decision {
 	const { aggression } = legal;
 	if (!aggression) {
-		return reject({ code: "hand.raise-not-allowed" });
+		return reject({
+			code: bettingReopened(hand, player)
+				? "hand.raise-not-allowed"
+				: "hand.betting-not-reopened",
+		});
 	}
 	if (wanted && wanted !== aggression.kind) {
 		return reject({
@@ -220,10 +225,10 @@ function act(
 			// All-in for no more than the bet faced is a call; for more, a bet or raise of everything.
 			return player.bet + player.stack <= hand.currentBet
 				? acted("call", player.stack)
-				: aggress(legal, player, undefined, player.bet + player.stack);
+				: aggress(hand, legal, player, undefined, player.bet + player.stack);
 		case "bet":
 		case "raise":
-			return aggress(legal, player, action, amount);
+			return aggress(hand, legal, player, action, amount);
 	}
 }
 
