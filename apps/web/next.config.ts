@@ -17,6 +17,8 @@ const withNextIntl = createNextIntlPlugin({
 });
 
 const nextConfig = (phase: string): NextConfig => ({
+	// `next dev` would otherwise write instructions for coding assistants into AGENTS.md.
+	agentRules: false,
 	cacheComponents: true,
 	// `page.dev.tsx` routes (the /ui preview) exist only under `next dev`.
 	pageExtensions:
