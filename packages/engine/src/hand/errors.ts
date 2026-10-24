@@ -1,5 +1,5 @@
 import type { HandCommandType } from "./commands.js";
-import type { SeatIndex } from "./config.js";
+import type { Chips, SeatIndex } from "./config.js";
 
 /** Which part of a `HandConfig` is wrong. */
 export type InvalidConfigReason =
@@ -30,6 +30,32 @@ export type HandError =
 	| {
 			readonly code: "hand.not-your-turn";
 			readonly params: { readonly seat: SeatIndex };
+	  }
+	/** Facing a bet: call, raise or fold instead. */
+	| {
+			readonly code: "hand.illegal-check";
+			readonly params: { readonly callAmount: Chips };
+	  }
+	| { readonly code: "hand.nothing-to-call" }
+	/** Somebody already bet on this street: raise instead. */
+	| { readonly code: "hand.illegal-bet" }
+	/** Nobody has bet on this street: bet instead. */
+	| { readonly code: "hand.illegal-raise" }
+	/** Every opponent is all-in or folded, so only a call or a fold is left. */
+	| { readonly code: "hand.raise-not-allowed" }
+	/** A bet or raise needs a whole number of chips as its total. */
+	| { readonly code: "hand.invalid-amount" }
+	| {
+			readonly code: "hand.bet-too-small";
+			readonly params: { readonly minTo: Chips };
+	  }
+	| {
+			readonly code: "hand.raise-too-small";
+			readonly params: { readonly minTo: Chips };
+	  }
+	| {
+			readonly code: "hand.insufficient-chips";
+			readonly params: { readonly maxTo: Chips };
 	  }
 	| {
 			readonly code: "hand.showdown-not-reached";

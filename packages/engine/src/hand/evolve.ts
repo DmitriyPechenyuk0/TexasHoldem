@@ -1,6 +1,7 @@
 import type { SeatIndex } from "./config.js";
 import type { HandEvent } from "./events.js";
-import { blindSeats, clockwiseFrom } from "./positions.js";
+import { nextToAct } from "./betting.js";
+import { blindSeats } from "./positions.js";
 import {
 	type ActiveHand,
 	type HandState,
@@ -30,12 +31,6 @@ function updatePlayer(
 		),
 	};
 }
-
-/** The first player left of `seat` who can still act: not folded and not all-in. */
-const firstToActAfter = (hand: ActiveHand, seat: SeatIndex): SeatIndex | null =>
-	clockwiseFrom(hand.players, seat).find(
-		(player) => !player.folded && !player.allIn,
-	)?.seat ?? null;
 
 /** Chips moving from a player's stack into their bet for this street. */
 const putIn = (
@@ -74,6 +69,7 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 					bet: 0,
 					committed: 0,
 					holeCards: null,
+					acted: false,
 					folded: false,
 					allIn: false,
 					shown: false,
@@ -115,43 +111,52 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 			return {
 				...hand,
 				nextCard: hand.nextCard + event.hands.length * 2,
-				toAct: firstToActAfter(hand, bigBlind),
+				toAct: nextToAct(hand, bigBlind),
 			};
 		}
 		case "PlayerActed": {
-			const hand = updatePlayer(active(state, event), event.seat, (player) =>
-				event.action === "fold"
-					? { folded: true }
-					: putIn(player, event.amount, event.allIn),
+			const acted = updatePlayer(
+				active(state, event),
+				event.seat,
+				(player) => ({
+					...(event.action === "fold"
+						? { folded: true }
+						: putIn(player, event.amount, event.allIn)),
+					acted: true,
+				}),
 			);
-			const { bet } = hand.players.find(
+			const { bet } = acted.players.find(
 				(player) => player.seat === event.seat,
 			) as PlayerState;
-			if (bet <= hand.currentBet) {
-				return hand;
-			}
 			// Only a full raise sets a new minimum; a short all-in does not (RULES §8, TDA 43).
-			const increment = bet - hand.currentBet;
-			return {
-				...hand,
-				currentBet: bet,
-				minRaise: Math.max(hand.minRaise, increment),
-				lastAggressor: event.seat,
-			};
+			const hand: ActiveHand =
+				bet > acted.currentBet
+					? {
+							...acted,
+							currentBet: bet,
+							minRaise: Math.max(acted.minRaise, bet - acted.currentBet),
+							lastAggressor: event.seat,
+						}
+					: acted;
+			return { ...hand, toAct: nextToAct(hand, event.seat) };
 		}
 		case "StreetDealt": {
-			const hand = active(state, event);
-			return {
-				...hand,
-				board: [...hand.board, ...event.cards],
-				nextCard: hand.nextCard + 1 + event.cards.length,
+			const previous = active(state, event);
+			const hand: ActiveHand = {
+				...previous,
+				players: previous.players.map((player) => ({
+					...player,
+					acted: false,
+				})),
+				board: [...previous.board, ...event.cards],
+				nextCard: previous.nextCard + 1 + event.cards.length,
 				street: event.street,
-				// After the flop the first active player left of the button acts first (RULES §6).
-				toAct: firstToActAfter(hand, hand.buttonSeat),
 				currentBet: 0,
-				minRaise: hand.bigBlind,
+				minRaise: previous.bigBlind,
 				lastAggressor: null,
 			};
+			// After the flop the first active player left of the button acts first (RULES §6).
+			return { ...hand, toAct: nextToAct(hand, hand.buttonSeat) };
 		}
 		case "UncalledBetReturned": {
 			const hand = updatePlayer(active(state, event), event.seat, (player) => ({

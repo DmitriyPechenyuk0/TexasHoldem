@@ -1,3 +1,10 @@
+export {
+	type Aggression,
+	type LegalActions,
+	legalActions,
+	needsToAct,
+	nextToAct,
+} from "./betting.js";
 export type { ActionKind, HandCommand, HandCommandType } from "./commands.js";
 export {
 	type Chips,

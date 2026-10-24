@@ -5,6 +5,7 @@ import {
 	holeCards,
 	players,
 } from "./hand-fixtures.js";
+import { play } from "./hand-harness.js";
 
 describe("hand fixtures", () => {
 	it("builds players, a valid config and its HandStarted event", () => {
@@ -27,5 +28,13 @@ describe("hand fixtures", () => {
 		expect(formatCards(holeCards("As Kd"))).toBe("As Kd");
 		expect(() => holeCards("As")).toThrow(RangeError);
 		expect(() => holeCards("As Kd Qh")).toThrow(RangeError);
+	});
+});
+
+describe("play", () => {
+	it("fails loudly with the error code when a command is rejected", () => {
+		expect(() => play([], { type: "Timeout", seat: 0 })).toThrow(
+			"Timeout was rejected: hand.not-started",
+		);
 	});
 });

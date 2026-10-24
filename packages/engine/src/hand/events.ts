@@ -59,6 +59,8 @@ export type HandEvent =
 			readonly action: ActedKind;
 			readonly amount: Chips;
 			readonly allIn: boolean;
+			/** Set when the turn timer acted for the player (POK-54); absent otherwise. */
+			readonly auto?: true;
 	  }
 	| {
 			readonly type: "StreetDealt";
