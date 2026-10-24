@@ -68,16 +68,21 @@ export interface LegalActions {
 }
 
 /**
- * The legal actions of the player to act (RULES §7, §8), or null for anyone else. The minimum bet
- * is the big blind; the minimum raise adds at least the last full bet or raise of the street
- * (TDA 43). A player short of the minimum may still go all-in for less.
+ * The legal actions of the player to act (RULES §7, §8), or null for anyone else and at the
+ * showdown. The minimum bet is the big blind; the minimum raise adds at least the last full bet or
+ * raise of the street (TDA 43). A player short of the minimum may still go all-in for less.
  */
 export function legalActions(
 	hand: ActiveHand,
 	seat: SeatIndex,
 ): LegalActions | null {
 	const player = hand.players.find((candidate) => candidate.seat === seat);
-	if (hand.status !== "in-progress" || hand.toAct !== seat || !player) {
+	if (
+		hand.status !== "in-progress" ||
+		hand.street === "showdown" ||
+		hand.toAct !== seat ||
+		!player
+	) {
 		return null;
 	}
 	const toCall = hand.currentBet - player.bet;

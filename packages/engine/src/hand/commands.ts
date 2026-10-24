@@ -12,7 +12,10 @@ export type HandCommand =
 			/** For a bet or raise: the player's total bet on this street afterwards ("raise to"). */
 			readonly amount?: Chips;
 	  }
-	/** The turn timer ran out: the player checks if they can, otherwise folds. */
+	/**
+	 * The turn timer ran out: the player checks if they can, otherwise folds. At the showdown, the
+	 * player mucks.
+	 */
 	| { readonly type: "Timeout"; readonly seat: SeatIndex }
 	| { readonly type: "ShowCards"; readonly seat: SeatIndex }
 	| { readonly type: "MuckCards"; readonly seat: SeatIndex };

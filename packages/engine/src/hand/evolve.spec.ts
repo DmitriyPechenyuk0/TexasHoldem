@@ -203,6 +203,20 @@ describe("evolve", () => {
 		}) as ActiveHand;
 		expect(seat(state, 0)).toMatchObject({ stack: 90, bet: 10, committed: 10 });
 		expect(state.currentBet).toBe(10);
+		// Chips back behind mean the player is no longer all-in.
+		const shoved = play(
+			...blinds,
+			{
+				type: "PlayerActed",
+				v: 1,
+				seat: 0,
+				action: "raise",
+				amount: 100,
+				allIn: true,
+			},
+			{ type: "UncalledBetReturned", v: 1, seat: 0, amount: 90 },
+		);
+		expect(seat(shoved, 0)).toMatchObject({ stack: 90, allIn: false });
 
 		state = evolve(state, {
 			type: "PotsCollected",

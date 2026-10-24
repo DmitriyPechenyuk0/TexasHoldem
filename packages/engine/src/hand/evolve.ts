@@ -2,6 +2,7 @@ import type { SeatIndex } from "./config.js";
 import type { HandEvent } from "./events.js";
 import { nextToAct } from "./betting.js";
 import { blindSeats } from "./positions.js";
+import { showdownTurn } from "./showdown.js";
 import {
 	type ActiveHand,
 	type HandState,
@@ -43,6 +44,10 @@ const putIn = (
 	committed: player.committed + amount,
 	allIn,
 });
+
+/** At the showdown, the turn passes to the next player to show or muck (TDA 17). */
+const showdownTurnTaken = (hand: ActiveHand): ActiveHand =>
+	hand.street === "showdown" ? { ...hand, toAct: showdownTurn(hand) } : hand;
 
 /**
  * Applies one event to the state. Events are facts the decider already checked, so this never
@@ -188,15 +193,18 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 			};
 		}
 		case "ShowdownStarted":
-			return { ...active(state, event), street: "showdown", toAct: null };
+			return showdownTurnTaken({ ...active(state, event), street: "showdown" });
 		case "CardsShown":
-			return updatePlayer(active(state, event), event.seat, () => ({
-				shown: true,
-			}));
+			// All-in hands are also turned up before the run-out, outside the showdown (TDA 16).
+			return showdownTurnTaken(
+				updatePlayer(active(state, event), event.seat, () => ({ shown: true })),
+			);
 		case "CardsMucked":
-			return updatePlayer(active(state, event), event.seat, () => ({
-				mucked: true,
-			}));
+			return showdownTurnTaken(
+				updatePlayer(active(state, event), event.seat, () => ({
+					mucked: true,
+				})),
+			);
 		case "PotAwarded": {
 			let hand = active(state, event);
 			for (const { seat, amount } of event.winners) {

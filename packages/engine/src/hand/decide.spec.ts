@@ -15,7 +15,10 @@ import { replayHand } from "./evolve.js";
 
 const aceKing = holeCards("As Kd");
 
-/** Three players dealt in, then the river went to a showdown between seats 1 and 2 (seat 0 folded). */
+/**
+ * Three players dealt in, then a showdown between seats 1 and 2 (seat 0 folded). No pots were
+ * collected, so nobody has a pot to win and the showdown just waits for seat 1, then seat 2.
+ */
 const atShowdown: HandEvent[] = [
 	handStarted(),
 	{
@@ -187,10 +190,13 @@ describe("ShowCards and MuckCards at the showdown", () => {
 			.then([{ type: "CardsShown", v: 1, seat: 1, cards: aceKing }]);
 	});
 
-	it("mucks a player's hand", () => {
+	it("mucks a player's hand on their turn, and only then", () => {
+		given(atShowdown)
+			.when({ type: "MuckCards", seat: 1 })
+			.then([{ type: "CardsMucked", v: 1, seat: 1 }]);
 		given(atShowdown)
 			.when({ type: "MuckCards", seat: 2 })
-			.then([{ type: "CardsMucked", v: 1, seat: 2 }]);
+			.then({ code: "hand.not-your-turn", params: { seat: 2 } });
 	});
 
 	it.each([

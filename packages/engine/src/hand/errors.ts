@@ -59,6 +59,8 @@ export type HandError =
 			readonly code: "hand.insufficient-chips";
 			readonly params: { readonly maxTo: Chips };
 	  }
+	/** The hand is at the showdown: only showing or mucking cards is left. */
+	| { readonly code: "hand.betting-over" }
 	| {
 			readonly code: "hand.showdown-not-reached";
 			readonly params: { readonly seat: SeatIndex };

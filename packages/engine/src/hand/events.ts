@@ -76,7 +76,10 @@ export type HandEvent =
 			readonly seat: SeatIndex;
 			readonly amount: Chips;
 	  }
-	/** Betting is over and two or more players remain: cards are shown or mucked (RULES §10). */
+	/**
+	 * Betting is over and two or more players remain: cards are shown or mucked in turn (RULES §10).
+	 * Hands that can win are turned up on their own; a player who can only lose shows or mucks.
+	 */
 	| { readonly type: "ShowdownStarted"; readonly v: 1 }
 	/**
 	 * The bets of a finished round move into the pots; the list replaces the previous one. Only when
@@ -93,7 +96,13 @@ export type HandEvent =
 			readonly seat: SeatIndex;
 			readonly cards: readonly [Card, Card];
 	  }
-	| { readonly type: "CardsMucked"; readonly v: 1; readonly seat: SeatIndex }
+	| {
+			readonly type: "CardsMucked";
+			readonly v: 1;
+			readonly seat: SeatIndex;
+			/** Set when the turn timer mucked for the player (POK-54); absent otherwise. */
+			readonly auto?: true;
+	  }
 	| {
 			readonly type: "PotAwarded";
 			readonly v: 1;
