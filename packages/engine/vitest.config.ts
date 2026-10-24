@@ -4,6 +4,13 @@ export default defineConfig({
 	test: {
 		globals: true,
 		include: ["src/**/*.spec.ts"],
+		tags: [
+			{
+				name: "slow",
+				description:
+					"Statistical checks that take seconds; skip with --tags-filter='!slow'.",
+			},
+		],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "html", "lcov"],
