@@ -1,6 +1,7 @@
 import type { Card } from "../cards/index.js";
 import type { HandEvent, Pot } from "./events.js";
 import { evolve } from "./evolve.js";
+import { buildPots, samePots } from "./pots.js";
 import type { ActiveHand, HandState, PlayerState } from "./state.js";
 
 const NEXT_STREET = {
@@ -30,20 +31,12 @@ function uncalledBet(hand: ActiveHand): HandEvent | null {
 		: null;
 }
 
-/** Every chip put in this hand, as one pot for the players still in. Side pots come with POK-52. */
-const collectPots = (hand: ActiveHand): Pot[] => [
-	{
-		amount: hand.players.reduce((sum, player) => sum + player.committed, 0),
-		eligibleSeats: hand.players
-			.filter((player) => !player.folded)
-			.map((player) => player.seat),
-	},
-];
-
-/** Chips put in this hand that are not in a pot yet: bets, and antes before the first collection. */
-const uncollected = (hand: ActiveHand) =>
-	hand.players.reduce((sum, player) => sum + player.committed, 0) -
-	hand.pots.reduce((sum, pot) => sum + pot.amount, 0);
+/** Every chip put in this hand, split into the main pot and side pots. */
+const collectPots = (hand: ActiveHand): Pot[] =>
+	buildPots(
+		hand.players.map(({ seat, committed }) => ({ seat, amount: committed })),
+		hand.players.filter((player) => player.folded).map((player) => player.seat),
+	);
 
 /** Burns one card, then deals the next street's cards, all from the top of the deck (RULES §5). */
 function dealStreet(hand: ActiveHand): HandEvent {
@@ -71,8 +64,10 @@ function closeRound(round: ActiveHand): HandEvent[] {
 	if (uncalled) {
 		emit(uncalled);
 	}
-	if (uncollected(hand) > 0) {
-		emit({ type: "PotsCollected", v: 1, pots: collectPots(hand) });
+	// New chips, antes included, or a fold that changed who can win: the pots are built again.
+	const pots = collectPots(hand);
+	if (!samePots(pots, hand.pots)) {
+		emit({ type: "PotsCollected", v: 1, pots });
 	}
 
 	const inHand = hand.players.filter((player) => !player.folded);
