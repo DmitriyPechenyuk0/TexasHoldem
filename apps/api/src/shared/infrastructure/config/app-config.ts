@@ -1,3 +1,6 @@
+export type LogLevel =
+	"trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent";
+
 export interface OAuthClient {
 	readonly clientId: string;
 	readonly clientSecret: string;
@@ -10,6 +13,8 @@ export interface OAuthClient {
 export abstract class AppConfig {
 	abstract readonly nodeEnv: "development" | "test" | "production";
 	abstract readonly port: number;
+	/** `pretty` is human-readable output for development; otherwise logs are JSON lines. */
+	abstract readonly log: { readonly level: LogLevel; readonly pretty: boolean };
 	abstract readonly webOrigin: string;
 	abstract readonly database: { readonly url: string };
 	abstract readonly redis: { readonly url: string };

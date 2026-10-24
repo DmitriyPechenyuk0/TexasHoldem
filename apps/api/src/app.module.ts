@@ -5,6 +5,9 @@ import {
 	type AppConfig,
 	ConfigModule,
 } from "@/shared/infrastructure/config/index.js";
+import { DatabaseModule } from "@/shared/infrastructure/database/index.js";
+import { LoggingModule } from "@/shared/infrastructure/logging/index.js";
+import { RedisModule } from "@/shared/infrastructure/redis/index.js";
 import { SharedModule } from "@/shared/shared.module.js";
 
 /** Composition root: the only module that knows every other one. */
@@ -15,7 +18,10 @@ export class AppModule {
 			module: AppModule,
 			imports: [
 				ConfigModule.forRoot(config),
+				LoggingModule,
 				CqrsModule.forRoot(),
+				DatabaseModule,
+				RedisModule,
 				SharedModule,
 				SystemModule,
 			],

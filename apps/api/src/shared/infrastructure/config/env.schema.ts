@@ -7,6 +7,7 @@ const port = z
 	.transform(Number)
 	.pipe(z.int({ error: portError }).min(1, portError).max(65535, portError));
 const httpUrl = z.url({ protocol: /^https?$/ });
+const databaseUrl = z.url({ protocol: /^postgres(ql)?$/ });
 
 // Variables that are only meaningful together; checked separately so their problems are
 // reported alongside schema errors (zod skips object-level refinements once a field fails).
@@ -29,12 +30,15 @@ export const envSchema = z
 			.enum(["development", "test", "production"])
 			.default("development"),
 		PORT: port.default(4000),
+		LOG_LEVEL: z
+			.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
+			.optional(),
 		WEB_ORIGIN: httpUrl.refine(
 			(value) => !URL.canParse(value) || new URL(value).origin === value,
 			"must be a bare origin such as http://localhost:3000, without a path or trailing slash",
 		),
 
-		DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+		DATABASE_URL: databaseUrl,
 		REDIS_URL: z.url({ protocol: /^rediss?$/ }),
 
 		SMTP_HOST: z.string(),
@@ -67,6 +71,11 @@ export const envSchema = z
 	.transform((env): AppConfig => ({
 		nodeEnv: env.NODE_ENV,
 		port: env.PORT,
+		log: {
+			level:
+				env.LOG_LEVEL ?? (env.NODE_ENV === "development" ? "debug" : "info"),
+			pretty: env.NODE_ENV === "development",
+		},
 		webOrigin: env.WEB_ORIGIN,
 		database: { url: env.DATABASE_URL },
 		redis: { url: env.REDIS_URL },
@@ -97,3 +106,8 @@ export const envSchema = z
 			},
 		},
 	}));
+
+/** Only the database settings, for tools such as drizzle-kit that need nothing else. */
+export const databaseEnvSchema = z
+	.object({ DATABASE_URL: databaseUrl })
+	.transform((env): AppConfig["database"] => ({ url: env.DATABASE_URL }));

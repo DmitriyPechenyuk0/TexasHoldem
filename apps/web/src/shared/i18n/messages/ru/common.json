@@ -1,0 +1,34 @@
+{
+	"metadata": {
+		"title": "Техасский холдем",
+		"description": "Безлимитный техасский холдем с друзьями прямо в браузере."
+	},
+	"localeSwitcher": {
+		"label": "Язык",
+		"locales": {
+			"en": "English",
+			"ru": "Русский"
+		}
+	},
+	"notFound": {
+		"title": "Страница не найдена",
+		"description": "Здесь нет стола. Проверьте ссылку или вернитесь на главную.",
+		"home": "На главную"
+	},
+	"ui": {
+		"close": "Закрыть",
+		"loading": "Загрузка…",
+		"showPassword": "Показать пароль",
+		"hidePassword": "Скрыть пароль",
+		"notification": "Уведомление",
+		"notifications": "Уведомления ({hotkey})"
+	},
+	"themeSwitcher": {
+		"label": "Тема",
+		"options": {
+			"light": "Светлая",
+			"dark": "Тёмная",
+			"system": "Как в системе"
+		}
+	}
+}

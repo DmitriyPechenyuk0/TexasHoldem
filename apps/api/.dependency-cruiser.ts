@@ -7,9 +7,9 @@ const UNIT = "src/(?:modules/[^/]+|shared)";
 // `@holdem/engine` resolves to packages/engine/dist, or stays unresolved until the package is built.
 const ENGINE = "(?:^|/)packages/engine/|^@holdem/engine(?:/|$)";
 
-// Libraries that only adapters may use, matched installed (…/node_modules/<name>/) or not yet installed (<name>).
+// Libraries that only adapters may use (storage, messaging, mail, auth, logging backends), matched installed (…/node_modules/<name>/) or not yet installed (<name>).
 const IO_LIBRARIES =
-	"(?:^|/node_modules/)(?:drizzle-orm|pg|postgres|ioredis|redis|socket\\.io|@aws-sdk/[^/]+|nodemailer|better-auth)(?:/|$)";
+	"(?:^|/node_modules/)(?:drizzle-orm|pg|postgres|ioredis|redis|@redis/[^/]+|socket\\.io|@aws-sdk/[^/]+|nodemailer|better-auth|nestjs-pino|pino|pino-http|pino-pretty)(?:/|$)";
 
 const config: IConfiguration = {
 	forbidden: [
@@ -35,7 +35,7 @@ const config: IConfiguration = {
 		{
 			name: "application-uses-no-io-libraries",
 			comment:
-				"Command and event handlers depend on ports, not on database, cache, socket, storage or mail libraries.",
+				"Command and event handlers depend on ports, not on database, cache, socket, storage, mail or logging libraries (log through Nest's Logger).",
 			severity: "error",
 			from: {
 				path: `^${UNIT}/application/`,
@@ -92,10 +92,10 @@ const config: IConfiguration = {
 		{
 			name: "composition-root-is-a-leaf",
 			comment:
-				"Only main.ts and tests import the composition root; modules never reach back into it.",
+				"Only main.ts and tests import the composition root (app.module.ts, configure-app.ts); modules never reach back into it.",
 			severity: "error",
 			from: { path: "^src/(?:modules|shared)/" },
-			to: { path: "^src/(?:main|app\\.module)\\.ts$" },
+			to: { path: "^src/(?:main|app\\.module|configure-app)\\.ts$" },
 		},
 		{
 			name: "no-circular",
@@ -107,11 +107,12 @@ const config: IConfiguration = {
 		{
 			name: "production-code-uses-no-dev-dependencies",
 			comment:
-				"Production code does not import dev dependencies, which are absent from a production install.",
+				"Production code does not import dev dependencies, which are absent from a production install. Type-only imports (e.g. from @types/express) are erased at build time and allowed.",
 			severity: "error",
 			from: { path: "^src/", pathNot: "\\.spec\\.ts$" },
 			to: {
 				dependencyTypes: ["npm-dev"],
+				dependencyTypesNot: ["type-only"],
 			},
 		},
 		{

@@ -1,5 +1,9 @@
 import { exampleEnv } from "../../../../test/support/example-config.js";
-import { ConfigError, parseConfig } from "./load-config.js";
+import {
+	ConfigError,
+	parseConfig,
+	parseDatabaseConfig,
+} from "./load-config.js";
 
 const problemsOf = (
 	env: Record<string, string | undefined>,
@@ -115,5 +119,47 @@ describe("parseConfig", () => {
 			clientSecret: "discord-secret",
 		});
 		expect(config.auth.oauth.google).toBeUndefined();
+	});
+});
+
+describe("parseDatabaseConfig", () => {
+	it("needs only DATABASE_URL", () => {
+		expect(
+			parseDatabaseConfig({
+				DATABASE_URL: "postgres://holdem:holdem@127.0.0.1:5433/holdem_test",
+			}),
+		).toEqual({ url: "postgres://holdem:holdem@127.0.0.1:5433/holdem_test" });
+	});
+
+	it("reports a missing or invalid DATABASE_URL like parseConfig", () => {
+		expect(() => parseDatabaseConfig({})).toThrow(/DATABASE_URL: is required/);
+		expect(() =>
+			parseDatabaseConfig({ DATABASE_URL: "mysql://localhost/holdem" }),
+		).toThrow(ConfigError);
+	});
+});
+
+describe("log settings", () => {
+	it("default to readable debug output in development and JSON info elsewhere", () => {
+		expect(parseConfig(exampleEnv()).log).toEqual({
+			level: "debug",
+			pretty: true,
+		});
+		expect(
+			parseConfig({ ...exampleEnv(), NODE_ENV: "production" }).log,
+		).toEqual({ level: "info", pretty: false });
+	});
+
+	it("take LOG_LEVEL when it is set and reject unknown levels", () => {
+		expect(
+			parseConfig({
+				...exampleEnv(),
+				NODE_ENV: "production",
+				LOG_LEVEL: "warn",
+			}).log,
+		).toEqual({ level: "warn", pretty: false });
+		expect(problemsOf({ ...exampleEnv(), LOG_LEVEL: "loud" })).toEqual([
+			expect.stringMatching(/^LOG_LEVEL: /),
+		]);
 	});
 });

@@ -136,6 +136,22 @@ describe("dependency rules", () => {
 			"application-uses-no-io-libraries: src/modules/table/application/commands/take-seat.handler.ts -> drizzle-orm",
 		],
 		[
+			"a command handler using the Redis client",
+			{
+				"src/modules/table/application/commands/take-seat.handler.ts":
+					'import { createClient } from "@redis/client";\nexport const handler = createClient;\n',
+			},
+			"application-uses-no-io-libraries: src/modules/table/application/commands/take-seat.handler.ts -> @redis/client",
+		],
+		[
+			"a command handler using the logging backend",
+			{
+				"src/modules/table/application/commands/take-seat.handler.ts":
+					'import { PinoLogger } from "nestjs-pino";\nexport const handler = PinoLogger;\n',
+			},
+			"application-uses-no-io-libraries: src/modules/table/application/commands/take-seat.handler.ts -> nestjs-pino",
+		],
+		[
 			"a query handler using a repository",
 			{
 				"src/modules/table/infrastructure/table.repository.ts":
@@ -229,6 +245,18 @@ describe("dependency rules", () => {
 		],
 	])("reject %s", async (_case, files, expected) => {
 		expect(await violationsIn(files)).toEqual([expected]);
+	});
+
+	it("allow type-only imports of dev dependencies, which the build erases", async () => {
+		expect(
+			await violationsIn({
+				"package.json": JSON.stringify({
+					devDependencies: { "@nestjs/testing": "*" },
+				}),
+				"src/shared/infrastructure/testing.ts":
+					'import type { TestingModule } from "@nestjs/testing";\nexport type Testing = TestingModule;\n',
+			}),
+		).toEqual([]);
 	});
 
 	it("reject dependency cycles", async () => {

@@ -3,6 +3,8 @@ packages:
   - packages/*
 
 allowBuilds:
+  '@parcel/watcher': false
+  '@swc/core': false
   sharp: false
   unrs-resolver: false
 
@@ -35,3 +37,8 @@ minimumReleaseAgeExclude:
   - '@oxlint/binding-win32-ia32-msvc@1.89.0'
   - '@oxlint/binding-win32-x64-msvc@1.89.0'
   - oxlint@1.89.0
+
+permissions:
+  drizzle-kit:
+    build: false
+    skills: false

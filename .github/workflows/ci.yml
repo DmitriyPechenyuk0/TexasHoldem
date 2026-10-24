@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [dev, master]
   pull_request:
-    branches: [master]
+    branches: [dev, master]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -52,8 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
+      # For drizzle-kit. Tests create their own databases from the .env.example settings.
       DATABASE_URL: postgres://holdem:holdem@127.0.0.1:5433/holdem_test
-      REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v7
 
@@ -68,8 +68,19 @@ jobs:
       - name: Wait for Postgres and Redis
         run: docker compose up -d --wait postgres redis
 
-      - run: pnpm test:coverage
-      - run: pnpm --filter @holdem/api test:e2e
+      # A schema change committed without its migration makes `generate` write a new one.
+      - name: Check that migrations match the schema
+        if: hashFiles('apps/api/src/modules/*/infrastructure/persistence/schema.ts') != ''
+        run: |
+          pnpm db:generate --name schema-drift
+          git status --porcelain -- apps/api/migrations | tee /dev/stderr | (! grep -q .)
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+
+      # Every package's tests with coverage gates; for the api that includes the e2e suite.
+      - name: Test with coverage
+        run: pnpm test:coverage
 
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
@@ -84,6 +95,10 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # The web app validates its configuration on import; the values from apps/web/.env.example.
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      API_URL: http://localhost:4000
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

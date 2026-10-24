@@ -94,27 +94,100 @@ constructor(private readonly clock: Clock) {}
 
 ## Errors
 
-Expected business failures are subclasses of `DomainError`. Each one sets a `kind` and a stable `code` (`<context>.<case>`):
+Expected business failures are subclasses of `DomainError`. Each one sets a `kind` and a stable `code` (`<context>.<case>`), which is also the key clients translate. `params` fill in the translated message:
 
 ```ts
 export class SeatTakenError extends DomainError {
 	readonly kind = "conflict";
 	readonly code = "table.seat-taken";
+
+	constructor(seat: number) {
+		super(`Seat ${seat} is taken`, { params: { seat } });
+	}
 }
 ```
 
 - Domain code returns `Result<T, E>` (`ok(value)` / `err(error)`) instead of throwing, so rules stay pure and easy to test.
 - The handler unwraps it and throws the error: `if (!result.ok) throw result.error;`.
-- Presentation maps the kind to a status. Over HTTP, `DomainErrorFilter` replies with `{ statusCode, code, message }`:
+- Every failed request is answered by `ProblemFilter` with RFC 9457 problem details (`application/problem+json`, the `Problem` schema in `@holdem/shared`). `problemFor()` holds the mapping:
 
-| kind             | HTTP |
-| ---------------- | ---- |
-| `not-found`      | 404  |
-| `conflict`       | 409  |
-| `rule-violation` | 422  |
-| `forbidden`      | 403  |
+| Thrown                                                 | HTTP | `code`                                        |
+| ------------------------------------------------------ | ---- | --------------------------------------------- |
+| invalid request (`@ValidBody` / `@ValidQuery` / `@ValidParam`) | 400  | `request.invalid`, plus `errors` per field     |
+| `DomainError` of kind `not-found` / `conflict` / `rule-violation` / `forbidden` | 404 / 409 / 422 / 403 | its own code, plus `params`           |
+| `UnauthorizedException` / `ForbiddenException`         | 401 / 403 | `auth.unauthenticated` / `auth.forbidden` |
+| unknown route, malformed or oversized body             | 404 / 400 / 413 | `http.not-found` / `request.bad` / `request.too-large` |
+| anything else: a bug                                   | 500  | `internal`, no detail, logged with its stack  |
 
-- Anything else is a bug: Nest answers 500 without details. Global filters do not reach WebSocket gateways, so gateways get their own mapping.
+- Each problem carries the request path as `instance` and the `requestId` from the logs.
+- Validate every request part with its contract: `@ValidBody(TakeSeatRequest) body: TakeSeatRequest`. Handlers receive the parsed value, with unknown keys dropped.
+- Socket gateways are not reached by global filters. `@RealtimeGateway` adds `AckExceptionFilter`, which replies `{ ok: false, error: Problem }` from the same mapping and logs unexpected errors.
+- A deliberate non-error status, such as readiness answering 503, is set on the response rather than thrown.
+
+## Realtime
+
+Gateways live in `presentation/` like controllers, and serve one namespace of `@holdem/shared/realtime`:
+
+```ts
+@RealtimeGateway(systemNamespace)
+export class SystemGateway {
+	constructor(private readonly queryBus: QueryBus) {}
+
+	@SubscribeMessage(PingEvent.name)
+	async ping(@ValidPayload(PingEvent.payload) { sentAt }: PingPayload): Promise<Ack<PingAck>> {
+		const { now } = await this.queryBus.execute(new GetServerTimeQuery());
+		return { ok: true, data: { sentAt, serverTime: now.toISOString() } };
+	}
+}
+```
+
+- Validate every payload with `@ValidPayload(Event.payload)`: an invalid one is answered with a 400 problem before the handler runs.
+- A command returns its `Ack`; a thrown error becomes `{ ok: false, error: Problem }`. Gateways, like controllers, only send messages to the buses.
+- socket.io shares the HTTP server and its CORS policy (`WEB_ORIGIN`, with credentials). `configureApp()` sets both, for `main.ts` and the e2e tests alike.
+
+## Persistence
+
+Each context owns its tables. Its schema lives in `infrastructure/persistence/schema.ts` and builds tables with `contextTable`, which adds the context prefix and maps camelCase properties to snake_case columns:
+
+```ts
+// modules/lobby/infrastructure/persistence/schema.ts
+const table = contextTable("lobby");
+
+export const lobbyTables = table("tables", {
+	id: uuid().primaryKey().defaultRandom(),
+	smallBlind: integer().notNull(), // column small_blind
+}); // table lobby_tables
+```
+
+- Repositories and query handlers get the Drizzle client with `@InjectDatabase() private readonly db: Database`.
+- A context never reads another context's tables (Context Map).
+- Migrations are generated from the schemas and committed in `migrations/`:
+
+| Command            | Does                                                                |
+| ------------------ | ------------------------------------------------------------------- |
+| `pnpm db:generate` | writes a migration for schema changes (`--name add-lobby-tables`)    |
+| `pnpm db:migrate`  | applies pending migrations to `DATABASE_URL`                        |
+| `pnpm db:check`    | warns when migrations and schemas disagree                          |
+| `pnpm db:studio`   | opens Drizzle Studio                                                |
+
+CI applies the migrations and fails when a schema change has no migration.
+
+## Redis, health and shutdown
+
+- The shared Redis client comes through `@InjectRedis() private readonly redis: Redis`. Pub/sub subscribers and blocking commands need a dedicated connection: `RedisConnections.open("<purpose>")`, which the app closes on shutdown.
+- Clients connect in the background and reconnect on their own, so a Redis outage neither blocks startup nor crashes the process.
+- `GET /health` is liveness and never touches a dependency. `GET /health/ready` asks every `HealthIndicator` (2 s each) and answers 503 when one is down.
+- A new dependency gets a `HealthIndicator` adapter next to its client, listed under `HEALTH_INDICATORS` in `SharedModule`.
+- SIGTERM and SIGINT stop the HTTP server and run the `onApplicationShutdown` hooks, which close the database pool and Redis. A process that has not exited after 10 s is stopped.
+
+## Logging
+
+- Log through Nest's `Logger` (`private readonly logger = new Logger(TakeSeatHandler.name)`). pino sits behind it. Pass fields as an object: `this.logger.log({ msg: "seat taken", tableId, seat })`.
+- Every line written while handling an HTTP request carries its `requestId`: the incoming `x-request-id` when it is plain, otherwise a new UUID, echoed back in the response.
+- Socket handlers wrap their work in `LogContext.run({ connectionId, tableId }, () => …)`, the port in `shared/application`. The fields then reach every line inside, across awaits.
+- Every command is logged at debug level with its name, `durationMs` and `outcome`: `succeeded`, `rejected` (a domain error, with its `code`) or `failed`.
+- Request lines contain the method, the path without the query string and the client address. Headers, query strings and bodies are never logged. Known secret keys in logged objects (`password`, `token`, `secret`, …, up to three levels deep) are replaced with `[redacted]`. Still, do not log credentials.
+- Health checks are not logged. `LOG_LEVEL` sets the level: by default `debug` with readable lines in development, `info` with JSON lines elsewhere.
 
 ## Imports
 
@@ -124,6 +197,14 @@ export class SeatTakenError extends DomainError {
 
 ## Tests
 
+| Command              | Runs                                                       | Needs `pnpm infra:up` |
+| -------------------- | ---------------------------------------------------------- | --------------------- |
+| `pnpm test`          | unit tests (`*.spec.ts`)                                   | no                    |
+| `pnpm test:e2e`      | e2e tests (`*.e2e-spec.ts`)                                | yes                   |
+| `pnpm test:coverage` | both, with one coverage report in `coverage/` and its gate | yes                   |
+
+- Coverage counts every file in `src` except `main.ts`, so untested files lower it too. The thresholds in `vitest.config.ts` are a baseline just under the current numbers: raise them when coverage grows, never lower them to make a change pass. `packages/engine` requires 100%.
 - Unit-test handlers by constructing them with fakes for their ports; no Nest container needed.
 - Unit-test domain code with plain inputs and outputs (Given/When/Then for deciders).
 - e2e tests boot the real app through `createTestApp()` from `test/support`, configured from `.env.example`.
+- Tests that touch the database call `createTestDatabase()`: it creates a fresh `holdem_test_*` database with every migration applied, and `drop()` removes it. Pass its `url` to `createTestApp({ config: { database: { url } } })`. They need the services from `pnpm infra:up`.

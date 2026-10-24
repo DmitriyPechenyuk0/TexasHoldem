@@ -1,0 +1,235 @@
+@import "tailwindcss";
+
+/* Tests are not markup: words in them must not turn into classes. */
+@source not "../../**/*.spec.ts";
+
+/* Dark mode follows the `dark` class on <html>, which the theme script sets before the first paint. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* --- Color tokens ------------------------------------------------------------------------------- */
+/* Components use the semantic names only (bg-surface, text-muted-foreground, ...), never raw colors. */
+
+:root {
+	color-scheme: light;
+	--background: oklch(0.985 0 0);
+	--foreground: oklch(0.21 0.006 285.885);
+	/* Cards, menus, dialogs: anything raised above the background. */
+	--surface: oklch(1 0 0);
+	--surface-muted: oklch(0.967 0.001 286.375);
+	--muted-foreground: oklch(0.552 0.016 285.938);
+	--border: oklch(0.92 0.004 286.32);
+	/* Borders of form controls, at least 3:1 against the surface. */
+	--input: oklch(0.705 0.015 286.067);
+	--primary: oklch(0.508 0.118 165.612);
+	--primary-hover: oklch(0.432 0.095 166.913);
+	--primary-foreground: oklch(1 0 0);
+	--danger: oklch(0.577 0.245 27.325);
+	--danger-hover: oklch(0.505 0.213 27.518);
+	--danger-foreground: oklch(1 0 0);
+	/* Error text on the background or a surface. */
+	--danger-text: oklch(0.577 0.245 27.325);
+	--success: oklch(0.596 0.145 163.225);
+	--warning: oklch(0.666 0.179 58.318);
+	--ring: oklch(0.596 0.145 163.225);
+	--overlay: oklch(0.141 0.005 285.823 / 0.5);
+}
+
+:root.dark {
+	color-scheme: dark;
+	--background: oklch(0.141 0.005 285.823);
+	--foreground: oklch(0.985 0 0);
+	--surface: oklch(0.21 0.006 285.885);
+	--surface-muted: oklch(0.274 0.006 286.033);
+	--muted-foreground: oklch(0.705 0.015 286.067);
+	--border: oklch(0.274 0.006 286.033);
+	--input: oklch(0.552 0.016 285.938);
+	--primary: oklch(0.696 0.17 162.48);
+	--primary-hover: oklch(0.765 0.177 163.223);
+	--primary-foreground: oklch(0.141 0.005 285.823);
+	--danger: oklch(0.577 0.245 27.325);
+	--danger-hover: oklch(0.637 0.237 25.331);
+	--danger-foreground: oklch(1 0 0);
+	--danger-text: oklch(0.704 0.191 22.216);
+	--success: oklch(0.696 0.17 162.48);
+	--warning: oklch(0.769 0.188 70.08);
+	--ring: oklch(0.765 0.177 163.223);
+	--overlay: oklch(0 0 0 / 0.6);
+}
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-surface: var(--surface);
+	--color-surface-muted: var(--surface-muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-primary: var(--primary);
+	--color-primary-hover: var(--primary-hover);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-danger: var(--danger);
+	--color-danger-hover: var(--danger-hover);
+	--color-danger-foreground: var(--danger-foreground);
+	--color-danger-text: var(--danger-text);
+	--color-success: var(--success);
+	--color-warning: var(--warning);
+	--color-ring: var(--ring);
+	--color-overlay: var(--overlay);
+	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+	--font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* --- Spacing, radii, type scale ---------------------------------------------------------------- */
+
+@theme {
+	/* Every spacing utility is a multiple of this: p-4 = 1rem. */
+	--spacing: 0.25rem;
+
+	--radius-*: initial;
+	--radius-sm: 0.25rem;
+	--radius-md: 0.5rem;
+	--radius-lg: 0.75rem;
+	--radius-xl: 1rem;
+
+	--text-*: initial;
+	--text-xs: 0.75rem;
+	--text-xs--line-height: 1rem;
+	--text-sm: 0.875rem;
+	--text-sm--line-height: 1.25rem;
+	--text-base: 1rem;
+	--text-base--line-height: 1.5rem;
+	--text-lg: 1.125rem;
+	--text-lg--line-height: 1.75rem;
+	--text-xl: 1.25rem;
+	--text-xl--line-height: 1.75rem;
+	--text-2xl: 1.5rem;
+	--text-2xl--line-height: 2rem;
+	--text-3xl: 1.875rem;
+	--text-3xl--line-height: 2.25rem;
+	--text-4xl: 2.25rem;
+	--text-4xl--line-height: 2.5rem;
+
+	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+	--animate-fade-in: fade-in var(--duration-normal) var(--ease-standard);
+	--animate-fade-out: fade-out var(--duration-fast) var(--ease-standard);
+	--animate-pop-in: pop-in var(--duration-normal) var(--ease-standard);
+	--animate-pop-out: pop-out var(--duration-fast) var(--ease-standard);
+	--animate-slide-in: slide-in var(--duration-slow) var(--ease-standard);
+	--animate-swipe-out: swipe-out var(--duration-fast) var(--ease-standard);
+
+	@keyframes fade-in {
+		from {
+			opacity: 0;
+		}
+	}
+	@keyframes fade-out {
+		to {
+			opacity: 0;
+		}
+	}
+	@keyframes pop-in {
+		from {
+			opacity: 0;
+			transform: scale(0.96);
+		}
+	}
+	@keyframes pop-out {
+		to {
+			opacity: 0;
+			transform: scale(0.96);
+		}
+	}
+	@keyframes slide-in {
+		from {
+			transform: translateX(calc(100% + 1rem));
+		}
+	}
+	@keyframes swipe-out {
+		from {
+			transform: translateX(var(--radix-toast-swipe-end-x));
+		}
+		to {
+			transform: translateX(calc(100% + 1rem));
+		}
+	}
+}
+
+/* --- Motion and layering ---------------------------------------------------------------------- */
+
+:root {
+	--duration-fast: 120ms;
+	--duration-normal: 200ms;
+	--duration-slow: 320ms;
+
+	/* Stacking order of everything that floats above the page. */
+	--z-sticky: 10;
+	--z-overlay: 40;
+	--z-modal: 50;
+	--z-dropdown: 60;
+	--z-toast: 70;
+	--z-tooltip: 80;
+}
+
+@utility duration-fast {
+	--tw-duration: var(--duration-fast);
+	transition-duration: var(--duration-fast);
+}
+@utility duration-normal {
+	--tw-duration: var(--duration-normal);
+	transition-duration: var(--duration-normal);
+}
+@utility duration-slow {
+	--tw-duration: var(--duration-slow);
+	transition-duration: var(--duration-slow);
+}
+
+@utility z-sticky {
+	z-index: var(--z-sticky);
+}
+@utility z-overlay {
+	z-index: var(--z-overlay);
+}
+@utility z-modal {
+	z-index: var(--z-modal);
+}
+@utility z-dropdown {
+	z-index: var(--z-dropdown);
+}
+@utility z-toast {
+	z-index: var(--z-toast);
+}
+@utility z-tooltip {
+	z-index: var(--z-tooltip);
+}
+
+/* The one focus style: keyboard focus only, visible on every surface and in forced colors. */
+@utility focus-ring {
+	/* Set up front, so transition-colors does not fade the ring in from the text color. */
+	outline-color: var(--ring);
+	&:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+}
+
+/* --- Base ------------------------------------------------------------------------------------ */
+
+@layer base {
+	body {
+		background: var(--background);
+		color: var(--foreground);
+		font-family: var(--font-sans);
+	}
+
+	/* Animations are decoration, except where they carry meaning (a spinner). */
+	@media (prefers-reduced-motion: reduce) {
+		*:not([data-motion="essential"]),
+		::before,
+		::after {
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
+		}
+	}
+}
