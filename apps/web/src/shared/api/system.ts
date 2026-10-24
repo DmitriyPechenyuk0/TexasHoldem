@@ -1,11 +1,18 @@
 import { ServerTimeResponse } from "@holdem/shared/contracts/system";
-import { publicEnv } from "@/shared/config";
+import { queryOptions } from "@tanstack/react-query";
+import { http, type HttpClient } from "./http";
 
 /** The server clock, for correcting the local one before rendering turn timers. */
-export async function fetchServerTime(): Promise<ServerTimeResponse> {
-	const response = await fetch(new URL("/system/time", publicEnv.apiUrl));
-	if (!response.ok) {
-		throw new Error(`GET /system/time answered ${response.status}`);
-	}
-	return ServerTimeResponse.parse(await response.json());
+export function fetchServerTime(
+	client: HttpClient,
+	signal?: AbortSignal,
+): Promise<ServerTimeResponse> {
+	return client.request("/system/time", { schema: ServerTimeResponse, signal });
 }
+
+/** Pass `getServerHttp()` when prefetching in a Server Component. */
+export const serverTimeQuery = (client: HttpClient = http) =>
+	queryOptions({
+		queryKey: ["system", "time"],
+		queryFn: ({ signal }) => fetchServerTime(client, signal),
+	});

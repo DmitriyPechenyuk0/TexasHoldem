@@ -1,5 +1,7 @@
 import { useTranslations } from "next-intl";
+import { Suspense } from "react";
 import { LocaleSwitcher } from "@/shared/ui";
+import { PrefetchedServerClock } from "./prefetched-server-clock";
 
 export function HomePage() {
 	const t = useTranslations("home");
@@ -11,6 +13,13 @@ export function HomePage() {
 				{t("tagline")}
 			</p>
 			<p className="text-sm text-zinc-500">{t("comingSoon")}</p>
+			<Suspense
+				fallback={
+					<p className="text-sm text-zinc-500">{t("serverClock.syncing")}</p>
+				}
+			>
+				<PrefetchedServerClock />
+			</Suspense>
 			<LocaleSwitcher />
 		</main>
 	);

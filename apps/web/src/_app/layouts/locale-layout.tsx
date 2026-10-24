@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import { routing } from "@/shared/i18n";
+import { QueryProvider } from "../api/query-provider";
 import { fontVariables } from "../styles/fonts";
 import "../styles/globals.css";
 
@@ -12,7 +13,9 @@ export async function LocaleLayout({ children }: LayoutProps<"/[locale]">) {
 	return (
 		<html lang={locale} className={`${fontVariables} h-full antialiased`}>
 			<body className="min-h-full flex flex-col">
-				<NextIntlClientProvider>{children}</NextIntlClientProvider>
+				<NextIntlClientProvider>
+					<QueryProvider>{children}</QueryProvider>
+				</NextIntlClientProvider>
 			</body>
 		</html>
 	);

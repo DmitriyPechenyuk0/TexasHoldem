@@ -15,7 +15,7 @@ instrumentation.ts    runs at server start; validates the environment
 proxy.ts              sends unprefixed URLs to a locale (next-intl middleware)
 scripts/              repository checks, e.g. check-messages.mjs
 src/
-  _app/               FSD app layer: root layout, providers, global styles
+  _app/               FSD app layer: root layout (layouts), the query provider (api), global styles
   _pages/             FSD pages layer: one slice per page, e.g. _pages/home
   widgets/            large self-contained blocks used by several pages
   features/           user interactions used by several pages
@@ -26,7 +26,8 @@ public/               static files
 
 - The FSD `app` and `pages` layers are named `_app` and `_pages`, as the guide recommends, so Next.js never mistakes them for its own `app` and `pages` folders.
 - Next.js finds `instrumentation.ts` next to the `app` folder it routes from, so both live at the project root.
-- A layer or segment folder exists only once it has content. `widgets`, `features`, `entities` and the `ui`, `lib` and `i18n` segments appear with their first code.
+- A layer or segment folder exists only once it has content. `widgets`, `features`, `entities` and the `lib` segment appear with their first code.
+- Segments are named by purpose (`api`, `model`, `ui`), never by kind (`providers`, `hooks`, `components`); Steiger enforces it.
 
 ## Rules
 
@@ -56,3 +57,19 @@ public/               static files
 
 - Environment variables are read only in `src/shared/config`: `publicEnv` from `@/shared/config`, `serverEnv` from `@/shared/config/index.server` (enforced by lint).
 - Requests and socket messages are typed and parsed with the contracts of `@holdem/shared` (`src/shared/api`).
+
+## Data fetching and state
+
+- **HTTP goes through `HttpClient`** (`@/shared/api`): `request(path, { schema, method, body, query, signal })` sends the session cookie, parses the answer with its zod contract and throws:
+  - `ApiError` for any error answer, with the server's `Problem` and its `code` (`table.seat-taken`, `request.invalid`, ...). An answer that is not problem+json, e.g. a 502 from a proxy, still gets one, with code `http.<status>`. Socket acks that fail throw the same `ApiError`.
+  - `NetworkError` (code `network.unreachable`) when the api cannot be reached.
+  - A plain `Error` when a successful answer breaks its contract: a bug, not something to show.
+- **Two clients**: `http` for Client Components (`NEXT_PUBLIC_API_URL`), and `getServerHttp()` from `@/shared/api/index.server` for Server Components, which calls `API_URL` and forwards the visitor's cookies. Reading cookies makes the caller dynamic, so it renders inside `<Suspense>`.
+- **Endpoints** are functions next to their contracts in `shared/api` (or a slice's `api` segment once they have business meaning) that take the client, e.g. `fetchServerTime(client)`, plus a `queryOptions` factory that defaults to `http`: `serverTimeQuery()`.
+- **Server state lives in TanStack Query.** `getQueryClient()` gives each server render its own client and the browser one for the session. Defaults: `staleTime` 60 s, so prefetched data is not fetched again on hydration; retries only for network failures and 5xx, never on the server.
+- **Prefetching**: a Server Component fills a client with `queryClient.query(serverTimeQuery(await getServerHttp())).catch(noop)` and wraps the Client Components in `<HydrationBoundary state={dehydrate(queryClient)}>`. A failed prefetch is not dehydrated, so the client fetches again and shows the error. `_pages/home/ui/prefetched-server-clock.tsx` is the example.
+- **Client state lives in Zustand**, one small store per concern in the `model` segment of the slice that owns it (`_pages/home/model/server-clock.ts`), never a global store. Stores are module-level hooks (`create`), so the server must not write to them: they hold only what the browser sets in effects and event handlers, and anything the server renders comes through props or the query cache. Data from the api is never copied into a store.
+
+## Tests
+
+`pnpm --filter @holdem/web test` runs Vitest on `src/**/*.spec.ts`, with the same globals as the other packages and the `@/` alias; the config sets the public env so `@/shared/config` imports cleanly. Components are not unit-tested yet: the Playwright suite (POK-111) covers them end to end.
