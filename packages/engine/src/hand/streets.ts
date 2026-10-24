@@ -2,6 +2,7 @@ import type { Card } from "../cards/index.js";
 import type { HandEvent, Pot } from "./events.js";
 import { evolve } from "./evolve.js";
 import { buildPots, samePots } from "./pots.js";
+import { mustShow, settle, showOrder } from "./showdown.js";
 import type { ActiveHand, HandState, PlayerState } from "./state.js";
 
 const NEXT_STREET = {
@@ -9,12 +10,6 @@ const NEXT_STREET = {
 	flop: { street: "turn", cards: 1 },
 	turn: { street: "river", cards: 1 },
 } as const;
-
-/** A betting round is over, or never started, and the hand has not reached the showdown yet. */
-const roundOver = (state: HandState): state is ActiveHand =>
-	state.status === "in-progress" &&
-	state.street !== "showdown" &&
-	state.toAct === null;
 
 /**
  * The part of the highest bet nobody matched goes back to the bettor (RULES §9): the difference to
@@ -51,6 +46,14 @@ function dealStreet(hand: ActiveHand): HandEvent {
 	};
 }
 
+/** A player turns their hole cards face up. */
+const cardsShown = (player: PlayerState): HandEvent => ({
+	type: "CardsShown",
+	v: 1,
+	seat: player.seat,
+	cards: player.holeCards as readonly [Card, Card],
+});
+
 /** What happens when a betting round ends, up to the next point where somebody must decide. */
 function closeRound(round: ActiveHand): HandEvent[] {
 	const events: HandEvent[] = [];
@@ -73,42 +76,64 @@ function closeRound(round: ActiveHand): HandEvent[] {
 	const inHand = hand.players.filter((player) => !player.folded);
 	if (inHand.length === 1) {
 		// Everyone else folded: the last player wins every pot without showing (RULES §5, TDA 17-B).
-		const { seat } = inHand[0] as PlayerState;
-		hand.pots.forEach((pot, index) => {
-			emit({
-				type: "PotAwarded",
-				v: 1,
-				pot: index,
-				winners: [{ seat, amount: pot.amount }],
-			});
-		});
-		emit({
-			type: "HandEnded",
-			v: 1,
-			stacks: hand.players.map((player) => ({
-				seat: player.seat,
-				stack: player.stack,
-			})),
-		});
-	} else if (hand.street === "river") {
-		emit({ type: "ShowdownStarted", v: 1 });
-	} else {
-		emit(dealStreet(hand));
+		settle(hand).forEach(emit);
+		return events;
 	}
+	if (inHand.filter((player) => !player.allIn).length <= 1) {
+		// Nobody can bet any more and someone is all-in: every hand is turned up before the rest of
+		// the board is dealt (TDA 16).
+		for (const player of showOrder(hand)) {
+			if (!player.shown) {
+				emit(cardsShown(player));
+			}
+		}
+	}
+	emit(
+		hand.street === "river"
+			? { type: "ShowdownStarted", v: 1 }
+			: dealStreet(hand),
+	);
 	return events;
 }
 
 /**
- * The events that follow on their own once nobody has a decision to make (RULES §5, §6): a closed
- * betting round ends with the uncalled bet returned and the bets collected, then the hand either
- * ends because one player is left, goes to the showdown after the river, or deals the next street.
- * When at most one player can still bet, the remaining streets are dealt straight away (run-out).
+ * One step at the showdown: turns up the cards of the player whose turn it is when they have to
+ * show, or awards the pots once everyone has shown or mucked. Null while the showdown waits for a
+ * player who may muck.
+ */
+function showdownStep(hand: ActiveHand): HandEvent[] | null {
+	if (hand.toAct === null) {
+		return settle(hand);
+	}
+	const player = hand.players.find(
+		(candidate) => candidate.seat === hand.toAct,
+	) as PlayerState;
+	return mustShow(hand, player) ? [cardsShown(player)] : null;
+}
+
+/** What follows on its own from this state, or null when a player has to decide. */
+function nextStep(state: HandState): HandEvent[] | null {
+	if (state.status !== "in-progress") {
+		return null;
+	}
+	if (state.street === "showdown") {
+		return showdownStep(state);
+	}
+	return state.toAct === null ? closeRound(state) : null;
+}
+
+/**
+ * The events that follow on their own once nobody has a decision to make (RULES §5, §6, §10): a
+ * closed betting round ends with the uncalled bet returned and the bets collected, then the hand
+ * either ends because one player is left, goes to the showdown after the river, or deals the next
+ * street. When at most one player can still bet, every hand is turned up and the remaining streets
+ * are dealt straight away (run-out). At the showdown, hands that can win are turned up in order,
+ * and the pots are awarded once nobody is left to show or muck.
  */
 export function advanceHand(state: HandState): HandEvent[] {
 	const events: HandEvent[] = [];
 	let hand = state;
-	while (roundOver(hand)) {
-		const step = closeRound(hand);
+	for (let step = nextStep(hand); step; step = nextStep(hand)) {
 		events.push(...step);
 		hand = step.reduce(evolve, hand);
 	}

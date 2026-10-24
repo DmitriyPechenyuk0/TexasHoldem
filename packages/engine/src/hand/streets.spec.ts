@@ -58,6 +58,22 @@ const awarded = (seat: number, amount: number): HandEvent => ({
 	winners: [{ seat, amount }],
 });
 
+/** Pot 0 split between these winners, as [seat, amount], clockwise from the button. */
+const split = (...winners: [number, number][]): HandEvent => ({
+	type: "PotAwarded",
+	v: 1,
+	pot: 0,
+	winners: winners.map(([seat, amount]) => ({ seat, amount })),
+});
+
+/** The player turns up the cards at these deck positions. */
+const shown = (seat: number, first: number, second: number): HandEvent => ({
+	type: "CardsShown",
+	v: 1,
+	seat,
+	cards: [card(first), card(second)],
+});
+
 /** Seats 0, 1, 2… end the hand with these stacks. */
 const ended = (...stacks: number[]): HandEvent => ({
 	type: "HandEnded",
@@ -78,8 +94,9 @@ const checkAround = [act(1, "check"), act(2, "check"), act(0, "check")];
 const turn = play(flop, ...checkAround);
 const river = play(turn, ...checkAround);
 
-// Heads-up, button 0 posts the small blind. Hole cards take 0–3: the flop burns 4 and shows 5–7,
-// the turn burns 8 for 9, the river burns 10 for 11.
+// Heads-up, button 0 posts the small blind. Hole cards take 0–3 (seat 1 gets 0 and 2, the button
+// 1 and 3): the flop burns 4 and shows 5–7, the turn burns 8 for 9, the river burns 10 for 11. Both
+// players then play the board's full house, so every heads-up showdown here is a split.
 const headsUp = (
 	stacks: [number, number],
 	overrides: Partial<HandConfig> = {},
@@ -127,12 +144,22 @@ describe("closing a betting round (RULES §5, §6)", () => {
 	});
 
 	it("goes to the showdown when the river betting ends with two or more players", () => {
+		// Nobody bet, so the order starts left of the button. Seat 1 has fours full of twos; seats
+		// 2 and 0 both have fours full of threes and split the pot.
 		given(play(river, act(1, "check"), act(2, "check")))
 			.when(act(0, "check"))
-			.then([acted(0, "check"), showdown]);
+			.then([
+				acted(0, "check"),
+				showdown,
+				shown(1, 0, 3),
+				shown(2, 1, 4),
+				shown(0, 2, 5),
+				split([2, 15], [0, 15]),
+				ended(1005, 990, 1005),
+			]);
 		const state = stateOf(play(river, ...checkAround));
 		expect(state).toMatchObject({
-			status: "in-progress",
+			status: "ended",
 			street: "showdown",
 			board: [7, 8, 9, 11, 13],
 			nextCard: 14,
@@ -258,7 +285,12 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 			.then([
 				acted(1, "call", 990, true),
 				collected(2000, [0, 1]),
+				// The raiser shows first, both before the board comes.
+				shown(0, 1, 3),
+				shown(1, 0, 2),
 				...headsUpRunOut,
+				split([1, 1000], [0, 1000]),
+				ended(1000, 1000),
 			]);
 	});
 
@@ -270,10 +302,12 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 				acted(1, "call", 390, true),
 				returned(0, 600),
 				collected(800, [0, 1]),
+				shown(0, 1, 3),
+				shown(1, 0, 2),
 				...headsUpRunOut,
+				split([1, 400], [0, 400]),
+				ended(1000, 400),
 			]);
-		const [bettor] = stateOf(play(history, act(1, "call"))).players;
-		expect(bettor).toMatchObject({ stack: 600, committed: 400, allIn: false });
 	});
 
 	it("runs the board out from the start when the blinds put everyone all-in", () => {
@@ -308,7 +342,11 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 				},
 				returned(1, 5),
 				collected(10, [0, 1]),
+				shown(1, 0, 2),
+				shown(0, 1, 3),
 				...headsUpRunOut,
+				split([1, 5], [0, 5]),
+				ended(5, 10),
 			]);
 	});
 
@@ -325,7 +363,11 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 				],
 			},
 			collected(20, [0, 1]),
+			shown(1, 0, 2),
+			shown(0, 1, 3),
 			...headsUpRunOut,
+			split([1, 10], [0, 10]),
+			ended(10, 10),
 		]);
 	});
 
@@ -343,8 +385,12 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 			.then([
 				acted(0, "call", 990, true),
 				collected(2000, [0, 1]),
+				shown(1, 0, 2),
+				shown(0, 1, 3),
 				dealt("river", 10, 11),
 				showdown,
+				split([1, 1000], [0, 1000]),
+				ended(1000, 1000),
 			]);
 	});
 
@@ -404,9 +450,14 @@ describe("side pots (RULES §9)", () => {
 				acted(2, "fold"),
 				returned(1, 100),
 				collected(300, [0, 1]),
+				shown(1, 0, 3),
+				shown(0, 2, 5),
 				dealt("turn", 10, 11),
 				dealt("river", 12, 13),
 				showdown,
+				// Fours full of threes beat fours full of twos.
+				awarded(0, 300),
+				ended(300, 900, 900),
 			]);
 	});
 });

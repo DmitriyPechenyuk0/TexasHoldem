@@ -4,6 +4,7 @@ import {
 	handStarted,
 	holeCards,
 	players,
+	riggedDeck,
 } from "./hand-fixtures.js";
 import { play } from "./hand-harness.js";
 
@@ -22,6 +23,17 @@ describe("hand fixtures", () => {
 			v: 1,
 			handId: "hand-1",
 		});
+	});
+
+	it("rigs a deck to deal the given hole cards and board", () => {
+		// Button 0: seat 1 gets the first card, the button the last; then burn, flop, burn, turn…
+		const deck = riggedDeck({ 0: "As Ad", 1: "Kc Kd" }, "Ah Kh 3c 8d 9s");
+		expect(formatCards(deck.slice(0, 4))).toBe("Kc As Kd Ad");
+		expect(
+			formatCards([5, 6, 7, 9, 11].map((position) => deck[position]!)),
+		).toBe("Ah Kh 3c 8d 9s");
+		expect(new Set(deck).size).toBe(52);
+		expect(() => riggedDeck({ 0: "As Ad" }, "As Kh 3c")).toThrow(RangeError);
 	});
 
 	it("reads exactly two hole cards", () => {

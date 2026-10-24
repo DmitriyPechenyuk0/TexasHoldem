@@ -192,6 +192,9 @@ function act(
 	action: ActionKind,
 	amount?: number,
 ): Decision {
+	if (hand.street === "showdown") {
+		return reject({ code: "hand.betting-over" });
+	}
 	const legal = legalActions(hand, seat);
 	if (!legal) {
 		return reject({ code: "hand.not-your-turn", params: { seat } });
@@ -234,8 +237,16 @@ function act(
 	}
 }
 
-/** The turn timer ran out (POK-54): the player checks when that is free, otherwise folds. */
+/**
+ * The turn timer ran out (POK-54): the player checks when that is free, otherwise folds. At the
+ * showdown, a player who did not choose to show mucks.
+ */
 function timeout(hand: ActiveHand, seat: number): Decision {
+	if (hand.street === "showdown") {
+		return hand.toAct === seat
+			? accept({ type: "CardsMucked", v: 1, seat, auto: true })
+			: reject({ code: "hand.not-your-turn", params: { seat } });
+	}
 	const legal = legalActions(hand, seat);
 	if (!legal) {
 		return reject({ code: "hand.not-your-turn", params: { seat } });
@@ -251,6 +262,10 @@ function timeout(hand: ActiveHand, seat: number): Decision {
 	});
 }
 
+/**
+ * Showing or mucking at the showdown (RULES §10). Anyone still in may show at any time (TDA 17);
+ * mucking waits for the player's turn, which comes only to a player who cannot win a pot.
+ */
 function revealAtShowdown(
 	hand: ActiveHand,
 	seat: number,
@@ -266,9 +281,12 @@ function revealAtShowdown(
 	if (player.shown) {
 		return reject({ code: "hand.cards-already-shown", params: { seat } });
 	}
-	return show
-		? accept({ type: "CardsShown", v: 1, seat, cards: player.holeCards })
-		: accept({ type: "CardsMucked", v: 1, seat });
+	if (show) {
+		return accept({ type: "CardsShown", v: 1, seat, cards: player.holeCards });
+	}
+	return hand.toAct === seat
+		? accept({ type: "CardsMucked", v: 1, seat })
+		: reject({ code: "hand.not-your-turn", params: { seat } });
 }
 
 function decideCommand(command: HandCommand, state: HandState): Decision {
