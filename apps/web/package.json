@@ -9,18 +9,23 @@
 		"lint": "eslint && pnpm run lint:fsd && pnpm run lint:i18n",
 		"lint:fsd": "steiger ./src",
 		"lint:i18n": "node scripts/check-messages.mjs",
-		"typecheck": "next typegen && tsc --noEmit"
+		"typecheck": "next typegen && tsc --noEmit",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage"
 	},
 	"dependencies": {
 		"@holdem/engine": "workspace:*",
 		"@holdem/shared": "workspace:*",
+		"@tanstack/react-query": "^5.104.5",
+		"@tanstack/react-query-devtools": "^5.104.5",
 		"next": "^16.4.2",
 		"next-intl": "^4.14.9",
 		"react": "^19.3.1",
 		"react-dom": "^19.3.1",
 		"server-only": "^0.0.1",
 		"socket.io-client": "^4.8.4",
-		"zod": "^4.6.7"
+		"zod": "^4.6.7",
+		"zustand": "^5.0.16"
 	},
 	"devDependencies": {
 		"@feature-sliced/steiger-plugin": "^0.8.0",
@@ -29,11 +34,13 @@
 		"@types/node": "^24.19.2",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
+		"@vitest/coverage-v8": "^5.0.5",
 		"eslint": "^9.39.5",
 		"eslint-config-next": "^16.4.2",
 		"eslint-plugin-i18next": "^6.1.5",
 		"steiger": "^0.8.0",
 		"tailwindcss": "^4.3.3",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vitest": "^5.0.5"
 	}
 }

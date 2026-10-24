@@ -7,6 +7,7 @@ import {
 } from "@holdem/shared/realtime";
 import { io, type Socket } from "socket.io-client";
 import { publicEnv } from "@/shared/config";
+import { ApiError } from "./errors";
 
 export type SystemSocket = Socket<
 	SystemServerToClientEvents,
@@ -32,7 +33,7 @@ export async function ping(socket: SystemSocket): Promise<PingResult> {
 	const sentAt = Date.now();
 	const reply = PingReply.parse(await socket.emitWithAck("ping", { sentAt }));
 	if (!reply.ok) {
-		throw new Error(`ping failed: ${reply.error.code}`);
+		throw new ApiError(reply.error);
 	}
 	return {
 		roundTripMs: Date.now() - reply.data.sentAt,
