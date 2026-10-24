@@ -19,6 +19,7 @@ export function given(history: readonly HandEvent[]) {
 			return {
 				decision,
 				/** Asserts the outcome and returns the state after it (unchanged for an error). */
+				// oxlint-disable-next-line unicorn/no-thenable -- reads as given/when/then; never awaited
 				then(expected: readonly HandEvent[] | HandError): HandState {
 					if (Array.isArray(expected)) {
 						expect(decision).toEqual({ ok: true, events: expected });

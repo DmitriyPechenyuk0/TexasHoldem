@@ -52,13 +52,18 @@ export function validateConfig(config: HandConfig): InvalidConfigReason | null {
 	const { players, deck } = config;
 	const seats = players.map((player) => player.seat);
 	const ids = players.map((player) => player.playerId);
+	if (config.handId.length === 0) return "hand-id";
 	if (players.length < MIN_PLAYERS || players.length > MAX_PLAYERS)
 		return "player-count";
 	if (!seats.every(isChips) || new Set(seats).size !== seats.length)
 		return "seats";
 	if (!ids.every((id) => id.length > 0) || new Set(ids).size !== ids.length)
 		return "player-ids";
-	if (!players.every((player) => isPositiveChips(player.stack)))
+	// Every pot is a sum of stacks, so the total must stay a safe integer too.
+	if (
+		!players.every((player) => isPositiveChips(player.stack)) ||
+		!isChips(players.reduce((total, player) => total + player.stack, 0))
+	)
 		return "stacks";
 	if (
 		!isPositiveChips(config.smallBlind) ||

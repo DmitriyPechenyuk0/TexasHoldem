@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { fullDeck } from "../cards/index.js";
 import { play } from "../testing/hand-harness.js";
 import { handConfig } from "../testing/hand-fixtures.js";
-import { type LegalActions, legalActions, needsToAct } from "./betting.js";
+import { type LegalActions, legalActions } from "./betting.js";
 import type { ActionKind, HandCommand } from "./commands.js";
 import { decide } from "./decide.js";
 import type { HandEvent } from "./events.js";
@@ -74,7 +74,9 @@ const step = fc.record({
 	),
 });
 
-it("legalActions agrees with decide, and the round keeps its invariants, on random hands", () => {
+// Commands here are random, legal or not: the point is that decide accepts exactly what legalActions
+// offers. The invariants of whole hands are checked by simulation.spec.ts, which plays only legal ones.
+it("legalActions agrees with decide on random, often illegal, commands", () => {
 	fc.assert(
 		fc.property(
 			fc.array(fc.integer({ min: 1, max: 300 }), {
@@ -96,7 +98,6 @@ it("legalActions agrees with decide, and the round keeps its invariants, on rand
 						stack,
 					})),
 				});
-				const chips = stacks.reduce((sum, stack) => sum + stack, 0);
 				let events = play([], { type: "StartHand", config });
 
 				for (const {
@@ -129,51 +130,6 @@ it("legalActions agrees with decide, and the round keeps its invariants, on rand
 					if (!decision.ok) continue;
 
 					events = [...events, ...decision.events];
-					const after = stateOf(events);
-					// Once the hand ends the pots are back in the winners' stacks.
-					expect(
-						after.players.reduce(
-							(sum, p) =>
-								sum + p.stack + (after.status === "ended" ? 0 : p.committed),
-							0,
-						),
-					).toBe(chips);
-					expect(
-						after.players.every(
-							(p) => p.stack >= 0 && Number.isSafeInteger(p.stack),
-						),
-					).toBe(true);
-					expect(
-						after.players.every(
-							(p) => p.folded || p.allIn || p.bet <= after.currentBet,
-						),
-					).toBe(true);
-					if (after.street === "showdown" || after.status === "ended") {
-						expect(legalActions(after, after.toAct ?? 0)).toBeNull();
-					} else if (after.toAct !== null) {
-						const toAct = after.players.find((p) => p.seat === after.toAct)!;
-						expect(needsToAct(after, toAct)).toBe(true);
-						expect(legalActions(after, after.toAct)).not.toBeNull();
-					} else {
-						expect(after.players.some((p) => needsToAct(after, p))).toBe(false);
-					}
-				}
-
-				// Whoever may muck at the showdown runs out of time; then every chip is paid out.
-				for (
-					let hand = stateOf(events);
-					hand.status === "in-progress" && hand.street === "showdown";
-					hand = stateOf(events)
-				) {
-					events = play(events, { type: "Timeout", seat: hand.toAct! });
-				}
-				const final = stateOf(events);
-				if (final.status === "ended") {
-					expect(events.at(-1)!.type).toBe("HandEnded");
-					expect(final.players.reduce((sum, p) => sum + p.stack, 0)).toBe(
-						chips,
-					);
-					expect(final.pots.every((pot) => pot.awarded)).toBe(true);
 				}
 			},
 		),

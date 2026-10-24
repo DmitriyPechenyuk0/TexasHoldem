@@ -75,6 +75,7 @@ export {
 	redactEvent,
 	replayHand,
 	type SeatIndex,
+	type ShownHand,
 	type Street,
 	toPlayerView,
 	validateConfig,

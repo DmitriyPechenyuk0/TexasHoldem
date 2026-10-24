@@ -1,7 +1,7 @@
 import type { Card } from "../cards/index.js";
-import { type HandScore, scoreHand } from "../evaluator/index.js";
+import { evaluateHand, type HandScore, scoreHand } from "../evaluator/index.js";
 import type { Chips, SeatIndex } from "./config.js";
-import type { HandEvent } from "./events.js";
+import type { HandEvent, ShownHand } from "./events.js";
 import { clockwiseFrom } from "./positions.js";
 import type { ActiveHand, PlayerState, PotState } from "./state.js";
 
@@ -11,8 +11,19 @@ const contending = (player: PlayerState) => !player.folded && !player.mucked;
 const playerAt = (hand: ActiveHand, seat: SeatIndex) =>
 	hand.players.find((player) => player.seat === seat) as PlayerState;
 
+const cardsOf = (hand: ActiveHand, player: PlayerState) => [
+	...(player.holeCards as readonly Card[]),
+	...hand.board,
+];
+
 const scoreOf = (hand: ActiveHand, player: PlayerState): HandScore =>
-	scoreHand([...(player.holeCards as readonly Card[]), ...hand.board]);
+	scoreHand(cardsOf(hand, player));
+
+/** The winning hand for the table to show: what it is and which five cards make it. */
+function shownHand(hand: ActiveHand, player: PlayerState): ShownHand {
+	const { category, cards, ranks } = evaluateHand(cardsOf(hand, player));
+	return { category, cards, ranks };
+}
 
 /**
  * The players still in, in the order they show (RULES §10, TDA 17): the last player to bet or raise
@@ -94,7 +105,11 @@ export function settle(hand: ActiveHand): HandEvent[] {
 			const best = Math.max(...scores.values());
 			winners = contenders.filter((player) => scores.get(player) === best);
 		}
-		const shares = split(hand, pot.amount, winners);
+		// A winner who showed is named with their hand; one who never had to show stays hidden.
+		const shares = split(hand, pot.amount, winners).map((share) => {
+			const winner = playerAt(hand, share.seat);
+			return winner.shown ? { ...share, hand: shownHand(hand, winner) } : share;
+		});
 		for (const { seat, amount } of shares) {
 			won.set(seat, (won.get(seat) ?? 0) + amount);
 		}

@@ -62,6 +62,8 @@ class ProbeController {
 			password: "hunter2-password",
 			user: { name: "ann", token: "user-token-value" },
 			session: { auth: { secret: "deep-secret-value" } },
+			headers: { Authorization: "Bearer header-cased-value" },
+			a: { b: { c: { refreshToken: "deeply-nested-token-value" } } },
 		});
 		return { ok: true };
 	}
@@ -157,6 +159,8 @@ describe("Logging (e2e)", () => {
 			"query-token-value",
 			"bearer-token-value",
 			"session-cookie-value",
+			"header-cased-value",
+			"deeply-nested-token-value",
 		]) {
 			expect(written).not.toContain(secret);
 		}
@@ -174,6 +178,34 @@ describe("Logging (e2e)", () => {
 				req: expect.objectContaining({ method: "GET", path: "/probe/secrets" }),
 			}),
 		);
+	});
+
+	it("logs the client address, not a forwarded one it does not trust", async () => {
+		await request(app.getHttpServer())
+			.get("/system/time")
+			.set("x-forwarded-for", "203.0.113.7")
+			.expect(200);
+		const completed = lines.findLast(
+			(line) => line.msg === "request completed",
+		);
+		expect(completed?.req).toMatchObject({ path: "/system/time" });
+		expect(completed?.req).not.toMatchObject({ remoteAddress: "203.0.113.7" });
+	});
+
+	it("logs the forwarded client address behind a trusted proxy", async () => {
+		const behindProxy = await createTestApp({ config: { trustProxy: 1 } });
+		try {
+			await request(behindProxy.getHttpServer())
+				.get("/system/time")
+				.set("x-forwarded-for", "203.0.113.7")
+				.expect(200);
+			const completed = lines.findLast(
+				(line) => line.msg === "request completed",
+			);
+			expect(completed?.req).toMatchObject({ remoteAddress: "203.0.113.7" });
+		} finally {
+			await behindProxy.close();
+		}
 	});
 
 	it("does not log health checks", async () => {

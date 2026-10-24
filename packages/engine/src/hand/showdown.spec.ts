@@ -1,9 +1,11 @@
+import { parseCards, type Rank } from "../cards/index.js";
+import type { HandCategory } from "../evaluator/index.js";
 import { given, play } from "../testing/hand-harness.js";
 import { handConfig, holeCards, riggedDeck } from "../testing/hand-fixtures.js";
 import { legalActions } from "./betting.js";
 import type { ActionKind, HandCommand } from "./commands.js";
 import type { HandConfig } from "./config.js";
-import type { HandEvent } from "./events.js";
+import type { HandEvent, ShownHand } from "./events.js";
 import { replayHand } from "./evolve.js";
 import type { ActiveHand } from "./state.js";
 
@@ -30,13 +32,22 @@ const mucked = (seat: number): HandEvent => ({
 });
 const showdown: HandEvent = { type: "ShowdownStarted", v: 1 };
 
-/** Pot `pot` won by these winners, as [seat, amount]. */
-const awarded = (pot: number, ...winners: [number, number][]): HandEvent => ({
+/** Pot `pot` won by these winners, as [seat, amount, the hand they showed]. */
+const awarded = (
+	pot: number,
+	...winners: [number, number, ShownHand][]
+): HandEvent => ({
 	type: "PotAwarded",
 	v: 1,
 	pot,
-	winners: winners.map(([seat, amount]) => ({ seat, amount })),
+	winners: winners.map(([seat, amount, hand]) => ({ seat, amount, hand })),
 });
+
+const shownHand = (
+	category: HandCategory,
+	cards: string,
+	ranks: Rank[],
+): ShownHand => ({ category, cards: parseCards(cards), ranks });
 
 /** Seats 0, 1, 2… end the hand with these stacks. */
 const ended = (...stacks: number[]): HandEvent => ({
@@ -68,6 +79,16 @@ const toRiver = (config: HandConfig) =>
 
 // Aces beat kings beat nothing on this board.
 const board = "Ah Kh 3c 8d 9s";
+const tripAces = shownHand("three-of-a-kind", "As Ah Ad Kh 9s", [
+	"A",
+	"K",
+	"9",
+]);
+const tripKings = shownHand("three-of-a-kind", "Kh Kd Kc Ah 9s", [
+	"K",
+	"A",
+	"9",
+]);
 
 describe("showing order (TDA 17)", () => {
 	it("the last to bet on the river shows first, then every hand that can win is turned up", () => {
@@ -91,7 +112,7 @@ describe("showing order (TDA 17)", () => {
 				showdown,
 				shown(1, "Kc Kd"),
 				shown(0, "As Ad"),
-				awarded(0, [0, 130]),
+				awarded(0, [0, 130, tripAces]),
 				ended(1070, 940, 990),
 			]);
 	});
@@ -130,7 +151,11 @@ describe("showing order (TDA 17)", () => {
 			expect((afterFirstMuck as ActiveHand).toAct).toBe(0);
 			given(play(atShowdown, { type: "MuckCards", seat: 2 }))
 				.when({ type: "MuckCards", seat: 0 })
-				.then([mucked(0), awarded(0, [1, 30]), ended(990, 1020, 990)]);
+				.then([
+					mucked(0),
+					awarded(0, [1, 30, tripAces]),
+					ended(990, 1020, 990),
+				]);
 		});
 
 		it("a beaten player may show instead of mucking", () => {
@@ -182,7 +207,11 @@ describe("winners and split pots (RULES §12, TDA 20, 21)", () => {
 			.then([
 				mucked(2),
 				shown(0, "Td 3c"),
-				awarded(0, [1, 17], [0, 16]),
+				awarded(
+					0,
+					[1, 17, shownHand("straight", "Ah Kh Qd Jc Tc", ["A"])],
+					[0, 16, shownHand("straight", "Ah Kh Qd Jc Td", ["A"])],
+				),
 				ended(1005, 1006, 989),
 			]);
 	});
@@ -222,8 +251,8 @@ describe("winners and split pots (RULES §12, TDA 20, 21)", () => {
 			shown(2, "7h 2s"),
 			shown(0, "As Ad"),
 			showdown,
-			awarded(1, [1, 400]),
-			awarded(0, [0, 300]),
+			awarded(1, [1, 400, tripKings]),
+			awarded(0, [0, 300, tripAces]),
 			ended(300, 400, 700),
 		]);
 		expect(events.map((event) => event.type).indexOf("StreetDealt")).toBe(5);
@@ -260,7 +289,7 @@ describe("winners and split pots (RULES §12, TDA 20, 21)", () => {
 				shown(1, "Kc Kd"),
 				shown(2, "7h 2s"),
 				shown(0, "As Ad"),
-				awarded(0, [0, 300]),
+				awarded(0, [0, 300, tripAces]),
 				ended(300, 900, 900),
 			]);
 	});

@@ -4,6 +4,14 @@ import {
 	parseConfig,
 	parseDatabaseConfig,
 } from "./load-config.js";
+import { DEVELOPMENT_AUTH_SECRET } from "./env.schema.js";
+
+/** `.env.example` as production would run it: with a secret of its own. */
+const productionEnv = () => ({
+	...exampleEnv(),
+	NODE_ENV: "production",
+	AUTH_SECRET: "a-real-secret-generated-for-production-0123",
+});
 
 const problemsOf = (
 	env: Record<string, string | undefined>,
@@ -145,21 +153,43 @@ describe("log settings", () => {
 			level: "debug",
 			pretty: true,
 		});
-		expect(
-			parseConfig({ ...exampleEnv(), NODE_ENV: "production" }).log,
-		).toEqual({ level: "info", pretty: false });
+		expect(parseConfig(productionEnv()).log).toEqual({
+			level: "info",
+			pretty: false,
+		});
 	});
 
 	it("take LOG_LEVEL when it is set and reject unknown levels", () => {
-		expect(
-			parseConfig({
-				...exampleEnv(),
-				NODE_ENV: "production",
-				LOG_LEVEL: "warn",
-			}).log,
-		).toEqual({ level: "warn", pretty: false });
+		expect(parseConfig({ ...productionEnv(), LOG_LEVEL: "warn" }).log).toEqual({
+			level: "warn",
+			pretty: false,
+		});
 		expect(problemsOf({ ...exampleEnv(), LOG_LEVEL: "loud" })).toEqual([
 			expect.stringMatching(/^LOG_LEVEL: /),
 		]);
+	});
+});
+
+describe("trust proxy", () => {
+	it.each([
+		[undefined, false],
+		["false", false],
+		["true", true],
+		["1", 1],
+		["loopback, 10.0.0.0/8", "loopback, 10.0.0.0/8"],
+	])("TRUST_PROXY=%s is %s", (value, expected) => {
+		expect(
+			parseConfig({ ...exampleEnv(), TRUST_PROXY: value }).trustProxy,
+		).toBe(expected);
+	});
+});
+
+describe("AUTH_SECRET", () => {
+	it("refuses the public development value in production, and only there", () => {
+		expect(exampleEnv().AUTH_SECRET).toBe(DEVELOPMENT_AUTH_SECRET);
+		expect(problemsOf({ ...exampleEnv(), NODE_ENV: "production" })).toEqual([
+			expect.stringMatching(/^AUTH_SECRET: is the public development value/),
+		]);
+		expect(() => parseConfig(productionEnv())).not.toThrow();
 	});
 });

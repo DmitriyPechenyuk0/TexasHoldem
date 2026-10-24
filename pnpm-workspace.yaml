@@ -8,6 +8,18 @@ allowBuilds:
   sharp: false
   unrs-resolver: false
 
+# Security fixes Nest has not shipped yet. Drop each once its parent depends on a fixed version.
+overrides:
+  # @nestjs/platform-express 12.2.0 pins multer 2.4.0: GHSA-q7qp-rjg7-q26m (DoS), fixed in 2.5.0.
+  multer@2.4.0: 2.5.0
+
+# Known advisories with no fix to take, checked and accepted. `pnpm audit` skips them.
+auditConfig:
+  ignoreGhsas:
+    # zod 3 (< 4.6.6) can exhaust memory on huge collections. Only steiger, a lint tool, still uses
+    # zod 3, to validate our own config; zod 3 has no fixed release. Drop when steiger moves to zod 4.
+    - GHSA-mrhx-c7xc-m3w5
+
 minimumReleaseAgeExclude:
   - '@nestjs/cli@12.0.9'
   - '@nestjs/common@12.2.0'

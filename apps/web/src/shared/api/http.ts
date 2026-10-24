@@ -1,7 +1,10 @@
 import { Problem, PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import type { z } from "zod";
 import { publicEnv } from "@/shared/config";
-import { ApiError, NetworkError } from "./errors";
+import { ApiError, NetworkError, RequestTimeoutError } from "./errors";
+
+/** How long a request may take, answer included, before it fails with `RequestTimeoutError`. */
+export const DEFAULT_TIMEOUT_MS = 10_000;
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -33,15 +36,19 @@ export interface HttpClientConfig {
 	readonly baseUrl: string;
 	/** Sent with every request, e.g. the cookie the server forwards. */
 	readonly headers?: Readonly<Record<string, string>>;
+	/** Defaults to `DEFAULT_TIMEOUT_MS`, so a stalled api never hangs a render or a query. */
+	readonly timeoutMs?: number;
 }
 
 /**
  * A fetch wrapper for the api: sends the session cookie, parses the answer with its contract and
- * throws `ApiError` for error answers, `NetworkError` when the api cannot be reached.
+ * throws `ApiError` for error answers, `NetworkError` when the api cannot be reached and
+ * `RequestTimeoutError` when it does not answer in time.
  */
 export function createHttpClient({
 	baseUrl,
 	headers = {},
+	timeoutMs = DEFAULT_TIMEOUT_MS,
 }: HttpClientConfig): HttpClient {
 	return {
 		async request(path, { method = "GET", schema, body, query, signal }) {
@@ -57,33 +64,42 @@ export function createHttpClient({
 				requestHeaders.set("content-type", "application/json");
 			}
 
-			let response: Response;
+			const outsideContract = (cause: unknown) =>
+				new Error(`${method} ${url.pathname} answered outside its contract`, {
+					cause,
+				});
+			const timeout = AbortSignal.timeout(timeoutMs);
+
+			let data: unknown;
 			try {
-				response = await fetch(url, {
+				const response = await fetch(url, {
 					method,
 					headers: requestHeaders,
 					body: body === undefined ? undefined : JSON.stringify(body),
 					credentials: "include",
-					signal,
+					signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
 				});
+				if (!response.ok) {
+					throw await apiErrorOf(response);
+				}
+				data = response.status === 204 ? undefined : await response.json();
 			} catch (error) {
 				// A cancelled request (e.g. TanStack Query dropping a stale fetch) is not a network failure.
-				if (signal?.aborted) {
+				if (error instanceof ApiError || signal?.aborted) {
 					throw error;
+				}
+				if (timeout.aborted) {
+					throw new RequestTimeoutError(url, timeoutMs, { cause: error });
+				}
+				if (error instanceof SyntaxError) {
+					throw outsideContract(error);
 				}
 				throw new NetworkError(url, { cause: error });
 			}
 
-			if (!response.ok) {
-				throw await apiErrorOf(response);
-			}
-			const data = response.status === 204 ? undefined : await response.json();
 			const result = schema.safeParse(data);
 			if (!result.success) {
-				throw new Error(
-					`${method} ${url.pathname} answered outside its contract`,
-					{ cause: result.error },
-				);
+				throw outsideContract(result.error);
 			}
 			return result.data;
 		},

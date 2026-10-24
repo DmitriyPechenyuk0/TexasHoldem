@@ -9,6 +9,38 @@ const port = z
 const httpUrl = z.url({ protocol: /^https?$/ });
 const databaseUrl = z.url({ protocol: /^postgres(ql)?$/ });
 
+/** The AUTH_SECRET in .env.example. Anyone can read it, so production refuses it. */
+export const DEVELOPMENT_AUTH_SECRET =
+	"local-development-only-secret-0123456789";
+
+/** Problems that only matter in production, checked alongside the schema like ENV_PAIRS. */
+export function productionProblems(
+	env: Readonly<Record<string, string>>,
+): string[] {
+	return env.NODE_ENV === "production" &&
+		env.AUTH_SECRET === DEVELOPMENT_AUTH_SECRET
+		? [
+				"AUTH_SECRET: is the public development value from .env.example; generate one with `openssl rand -base64 32`",
+			]
+		: [];
+}
+
+/**
+ * Express's `trust proxy`: `false` when clients connect directly, `true` to trust every proxy, a
+ * number of proxies in front of the api, or their addresses and subnets (`loopback, 10.0.0.0/8`).
+ */
+const trustProxy = z
+	.string()
+	.transform((value): boolean | number | string =>
+		value === "true"
+			? true
+			: value === "false"
+				? false
+				: /^\d+$/.test(value)
+					? Number(value)
+					: value,
+	);
+
 // Variables that are only meaningful together; checked separately so their problems are
 // reported alongside schema errors (zod skips object-level refinements once a field fails).
 export const ENV_PAIRS = [
@@ -33,6 +65,7 @@ export const envSchema = z
 		LOG_LEVEL: z
 			.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
 			.optional(),
+		TRUST_PROXY: trustProxy.optional(),
 		WEB_ORIGIN: httpUrl.refine(
 			(value) => !URL.canParse(value) || new URL(value).origin === value,
 			"must be a bare origin such as http://localhost:3000, without a path or trailing slash",
@@ -77,6 +110,7 @@ export const envSchema = z
 			pretty: env.NODE_ENV === "development",
 		},
 		webOrigin: env.WEB_ORIGIN,
+		trustProxy: env.TRUST_PROXY ?? false,
 		database: { url: env.DATABASE_URL },
 		redis: { url: env.REDIS_URL },
 		smtp: {

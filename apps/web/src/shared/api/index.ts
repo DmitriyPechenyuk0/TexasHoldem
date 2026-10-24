@@ -1,6 +1,7 @@
-export { ApiError, NetworkError } from "./errors";
+export { ApiError, NetworkError, RequestTimeoutError } from "./errors";
 export {
 	createHttpClient,
+	DEFAULT_TIMEOUT_MS,
 	http,
 	type HttpClient,
 	type HttpClientConfig,

@@ -2,6 +2,8 @@ import { readdirSync } from "node:fs";
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 import createNextIntlPlugin from "next-intl/plugin";
+// Not the config barrel, which validates the environment on import.
+import { securityHeaders } from "./src/shared/config/security-headers";
 
 // English is the source catalog: next-intl turns each of its namespaces into a `.d.json.ts`
 // declaration (on dev, build and typegen), so `t()` also type-checks ICU arguments.
@@ -26,6 +28,15 @@ const nextConfig = (phase: string): NextConfig => ({
 			? ["dev.tsx", "tsx", "ts", "jsx", "js"]
 			: ["tsx", "ts", "jsx", "js"],
 	partialPrefetching: true,
+	poweredByHeader: false,
+	headers: async () => [
+		{
+			source: "/:path*",
+			headers: securityHeaders({
+				development: phase === PHASE_DEVELOPMENT_SERVER,
+			}),
+		},
+	],
 	turbopack: {
 		rules: {
 			"*.css": {

@@ -26,6 +26,7 @@ export type {
 	HandEvent,
 	HandEventType,
 	Pot,
+	ShownHand,
 	Street,
 } from "./events.js";
 export { evolve, replayHand } from "./evolve.js";

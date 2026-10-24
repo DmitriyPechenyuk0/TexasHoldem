@@ -6,6 +6,11 @@ import {
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import type { App } from "supertest/types.js";
+import {
+	REDIS,
+	REDIS_COMMAND_TIMEOUT_MS,
+	type Redis,
+} from "@/shared/infrastructure/redis/index.js";
 import { captureLogs } from "./support/capture-logs.js";
 import { createTestApp } from "./support/create-test-app.js";
 import { exampleConfig } from "./support/example-config.js";
@@ -106,6 +111,13 @@ describe("Health (e2e)", () => {
 				checks: { database: "up", redis: "down" },
 			});
 			await request(app.getHttpServer()).get("/health").expect(200);
+
+			// A command does not hang while Redis is away: it fails after the command timeout.
+			const startedAt = performance.now();
+			await expect(app.get<Redis>(REDIS).get("any-key")).rejects.toThrow();
+			const waitedMs = performance.now() - startedAt;
+			expect(waitedMs).toBeGreaterThanOrEqual(REDIS_COMMAND_TIMEOUT_MS - 50);
+			expect(waitedMs).toBeLessThan(REDIS_COMMAND_TIMEOUT_MS + 1_000);
 
 			await proxy.start();
 			const back = await waitForReadiness(app, ALL_UP);

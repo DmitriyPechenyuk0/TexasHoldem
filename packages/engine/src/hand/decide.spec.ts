@@ -57,6 +57,7 @@ describe("StartHand", () => {
 	});
 
 	it.each<[InvalidConfigReason, Partial<HandConfig>]>([
+		["hand-id", { handId: "" }],
 		["player-count", { players: players(1) }],
 		["player-count", { players: players(11) }],
 		[
@@ -114,6 +115,8 @@ describe("StartHand", () => {
 				],
 			},
 		],
+		// Each stack is a safe integer, but together they are not.
+		["stacks", { players: players(2, Number.MAX_SAFE_INTEGER) }],
 		["blinds", { smallBlind: 0 }],
 		["blinds", { bigBlind: 0 }],
 		["blinds", { smallBlind: 20, bigBlind: 10 }],

@@ -1,0 +1,37 @@
+# Weekly update pull requests into dev, titled `chore(deps): bump …` so they pass the PR title check
+# (commitlint knows the `deps` scope, not `deps-dev`). Minor and patch updates come grouped.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    # Releases younger than this are often yanked or compromised.
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    target-branch: dev
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(deps)

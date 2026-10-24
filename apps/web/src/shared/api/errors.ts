@@ -18,6 +18,16 @@ export class ApiError extends Error {
 	}
 }
 
+/** The api did not answer in time; the request was cancelled. */
+export class RequestTimeoutError extends Error {
+	readonly code = "network.timeout";
+
+	constructor(url: URL, timeoutMs: number, options?: ErrorOptions) {
+		super(`${url.origin} did not answer within ${timeoutMs} ms`, options);
+		this.name = "RequestTimeoutError";
+	}
+}
+
 /** The api could not be reached: offline, connection refused, DNS or CORS failure. */
 export class NetworkError extends Error {
 	readonly code = "network.unreachable";

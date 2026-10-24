@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: pnpm format:check
 
@@ -32,17 +32,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: pnpm build:packages
       - run: pnpm lint
+
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      # Known advisories that have no fix are listed, with the reason, under auditConfig in pnpm-workspace.yaml.
+      - run: pnpm audit --audit-level moderate
 
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: pnpm build:packages
       - run: pnpm typecheck
@@ -55,12 +65,19 @@ jobs:
       # For drizzle-kit. Tests create their own databases from the .env.example settings.
       DATABASE_URL: postgres://holdem:holdem@127.0.0.1:5433/holdem_test
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The same compose file as local dev, so image tags and the holdem_test init never drift.
       # Containers boot while dependencies install.
+      # Docker Hub sometimes answers 502, so pulling is retried before giving up.
       - name: Start Postgres and Redis
-        run: docker compose up -d postgres redis
+        run: |
+          for attempt in 1 2 3; do
+            docker compose pull --quiet postgres redis && break
+            echo "pull failed (attempt $attempt), retrying"
+            sleep $((attempt * 10))
+          done
+          docker compose up -d postgres redis
 
       - uses: ./.github/actions/setup
       - run: pnpm build:packages
@@ -82,7 +99,7 @@ jobs:
       - name: Test with coverage
         run: pnpm test:coverage
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: coverage
@@ -100,6 +117,6 @@ jobs:
       NEXT_PUBLIC_API_URL: http://localhost:4000
       API_URL: http://localhost:4000
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: pnpm build
