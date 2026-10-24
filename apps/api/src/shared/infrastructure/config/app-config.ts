@@ -16,6 +16,8 @@ export abstract class AppConfig {
 	/** `pretty` is human-readable output for development; otherwise logs are JSON lines. */
 	abstract readonly log: { readonly level: LogLevel; readonly pretty: boolean };
 	abstract readonly webOrigin: string;
+	/** Express's `trust proxy`, so the client address behind a load balancer is the real one. */
+	abstract readonly trustProxy: boolean | number | string;
 	abstract readonly database: { readonly url: string };
 	abstract readonly redis: { readonly url: string };
 	abstract readonly smtp: {

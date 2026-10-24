@@ -1,9 +1,25 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+	resolve: {
+		// The README examples import the package by name; run them against the sources.
+		alias: {
+			"@holdem/engine": fileURLToPath(
+				new URL("./src/index.ts", import.meta.url),
+			),
+		},
+	},
 	test: {
 		globals: true,
 		include: ["src/**/*.spec.ts"],
+		tags: [
+			{
+				name: "slow",
+				description:
+					"Statistical checks that take seconds; skip with --tags-filter='!slow'.",
+			},
+		],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "html", "lcov"],

@@ -18,7 +18,7 @@ export default defineConfig({
 			include: ["src/**/*.ts"],
 			exclude: ["src/**/*.spec.ts", "src/main.ts"],
 			// Starting baseline, a little under the measured coverage. Raise it as coverage grows.
-			thresholds: { lines: 97, statements: 97, functions: 95, branches: 85 },
+			thresholds: { lines: 98, statements: 98, functions: 97, branches: 90 },
 		},
 	},
 });

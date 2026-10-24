@@ -1,7 +1,8 @@
 {
 	"name": "@holdem/engine",
-	"version": "0.0.0",
+	"version": "0.2.0",
 	"private": true,
+	"license": "MIT",
 	"description": "Pure TypeScript No-Limit Hold'em game engine",
 	"type": "module",
 	"exports": {
@@ -14,12 +15,17 @@
 		"build": "tsc -p tsconfig.build.json",
 		"dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
 		"typecheck": "tsc --noEmit",
+		"lint": "oxlint --type-aware --deny-warnings src/ examples/",
 		"test": "vitest run --passWithNoTests",
-		"test:coverage": "vitest run --coverage --passWithNoTests"
+		"test:coverage": "vitest run --coverage --passWithNoTests",
+		"bench": "pnpm build && node scripts/bench.mjs"
 	},
 	"devDependencies": {
+		"@types/node": "^24.19.2",
 		"@vitest/coverage-v8": "^5.0.5",
 		"fast-check": "^4.10.2",
+		"oxlint": "^1.89.0",
+		"oxlint-tsgolint": "^7.0.2004",
 		"typescript": "^6.0.3",
 		"vitest": "^5.0.5"
 	}

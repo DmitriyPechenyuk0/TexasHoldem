@@ -1,7 +1,9 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
-		"types": ["vitest/globals"]
+		"types": ["vitest/globals", "node"],
+		// The examples import the package by name, as an app would; point that at the sources.
+		"paths": { "@holdem/engine": ["./src/index.ts"] }
 	},
-	"include": ["src"]
+	"include": ["src", "examples"]
 }

@@ -3,43 +3,28 @@ import type { Params } from "nestjs-pino";
 import pino, { type DestinationStream } from "pino";
 import pinoPretty from "pino-pretty";
 import type { AppConfig } from "../config/index.js";
+import { redactSecrets } from "./redact-secrets.js";
 import { REQUEST_ID_HEADER, requestIdFor } from "./request-id.js";
 
 /** Where log lines go. Tests replace this provider to read them. */
 export const LOG_DESTINATION = Symbol("LogDestination");
 
-export const logDestinationFor = (config: AppConfig): DestinationStream =>
-	config.log.pretty
-		? pinoPretty({
-				colorize: true,
-				singleLine: true,
-				translateTime: "SYS:HH:MM:ss.l",
-				ignore: "pid,hostname,context",
-				messageFormat: "{if context}[{context}] {end}{msg}",
-			})
-		: // Synchronous, so lines written right before an exit are not lost.
-			pino.destination({ dest: 1, sync: true });
-
-// Defense in depth for objects logged by hand. Requests themselves never log headers or query strings.
-const SECRET_KEYS = [
-	"password",
-	"newPassword",
-	"currentPassword",
-	"token",
-	"accessToken",
-	"refreshToken",
-	"idToken",
-	"sessionToken",
-	"secret",
-	"clientSecret",
-	"authorization",
-	"cookie",
-];
-const REDACTED_PATHS = SECRET_KEYS.flatMap((key) => [
-	key,
-	`*.${key}`,
-	`*.*.${key}`,
-]);
+export function logDestinationFor(config: AppConfig): DestinationStream {
+	if (config.log.pretty) {
+		return pinoPretty({
+			colorize: true,
+			singleLine: true,
+			translateTime: "SYS:HH:MM:ss.l",
+			ignore: "pid,hostname,context",
+			messageFormat: "{if context}[{context}] {end}{msg}",
+		});
+	}
+	// Buffered, so writing a line never blocks the event loop the tables run on. What is still in
+	// the buffer when the process exits is written synchronously, so the last lines are not lost.
+	const destination = pino.destination({ dest: 1, sync: false });
+	process.once("exit", () => destination.flushSync());
+	return destination;
+}
 
 const isHealthCheck = (url: string | undefined): boolean =>
 	url === "/health" || (url?.startsWith("/health/") ?? false);
@@ -48,6 +33,8 @@ interface SerializedRequest {
 	readonly method: string;
 	readonly url: string;
 	readonly remoteAddress?: string;
+	/** The request itself; Express's `ip` follows `trust proxy`, unlike the socket address. */
+	readonly raw: { readonly ip?: string };
 }
 
 export function loggerParams(
@@ -73,13 +60,13 @@ export function loggerParams(
 					req: (req: SerializedRequest) => ({
 						method: req.method,
 						path: req.url.split("?")[0],
-						remoteAddress: req.remoteAddress,
+						remoteAddress: req.raw.ip ?? req.remoteAddress,
 					}),
 					res: (res: { readonly statusCode: number }) => ({
 						statusCode: res.statusCode,
 					}),
 				},
-				redact: { paths: REDACTED_PATHS, censor: "[redacted]" },
+
 				// Load balancers poll health every few seconds; those requests would drown the rest.
 				autoLogging: { ignore: (req) => isHealthCheck(req.url) },
 				customLogLevel: (_req, res, error) =>
@@ -88,7 +75,11 @@ export function loggerParams(
 						: res.statusCode >= 400
 							? "warn"
 							: "info",
-				formatters: { level: (label) => ({ level: label }) },
+				formatters: {
+					level: (label) => ({ level: label }),
+					// Defense in depth for objects logged by hand.
+					log: (object) => redactSecrets(object) as Record<string, unknown>,
+				},
 				timestamp: pino.stdTimeFunctions.isoTime,
 			},
 			destination,

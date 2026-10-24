@@ -15,6 +15,7 @@ import request from "supertest";
 import type { App } from "supertest/types.js";
 import { z } from "zod";
 import { DomainError } from "@/shared/domain/domain-error.js";
+import { MAX_MESSAGE_BYTES } from "@/shared/infrastructure/realtime/socket-io.adapter.js";
 import { RealtimeGateway } from "@/shared/presentation/realtime/realtime-gateway.decorator.js";
 import { ValidPayload } from "@/shared/presentation/request-validation.js";
 import { captureLogs } from "./support/capture-logs.js";
@@ -231,20 +232,47 @@ describe("Realtime (e2e)", () => {
 			expect(foreign.headers["access-control-allow-origin"]).toBe(webOrigin);
 		});
 
-		it("lets the web app open a socket.io session, and nobody else", async () => {
+		it("lets the web app open a socket.io session, and refuses any other origin", async () => {
 			const handshake = (origin: string) =>
 				request(baseUrl)
 					.get("/socket.io/?EIO=4&transport=polling")
-					.set("origin", origin)
-					.expect(200);
+					.set("origin", origin);
 
-			const allowed = await handshake(webOrigin);
-			const foreign = await handshake("https://evil.example");
-
+			const allowed = await handshake(webOrigin).expect(200);
 			expect(allowed.headers["access-control-allow-origin"]).toBe(webOrigin);
 			expect(allowed.headers["access-control-allow-credentials"]).toBe("true");
-			// The allowed origin is fixed, so a browser on another origin sees a mismatch and blocks the response.
-			expect(foreign.headers["access-control-allow-origin"]).toBe(webOrigin);
+			await handshake("https://evil.example").expect(403);
 		});
+
+		it("refuses a WebSocket from a page on another origin (cross-site WebSocket hijacking)", async () => {
+			const attempt = (origin: string) =>
+				new Promise<string>((resolve) => {
+					const socket = io(baseUrl, {
+						transports: ["websocket"],
+						extraHeaders: { origin },
+						forceNew: true,
+						reconnection: false,
+					});
+					sockets.push(socket);
+					socket.once("connect", () => resolve("connected"));
+					socket.once("connect_error", () => resolve("refused"));
+				});
+
+			expect(await attempt(webOrigin)).toBe("connected");
+			expect(await attempt("https://evil.example")).toBe("refused");
+		});
+	});
+
+	it("drops a connection that sends a message over the size limit", async () => {
+		const socket: Socket<
+			SystemServerToClientEvents,
+			SystemClientToServerEvents
+		> = await connect(NAMESPACES.system);
+		const disconnected = new Promise<string>((resolve) =>
+			socket.once("disconnect", resolve),
+		);
+		const oversized = { sentAt: 0, padding: "x".repeat(MAX_MESSAGE_BYTES) };
+		socket.emit("ping", oversized, () => undefined);
+		expect(await disconnected).toBe("transport close");
 	});
 });

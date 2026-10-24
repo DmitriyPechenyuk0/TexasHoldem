@@ -23,6 +23,9 @@ export function connectSystemSocket(): SystemSocket {
 
 const PingReply = ackOf(PingEvent.ack);
 
+/** How long `ping` waits for the server's reply before it rejects. */
+export const ACK_TIMEOUT_MS = 5_000;
+
 export interface PingResult {
 	readonly roundTripMs: number;
 	readonly serverTime: Date;
@@ -31,7 +34,9 @@ export interface PingResult {
 /** Measures the round trip and reads the server clock, for latency display and timer correction. */
 export async function ping(socket: SystemSocket): Promise<PingResult> {
 	const sentAt = Date.now();
-	const reply = PingReply.parse(await socket.emitWithAck("ping", { sentAt }));
+	const reply = PingReply.parse(
+		await socket.timeout(ACK_TIMEOUT_MS).emitWithAck("ping", { sentAt }),
+	);
 	if (!reply.ok) {
 		throw new ApiError(reply.error);
 	}
