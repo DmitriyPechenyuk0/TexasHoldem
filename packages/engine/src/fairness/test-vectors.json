@@ -1,0 +1,29 @@
+[
+	{
+		"name": "no client seeds",
+		"serverSeed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+		"handId": "0b7e5c1e-6f2a-4d3b-9c8e-1a2b3c4d5e6f",
+		"clientSeeds": [],
+		"commitment": "630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd",
+		"handSeed": "ffa9012baa18dc0fcaa36eb0367eee4bf6333b49bf5dd8cbf40d13020a035c81",
+		"deck": "Js Qd 9d Kd Tc 6h 6c 5h Ts 2c 3c 5d 2d Ac 9s 2h Qh Kc 7h Qc 4h Qs 4d 6s 7d 7c 5s 8d 9h Jh 9c 3h Th 2s 5c 3s 3d 8c Td Ah Jd 8h Ad Ks 4c Kh 4s 6d 7s Jc As 8s"
+	},
+	{
+		"name": "two client seeds, non-ASCII",
+		"serverSeed": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+		"handId": "5d41402a-bc4b-4a76-b971-9d911017c592",
+		"clientSeeds": ["c0ffee", "Игрок 🂡"],
+		"commitment": "5c5cfbd0d57154c7d850850aca75ec190560e99bd34032f1e69c2f75883595da",
+		"handSeed": "2db1819432533c3a7e78807c5b746dda0f9146976b55a779c7b42a6c04203be3",
+		"deck": "7h Qs 5h Ah 4s Ac 6d 9h 3h 3d Td Kh 5s 5c Qh Jc Ks Kd Js Kc Jh 6s 6c 3c 7d 2h 8c 9s Ad 4h 2d 3s 9d 2c Jd As 9c Qc 8d 8h Th 8s 2s Qd 4d 4c 7s 5d Tc Ts 7c 6h"
+	},
+	{
+		"name": "all-ones server seed",
+		"serverSeed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		"handId": "hand-1",
+		"clientSeeds": ["a"],
+		"commitment": "af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051",
+		"handSeed": "43d485dae6c84dfceef2a613d0f8c8ce707edb7f0642abaefa413de57dd545d6",
+		"deck": "3c Jh 6c 9c 9s 6s 5s Th Qd 2h 8c 4s Js Kc Ah Kd 7d 4h Ks Qs 4d 9h 6d 2c 5c 5d 3h 5h Jd Qc Kh 8s As Ts 9d 7c 4c Jc Ad 2d 6h 2s 8d 3s Qh 8h Tc Td 7h 7s Ac 3d"
+	}
+]
