@@ -5,7 +5,7 @@ import { type HandConfig, MAX_PLAYERS, MIN_PLAYERS } from "./config.js";
 import type { HandError, InvalidConfigReason } from "./errors.js";
 import type { HandEvent } from "./events.js";
 import { replayHand } from "./evolve.js";
-import { blindSeats, clockwiseFrom } from "./positions.js";
+import { clockwiseFrom } from "./positions.js";
 import type { ActiveHand, HandState, PlayerState } from "./state.js";
 import { advanceHand } from "./streets.js";
 
@@ -18,6 +18,34 @@ const reject = (error: HandError): Decision => ({ ok: false, error });
 
 const isChips = (value: number) => Number.isSafeInteger(value) && value >= 0;
 const isPositiveChips = (value: number) => isChips(value) && value > 0;
+
+/** Whether `seat` lies strictly between `from` and `to`, going clockwise. */
+const between = (from: number, seat: number, to: number) =>
+	from < to ? from < seat && seat < to : seat > from || seat < to;
+
+/**
+ * Whether the blinds sit where the dead button rule puts them (RULES §4): the small blind is the
+ * first player left of the button, or an empty seat between the button and the big blind (a dead
+ * small blind), and the big blind is the next player after it. Heads-up the button posts the
+ * small blind and the other player the big blind (TDA 34-B).
+ */
+function blindSeatsValid(config: HandConfig): boolean {
+	const { players, buttonSeat, smallBlindSeat, bigBlindSeat } = config;
+	if (!isChips(smallBlindSeat) || !isChips(bigBlindSeat)) {
+		return false;
+	}
+	const order = clockwiseFrom(players, buttonSeat).map((player) => player.seat);
+	if (players.length === 2) {
+		return smallBlindSeat === buttonSeat && order[0] === bigBlindSeat;
+	}
+	if (order.includes(smallBlindSeat)) {
+		return order[0] === smallBlindSeat && order[1] === bigBlindSeat;
+	}
+	return (
+		order[0] === bigBlindSeat &&
+		between(buttonSeat, smallBlindSeat, bigBlindSeat)
+	);
+}
 
 /** The first problem with a config, or null when a hand can start with it. */
 export function validateConfig(config: HandConfig): InvalidConfigReason | null {
@@ -47,6 +75,7 @@ export function validateConfig(config: HandConfig): InvalidConfigReason | null {
 	) {
 		return "button";
 	}
+	if (!blindSeatsValid(config)) return "blind-seats";
 	if (
 		deck.length !== CARD_COUNT ||
 		!deck.every(isCard) ||
@@ -58,7 +87,8 @@ export function validateConfig(config: HandConfig): InvalidConfigReason | null {
 }
 
 /**
- * Starts a hand (RULES §4, §5): antes from everyone if the game has them, the blinds, then two
+ * Starts a hand (RULES §4, §5): antes from everyone if the game has them, the blinds where the
+ * config puts them, then two
  * hole cards each, one at a time from the top of the deck, starting left of the button so the
  * button gets the last card. A player short of an ante or a blind posts what they have, all-in.
  */
@@ -80,6 +110,8 @@ function startHand(config: HandConfig): Decision {
 			bigBlind: config.bigBlind,
 			ante: config.ante,
 			buttonSeat: config.buttonSeat,
+			smallBlindSeat: config.smallBlindSeat,
+			bigBlindSeat: config.bigBlindSeat,
 			players,
 			deck: [...config.deck],
 		},
@@ -104,13 +136,12 @@ function startHand(config: HandConfig): Decision {
 			});
 		}
 	}
-	const blinds = blindSeats(players, config.buttonSeat);
 	for (const [blind, seat, size] of [
-		["small", blinds.smallBlind, config.smallBlind],
-		["big", blinds.bigBlind, config.bigBlind],
+		["small", config.smallBlindSeat, config.smallBlind],
+		["big", config.bigBlindSeat, config.bigBlind],
 	] as const) {
-		// A player the ante already put all-in has nothing left to post.
-		if ((stacks.get(seat) as number) > 0) {
+		// Nobody posts a dead small blind on an empty seat, nor a player the ante put all-in.
+		if ((stacks.get(seat) ?? 0) > 0) {
 			events.push({
 				type: "BlindPosted",
 				v: 1,

@@ -37,6 +37,9 @@ export interface ActiveHand {
 	readonly bigBlind: Chips;
 	readonly ante: Chips;
 	readonly buttonSeat: SeatIndex;
+	/** May be an empty seat: a dead small blind. */
+	readonly smallBlindSeat: SeatIndex;
+	readonly bigBlindSeat: SeatIndex;
 	/** In seat order, which is clockwise. */
 	readonly players: readonly PlayerState[];
 	readonly deck: readonly Card[];

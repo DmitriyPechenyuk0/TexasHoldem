@@ -1,7 +1,7 @@
 import { type Card, fullDeck, parseCards } from "../cards/index.js";
 import type { HandConfig, HandPlayer } from "../hand/config.js";
 import type { HandEvent } from "../hand/events.js";
-import { clockwiseFrom } from "../hand/positions.js";
+import { blindSeats, clockwiseFrom } from "../hand/positions.js";
 
 /** Players at seats 0, 1, 2… with 1,000 chips each, named p0, p1, p2… */
 export const players = (count: number, stack = 1000): HandPlayer[] =>
@@ -11,19 +11,32 @@ export const players = (count: number, stack = 1000): HandPlayer[] =>
 		stack,
 	}));
 
-/** A valid 3-handed 5/10 config with an unshuffled deck; override any part. */
-export const handConfig = (
-	overrides: Partial<HandConfig> = {},
-): HandConfig => ({
-	handId: "hand-1",
-	smallBlind: 5,
-	bigBlind: 10,
-	ante: 0,
-	buttonSeat: 0,
-	players: players(3),
-	deck: fullDeck(),
-	...overrides,
-});
+/**
+ * A valid 3-handed 5/10 config with an unshuffled deck; override any part. Unless overridden, the
+ * blinds sit on the first two players left of the button (heads-up, the button and the other).
+ */
+export function handConfig(overrides: Partial<HandConfig> = {}): HandConfig {
+	const base = {
+		handId: "hand-1",
+		smallBlind: 5,
+		bigBlind: 10,
+		ante: 0,
+		buttonSeat: 0,
+		players: players(3),
+		deck: fullDeck(),
+		...overrides,
+	};
+	// A single player has no blinds to place; such a config is rejected for its player count.
+	const blinds =
+		base.players.length > 1
+			? blindSeats(base.players, base.buttonSeat)
+			: { smallBlind: 0, bigBlind: 0 };
+	return {
+		smallBlindSeat: blinds.smallBlind,
+		bigBlindSeat: blinds.bigBlind,
+		...base,
+	};
+}
 
 /** The `HandStarted` event a valid config produces. */
 export const handStarted = (config: HandConfig = handConfig()): HandEvent => ({
@@ -34,6 +47,8 @@ export const handStarted = (config: HandConfig = handConfig()): HandEvent => ({
 	bigBlind: config.bigBlind,
 	ante: config.ante,
 	buttonSeat: config.buttonSeat,
+	smallBlindSeat: config.smallBlindSeat,
+	bigBlindSeat: config.bigBlindSeat,
 	players: [...config.players].sort((a, b) => a.seat - b.seat),
 	deck: [...config.deck],
 });

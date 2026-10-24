@@ -22,6 +22,13 @@ export interface HandConfig {
 	readonly ante: Chips;
 	/** May be an empty seat under the dead button rule (RULES §4). */
 	readonly buttonSeat: SeatIndex;
+	/**
+	 * Where the small blind sits. An empty seat means a dead small blind: nobody posts it this hand
+	 * (RULES §4). Heads-up it is the button (TDA 34-B).
+	 */
+	readonly smallBlindSeat: SeatIndex;
+	/** A player dealt in; the big blind moves forward exactly one seat each hand (RULES §4). */
+	readonly bigBlindSeat: SeatIndex;
 	/** The players dealt in, each with chips. */
 	readonly players: readonly HandPlayer[];
 	/** The shuffled deck (POK-45); cards are dealt from position 0. */

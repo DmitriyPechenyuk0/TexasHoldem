@@ -10,6 +10,7 @@ export type InvalidConfigReason =
 	| "blinds"
 	| "ante"
 	| "button"
+	| "blind-seats"
 	| "deck";
 
 /**
