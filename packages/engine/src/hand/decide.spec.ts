@@ -120,6 +120,44 @@ describe("StartHand", () => {
 		["ante", { ante: -1 }],
 		["button", { buttonSeat: -1 }],
 		["button", { players: players(2), buttonSeat: 5 }],
+		["blind-seats", { smallBlindSeat: -1 }],
+		["blind-seats", { bigBlindSeat: 1.5 }],
+		["blind-seats", { smallBlindSeat: 2, bigBlindSeat: 1 }],
+		["blind-seats", { bigBlindSeat: 0 }],
+		[
+			"blind-seats",
+			{
+				players: players(2),
+				buttonSeat: 0,
+				smallBlindSeat: 1,
+				bigBlindSeat: 0,
+			},
+		],
+		// Players at 0, 3 and 4: a dead small blind must sit between the button and the big blind.
+		[
+			"blind-seats",
+			{
+				players: [0, 3, 4].map((seat) => ({
+					seat,
+					playerId: `p${seat}`,
+					stack: 10,
+				})),
+				smallBlindSeat: 5,
+				bigBlindSeat: 3,
+			},
+		],
+		[
+			"blind-seats",
+			{
+				players: [0, 3, 4].map((seat) => ({
+					seat,
+					playerId: `p${seat}`,
+					stack: 10,
+				})),
+				smallBlindSeat: 2,
+				bigBlindSeat: 4,
+			},
+		],
 		["deck", { deck: handConfig().deck.slice(1) }],
 		["deck", { deck: [...handConfig().deck.slice(1), 1 as Card] }],
 		["deck", { deck: [...handConfig().deck.slice(1), 52 as Card] }],

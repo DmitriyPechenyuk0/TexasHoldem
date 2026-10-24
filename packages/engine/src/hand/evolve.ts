@@ -1,7 +1,6 @@
 import type { SeatIndex } from "./config.js";
 import type { HandEvent } from "./events.js";
 import { nextToAct } from "./betting.js";
-import { blindSeats } from "./positions.js";
 import { showdownTurn } from "./showdown.js";
 import {
 	type ActiveHand,
@@ -67,6 +66,8 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 				bigBlind: event.bigBlind,
 				ante: event.ante,
 				buttonSeat: event.buttonSeat,
+				smallBlindSeat: event.smallBlindSeat,
+				bigBlindSeat: event.bigBlindSeat,
 				players: event.players.map(({ seat, playerId, stack }) => ({
 					seat,
 					playerId,
@@ -113,11 +114,10 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 				hand = updatePlayer(hand, seat, () => ({ holeCards: cards }));
 			}
 			// Preflop the first to act sits left of the big blind; heads-up that is the button.
-			const { bigBlind } = blindSeats(hand.players, hand.buttonSeat);
 			return {
 				...hand,
 				nextCard: hand.nextCard + event.hands.length * 2,
-				toAct: nextToAct(hand, bigBlind),
+				toAct: nextToAct(hand, hand.bigBlindSeat),
 			};
 		}
 		case "PlayerActed": {

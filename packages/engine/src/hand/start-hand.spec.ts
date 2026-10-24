@@ -161,6 +161,20 @@ describe("StartHand: blinds, dealing and the first to act", () => {
 		expect(postflopToAct(events)).toBe(3);
 	});
 
+	it("posts no small blind when it is dead, and still starts left of the big blind", () => {
+		// The big blind moved on to seat 3 and the player who would post the small blind left seat 2.
+		const config = handConfig({
+			players: [at(0, 1000), at(3, 1000), at(4, 1000)],
+			buttonSeat: 0,
+			smallBlindSeat: 2,
+			bigBlindSeat: 3,
+		});
+		const events = [handStarted(config), blind(3, "big", 10), dealt([3, 4, 0])];
+		const state = start(config).then(events) as ActiveHand;
+		expect(state).toMatchObject({ toAct: 4, currentBet: 10 });
+		expect(postflopToAct(events)).toBe(3);
+	});
+
 	it("deals around a dead button on an empty seat", () => {
 		const config = handConfig({ players: players(3), buttonSeat: 5 });
 		const events = [

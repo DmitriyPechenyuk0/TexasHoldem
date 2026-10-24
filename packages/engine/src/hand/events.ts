@@ -24,6 +24,8 @@ export type HandEvent =
 			readonly bigBlind: Chips;
 			readonly ante: Chips;
 			readonly buttonSeat: SeatIndex;
+			readonly smallBlindSeat: SeatIndex;
+			readonly bigBlindSeat: SeatIndex;
 			readonly players: readonly HandPlayer[];
 			/** The full deck order. Never shown to players before the hand ends. */
 			readonly deck: readonly Card[];
