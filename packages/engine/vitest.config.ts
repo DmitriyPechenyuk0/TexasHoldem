@@ -1,6 +1,15 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+	resolve: {
+		// The README examples import the package by name; run them against the sources.
+		alias: {
+			"@holdem/engine": fileURLToPath(
+				new URL("./src/index.ts", import.meta.url),
+			),
+		},
+	},
 	test: {
 		globals: true,
 		include: ["src/**/*.spec.ts"],

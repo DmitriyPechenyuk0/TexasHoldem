@@ -1,5 +1,88 @@
-export * from "./cards/index.js";
-export * from "./evaluator/index.js";
-export * from "./fairness/index.js";
-export * from "./hand/index.js";
-export * from "./table/index.js";
+// The public API of @holdem/engine. Everything else under src is internal and may change; the list
+// is pinned by index.spec.ts, so a new export is a deliberate choice.
+
+export {
+	card,
+	CARD_COUNT,
+	type Card,
+	type CardText,
+	formatCard,
+	formatCards,
+	fullDeck,
+	isCard,
+	parseCard,
+	parseCards,
+	RANKS,
+	type Rank,
+	rankOf,
+	SUITS,
+	type Suit,
+	suitOf,
+} from "./cards/index.js";
+export {
+	categoryOfScore,
+	compareHands,
+	evaluateHand,
+	HAND_CATEGORIES,
+	type HandCategory,
+	type HandScore,
+	type HandValue,
+	isRoyalFlush,
+	scoreHand,
+} from "./evaluator/index.js";
+export {
+	bytesToHex,
+	commitServerSeed,
+	type DeckVerification,
+	type DeckVerificationInput,
+	deriveHandSeed,
+	hexToBytes,
+	MIN_SEED_BYTES,
+	shuffleDeck,
+	verifyDeck,
+} from "./fairness/index.js";
+export {
+	type ActedKind,
+	type ActionKind,
+	type ActiveHand,
+	type Aggression,
+	type Chips,
+	type Decision,
+	decide,
+	evolve,
+	type HandCommand,
+	type HandCommandType,
+	type HandConfig,
+	type HandError,
+	type HandErrorCode,
+	type HandEvent,
+	type HandEventType,
+	type HandPlayer,
+	type HandState,
+	type IdleHand,
+	initialHandState,
+	type InvalidConfigReason,
+	type LegalActions,
+	legalActions,
+	MAX_PLAYERS,
+	MIN_PLAYERS,
+	type PlayerEvent,
+	type PlayerSeatView,
+	type PlayerState,
+	type PlayerView,
+	type Pot,
+	type PotState,
+	redactEvent,
+	replayHand,
+	type SeatIndex,
+	type Street,
+	toPlayerView,
+	validateConfig,
+	type Viewer,
+} from "./hand/index.js";
+export {
+	firstHandPositions,
+	type HandPositions,
+	nextHandPositions,
+	type SeatedPlayer,
+} from "./table/index.js";
