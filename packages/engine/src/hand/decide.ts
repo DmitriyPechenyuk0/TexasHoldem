@@ -1,8 +1,9 @@
-import { CARD_COUNT, isCard } from "../cards/index.js";
+import { type Card, CARD_COUNT, isCard } from "../cards/index.js";
 import type { HandCommand } from "./commands.js";
 import { type HandConfig, MAX_PLAYERS, MIN_PLAYERS } from "./config.js";
 import type { HandError, InvalidConfigReason } from "./errors.js";
 import type { HandEvent } from "./events.js";
+import { blindSeats, clockwiseFrom } from "./positions.js";
 import type { ActiveHand, HandState } from "./state.js";
 
 export type Decision =
@@ -36,7 +37,13 @@ export function validateConfig(config: HandConfig): InvalidConfigReason | null {
 		return "blinds";
 	}
 	if (!isChips(config.ante)) return "ante";
-	if (!isChips(config.buttonSeat)) return "button";
+	// Heads-up the button posts the small blind, so it must be on a player (TDA 34-B).
+	if (
+		!isChips(config.buttonSeat) ||
+		(players.length === 2 && !seats.includes(config.buttonSeat))
+	) {
+		return "button";
+	}
 	if (
 		deck.length !== CARD_COUNT ||
 		!deck.every(isCard) ||
@@ -47,25 +54,80 @@ export function validateConfig(config: HandConfig): InvalidConfigReason | null {
 	return null;
 }
 
+/**
+ * Starts a hand (RULES §4, §5): antes from everyone if the game has them, the blinds, then two
+ * hole cards each, one at a time from the top of the deck, starting left of the button so the
+ * button gets the last card. A player short of an ante or a blind posts what they have, all-in.
+ */
 function startHand(config: HandConfig): Decision {
 	const reason = validateConfig(config);
 	if (reason) {
 		return reject({ code: "hand.invalid-config", params: { reason } });
 	}
 	// Copies, so an event never shares arrays with the caller and stays plain JSON.
-	return accept({
-		type: "HandStarted",
+	const players = config.players
+		.map(({ seat, playerId, stack }) => ({ seat, playerId, stack }))
+		.toSorted((a, b) => a.seat - b.seat);
+	const events: HandEvent[] = [
+		{
+			type: "HandStarted",
+			v: 1,
+			handId: config.handId,
+			smallBlind: config.smallBlind,
+			bigBlind: config.bigBlind,
+			ante: config.ante,
+			buttonSeat: config.buttonSeat,
+			players,
+			deck: [...config.deck],
+		},
+	];
+
+	const stacks = new Map(players.map((player) => [player.seat, player.stack]));
+	const post = (seat: number, wanted: number) => {
+		const stack = stacks.get(seat) as number;
+		const amount = Math.min(wanted, stack);
+		stacks.set(seat, stack - amount);
+		return { amount, allIn: amount === stack };
+	};
+
+	const dealingOrder = clockwiseFrom(players, config.buttonSeat);
+	if (config.ante > 0) {
+		for (const { seat } of dealingOrder) {
+			events.push({
+				type: "AntePosted",
+				v: 1,
+				seat,
+				...post(seat, config.ante),
+			});
+		}
+	}
+	const blinds = blindSeats(players, config.buttonSeat);
+	for (const [blind, seat, size] of [
+		["small", blinds.smallBlind, config.smallBlind],
+		["big", blinds.bigBlind, config.bigBlind],
+	] as const) {
+		// A player the ante already put all-in has nothing left to post.
+		if ((stacks.get(seat) as number) > 0) {
+			events.push({
+				type: "BlindPosted",
+				v: 1,
+				seat,
+				blind,
+				...post(seat, size),
+			});
+		}
+	}
+
+	const count = dealingOrder.length;
+	events.push({
+		type: "HoleCardsDealt",
 		v: 1,
-		handId: config.handId,
-		smallBlind: config.smallBlind,
-		bigBlind: config.bigBlind,
-		ante: config.ante,
-		buttonSeat: config.buttonSeat,
-		players: config.players
-			.map(({ seat, playerId, stack }) => ({ seat, playerId, stack }))
-			.toSorted((a, b) => a.seat - b.seat),
-		deck: [...config.deck],
+		hands: dealingOrder.map(({ seat }, index) => ({
+			seat,
+			cards: [config.deck[index], config.deck[count + index]] as [Card, Card],
+		})),
 	});
+	return { ok: true, events };
 }
 
 function revealAtShowdown(
@@ -110,7 +172,7 @@ export function decide(command: HandCommand, state: HandState): Decision {
 	switch (command.type) {
 		case "Act":
 		case "Timeout":
-			// Turn order arrives with blinds and betting (POK-48, POK-49): until then nobody is to act.
+			// Betting arrives with POK-49: until then every action is refused.
 			return reject({
 				code: "hand.not-your-turn",
 				params: { seat: command.seat },

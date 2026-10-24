@@ -1,5 +1,6 @@
 import type { SeatIndex } from "./config.js";
 import type { HandEvent } from "./events.js";
+import { blindSeats, clockwiseFrom } from "./positions.js";
 import {
 	type ActiveHand,
 	type HandState,
@@ -29,6 +30,12 @@ function updatePlayer(
 		),
 	};
 }
+
+/** The first player left of `seat` who can still act: not folded and not all-in. */
+const firstToActAfter = (hand: ActiveHand, seat: SeatIndex): SeatIndex | null =>
+	clockwiseFrom(hand.players, seat).find(
+		(player) => !player.folded && !player.allIn,
+	)?.seat ?? null;
 
 /** Chips moving from a player's stack into their bet for this street. */
 const putIn = (
@@ -94,14 +101,22 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 			const hand = updatePlayer(active(state, event), event.seat, (player) =>
 				putIn(player, event.amount, event.allIn),
 			);
-			return { ...hand, currentBet: Math.max(hand.currentBet, event.amount) };
+			// A short big blind is all-in for less, but the others still call the full big blind.
+			const bet = event.blind === "big" ? hand.bigBlind : event.amount;
+			return { ...hand, currentBet: Math.max(hand.currentBet, bet) };
 		}
 		case "HoleCardsDealt": {
 			let hand = active(state, event);
 			for (const { seat, cards } of event.hands) {
 				hand = updatePlayer(hand, seat, () => ({ holeCards: cards }));
 			}
-			return { ...hand, nextCard: hand.nextCard + event.hands.length * 2 };
+			// Preflop the first to act sits left of the big blind; heads-up that is the button.
+			const { bigBlind } = blindSeats(hand.players, hand.buttonSeat);
+			return {
+				...hand,
+				nextCard: hand.nextCard + event.hands.length * 2,
+				toAct: firstToActAfter(hand, bigBlind),
+			};
 		}
 		case "PlayerActed": {
 			const hand = updatePlayer(active(state, event), event.seat, (player) =>
@@ -131,7 +146,8 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 				board: [...hand.board, ...event.cards],
 				nextCard: hand.nextCard + 1 + event.cards.length,
 				street: event.street,
-				toAct: null,
+				// After the flop the first active player left of the button acts first (RULES §6).
+				toAct: firstToActAfter(hand, hand.buttonSeat),
 				currentBet: 0,
 				minRaise: hand.bigBlind,
 				lastAggressor: null,
