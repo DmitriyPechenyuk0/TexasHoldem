@@ -37,3 +37,11 @@ export {
 	type PlayerState,
 	type PotState,
 } from "./state.js";
+export {
+	type PlayerEvent,
+	type PlayerSeatView,
+	type PlayerView,
+	redactEvent,
+	toPlayerView,
+	type Viewer,
+} from "./view.js";

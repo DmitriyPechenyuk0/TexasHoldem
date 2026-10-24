@@ -7,6 +7,7 @@ import {
 	riggedDeck,
 } from "./hand-fixtures.js";
 import { play } from "./hand-harness.js";
+import { simulateHand } from "./hand-simulation.js";
 
 describe("hand fixtures", () => {
 	it("builds players, a valid config and its HandStarted event", () => {
@@ -40,6 +41,16 @@ describe("hand fixtures", () => {
 		expect(formatCards(holeCards("As Kd"))).toBe("As Kd");
 		expect(() => holeCards("As")).toThrow(RangeError);
 		expect(() => holeCards("As Kd Qh")).toThrow(RangeError);
+	});
+});
+
+describe("simulateHand", () => {
+	it("plays a hand to the end, and fails loudly on a command the engine rejects", () => {
+		const events = simulateHand(handConfig(), [0]);
+		expect(events.at(-1)?.type).toBe("HandEnded");
+		expect(() =>
+			simulateHand(handConfig({ players: players(1) }), [0]),
+		).toThrow("StartHand was rejected: hand.invalid-config");
 	});
 });
 
