@@ -39,11 +39,12 @@ const atShowdown: HandEvent[] = [
 ];
 
 describe("StartHand", () => {
-	it("starts a hand with the players in seat order", () => {
+	it("records the config in HandStarted, with the players in seat order", () => {
 		const config = handConfig({ players: [...players(3)].reverse() });
-		given([])
-			.when({ type: "StartHand", config })
-			.then([handStarted(handConfig())]);
+		const { decision } = given([]).when({ type: "StartHand", config });
+		expect(decision.ok && decision.events[0]).toEqual(
+			handStarted(handConfig()),
+		);
 	});
 
 	it("cannot start twice", () => {
@@ -115,6 +116,7 @@ describe("StartHand", () => {
 		["blinds", { smallBlind: 20, bigBlind: 10 }],
 		["ante", { ante: -1 }],
 		["button", { buttonSeat: -1 }],
+		["button", { players: players(2), buttonSeat: 5 }],
 		["deck", { deck: handConfig().deck.slice(1) }],
 		["deck", { deck: [...handConfig().deck.slice(1), 1 as Card] }],
 		["deck", { deck: [...handConfig().deck.slice(1), 52 as Card] }],
@@ -132,9 +134,8 @@ describe("StartHand", () => {
 			ante: 10,
 			buttonSeat: 42,
 		});
-		given([])
-			.when({ type: "StartHand", config })
-			.then([handStarted(config)]);
+		const { decision } = given([]).when({ type: "StartHand", config });
+		expect(decision.ok && decision.events[0]).toEqual(handStarted(config));
 	});
 });
 
