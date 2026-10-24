@@ -6,14 +6,16 @@
 		"dev": "next dev",
 		"build": "next build",
 		"start": "next start",
-		"lint": "eslint && pnpm run lint:fsd",
+		"lint": "eslint && pnpm run lint:fsd && pnpm run lint:i18n",
 		"lint:fsd": "steiger ./src",
+		"lint:i18n": "node scripts/check-messages.mjs",
 		"typecheck": "next typegen && tsc --noEmit"
 	},
 	"dependencies": {
 		"@holdem/engine": "workspace:*",
 		"@holdem/shared": "workspace:*",
 		"next": "^16.4.2",
+		"next-intl": "^4.14.9",
 		"react": "^19.3.1",
 		"react-dom": "^19.3.1",
 		"server-only": "^0.0.1",
@@ -22,12 +24,14 @@
 	},
 	"devDependencies": {
 		"@feature-sliced/steiger-plugin": "^0.8.0",
+		"@formatjs/icu-messageformat-parser": "^3.5.22",
 		"@tailwindcss/turbopack": "^4.3.3",
 		"@types/node": "^24.19.2",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
 		"eslint": "^9.39.5",
 		"eslint-config-next": "^16.4.2",
+		"eslint-plugin-i18next": "^6.1.5",
 		"steiger": "^0.8.0",
 		"tailwindcss": "^4.3.3",
 		"typescript": "^6.0.3"

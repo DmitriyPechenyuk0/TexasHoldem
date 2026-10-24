@@ -1,1 +1,5 @@
-export { metadata, RootLayout } from "./layouts/root-layout";
+export {
+	generateMetadata,
+	generateStaticParams,
+	LocaleLayout,
+} from "./layouts/locale-layout";
