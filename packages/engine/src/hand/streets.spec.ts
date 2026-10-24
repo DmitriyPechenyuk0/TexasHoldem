@@ -193,12 +193,13 @@ describe("everyone else folds (RULES §5, TDA 17-B)", () => {
 	])(
 		"%s: an uncalled bet goes back and the bettor wins the pot",
 		(_, history) => {
-			// With the bet back, nothing new is left to collect: the 30 from preflop is the pot.
+			// With the bet back, the 30 from preflop is the pot, now only for the bettor.
 			given(play(history, act(1, "bet", 50), act(2, "fold")))
 				.when(act(0, "fold"))
 				.then([
 					acted(0, "fold"),
 					returned(1, 50),
+					collected(30, [1]),
 					awarded(1, 30),
 					ended(990, 1020, 990),
 				]);
@@ -226,7 +227,7 @@ describe("everyone else folds (RULES §5, TDA 17-B)", () => {
 			]);
 	});
 
-	it("a fold when checking is free ends the hand too, with nothing new to collect", () => {
+	it("a fold when checking is free ends the hand too", () => {
 		// Heads-up the big blind (seat 1) acts first after the flop.
 		const headsUpFlop = play(
 			start(headsUp([1000, 1000])),
@@ -235,7 +236,12 @@ describe("everyone else folds (RULES §5, TDA 17-B)", () => {
 		);
 		given(headsUpFlop)
 			.when(act(1, "fold"))
-			.then([acted(1, "fold"), awarded(0, 20), ended(1010, 990)]);
+			.then([
+				acted(1, "fold"),
+				collected(20, [0]),
+				awarded(0, 20),
+				ended(1010, 990),
+			]);
 	});
 
 	it("takes no further commands once the hand has ended", () => {
@@ -358,5 +364,49 @@ describe("all-in run-out (RULES §10, TDA 16)", () => {
 		);
 		expect(stateOf(history)).toMatchObject({ street: "flop", toAct: 1 });
 		expect(history.at(-2)).toEqual(collected(300, [0, 1, 2]));
+	});
+});
+
+describe("side pots (RULES §9)", () => {
+	// Seat 0 is all-in for 100 preflop and both blinds call: one pot of 300, then the flop.
+	const shortStack = handConfig({
+		players: [{ seat: 0, playerId: "p0", stack: 100 }, ...players(3).slice(1)],
+	});
+	const allInCalled = play(
+		start(shortStack),
+		act(0, "all-in"),
+		act(1, "call"),
+		act(2, "call"),
+	);
+
+	it("puts what the others bet above the all-in into a side pot", () => {
+		given(play(allInCalled, act(1, "bet", 100)))
+			.when(act(2, "call"))
+			.then([
+				acted(2, "call", 100),
+				{
+					type: "PotsCollected",
+					v: 1,
+					pots: [
+						{ amount: 300, eligibleSeats: [0, 1, 2] },
+						{ amount: 200, eligibleSeats: [1, 2] },
+					],
+				},
+				dealt("turn", 10, 11),
+			]);
+	});
+
+	it("rebuilds the pots when a player folds, then runs out once only one can bet", () => {
+		// The bet is uncalled and goes back; seat 2's 100 stays in the main pot it can no longer win.
+		given(play(allInCalled, act(1, "bet", 100)))
+			.when(act(2, "fold"))
+			.then([
+				acted(2, "fold"),
+				returned(1, 100),
+				collected(300, [0, 1]),
+				dealt("turn", 10, 11),
+				dealt("river", 12, 13),
+				showdown,
+			]);
 	});
 });
