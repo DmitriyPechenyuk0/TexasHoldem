@@ -29,22 +29,6 @@ const table = (overrides: Partial<HandConfig>, ...stacks: number[]) =>
 		})),
 	});
 
-/** Collects the bets and deals the flop from the top of the deck. */
-function toFlop(history: readonly HandEvent[]): HandEvent[] {
-	const { deck, nextCard } = stateOf(history);
-	return [
-		...history,
-		{ type: "PotsCollected", v: 1, pots: [] },
-		{
-			type: "StreetDealt",
-			v: 1,
-			street: "flop",
-			burn: deck[nextCard]!,
-			cards: deck.slice(nextCard + 1, nextCard + 4),
-		},
-	];
-}
-
 describe("TDA 47: a short all-in does not reopen the betting", () => {
 	it("Example 1: after UTG's short all-in, players yet to act keep every option", () => {
 		// Blinds 50/100, pre-flop. Button 0, blinds 1 and 2; UTG (seat 3) is all-in for 150.
@@ -93,7 +77,7 @@ describe("TDA 47: a short all-in does not reopen the betting", () => {
 		);
 		// After the flop: A bets 100, B is all-in for 125, C calls, D is all-in for 200, E calls.
 		const flop = play(
-			toFlop(preflop),
+			preflop,
 			act(0, "bet", 100),
 			act(1, "all-in"),
 			act(2, "call"),
@@ -127,7 +111,10 @@ describe("TDA 47: a short all-in does not reopen the betting", () => {
 			given(afterCall)
 				.when(act(2, "all-in"))
 				.then({ code: "hand.betting-not-reopened" });
-			expect(stateOf(play(afterCall, act(2, "call"))).toAct).toBeNull();
+			expect(stateOf(play(afterCall, act(2, "call")))).toMatchObject({
+				street: "turn",
+				toAct: 0,
+			});
 		});
 	});
 
@@ -187,7 +174,7 @@ describe("TDA 47: a short all-in does not reopen the betting", () => {
 			act(2, "check"),
 		);
 		const history = play(
-			toFlop(preflop),
+			preflop,
 			act(1, "check"),
 			act(2, "check"),
 			act(3, "all-in"),
@@ -206,13 +193,11 @@ describe("TDA 47: a short all-in does not reopen the betting", () => {
 	});
 
 	it("a full raise reopens the betting for everyone who acted before it", () => {
-		const flop = toFlop(
-			play(
-				play([], { type: "StartHand", config: handConfig() }),
-				act(0, "call"),
-				act(1, "call"),
-				act(2, "check"),
-			),
+		const flop = play(
+			play([], { type: "StartHand", config: handConfig() }),
+			act(0, "call"),
+			act(1, "call"),
+			act(2, "check"),
 		);
 		const history = play(
 			flop,

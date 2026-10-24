@@ -35,22 +35,6 @@ const at = (seat: number, stack: number): HandPlayer => ({
 	stack,
 });
 
-/** Ends preflop by hand: collects the bets and deals the flop from the top of the deck. */
-function toFlop(history: readonly HandEvent[]): HandEvent[] {
-	const { deck, nextCard } = stateOf(history);
-	return [
-		...history,
-		{ type: "PotsCollected", v: 1, pots: [] },
-		{
-			type: "StreetDealt",
-			v: 1,
-			street: "flop",
-			burn: deck[nextCard]!,
-			cards: deck.slice(nextCard + 1, nextCard + 4),
-		},
-	];
-}
-
 // Three-handed 5/10, 1,000 chips each: button 0, small blind 1, big blind 2; seat 0 acts first.
 const threeHanded = start(handConfig());
 
@@ -72,7 +56,11 @@ describe("turn order (RULES §6)", () => {
 			callAmount: 0,
 			aggression: { kind: "raise", minTo: 20, maxTo: 1000 },
 		});
-		expect(stateOf(play(limped, act(2, "check"))).toAct).toBeNull();
+		// The check closes the round, and the flop comes.
+		expect(stateOf(play(limped, act(2, "check")))).toMatchObject({
+			street: "flop",
+			toAct: 1,
+		});
 	});
 
 	it("brings the action back to everyone who has not matched a raise", () => {
@@ -85,14 +73,17 @@ describe("turn order (RULES §6)", () => {
 		expect(stateOf(raised).toAct).toBe(0);
 		const afterCalls = play(raised, act(0, "call"));
 		expect(stateOf(afterCalls).toAct).toBe(1);
-		expect(stateOf(play(afterCalls, act(1, "fold"))).toAct).toBeNull();
+		expect(stateOf(play(afterCalls, act(1, "fold")))).toMatchObject({
+			street: "flop",
+			toAct: 2,
+		});
 	});
 
-	it("ends the round when everyone else folds", () => {
+	it("ends the hand when everyone else folds", () => {
 		const state = stateOf(
 			play(threeHanded, act(0, "raise", 30), act(1, "fold"), act(2, "fold")),
 		);
-		expect(state.toAct).toBeNull();
+		expect(state).toMatchObject({ status: "ended", toAct: null });
 	});
 
 	it("skips a player who is all-in", () => {
@@ -107,28 +98,38 @@ describe("turn order (RULES §6)", () => {
 			act(1, "call"),
 		);
 		expect(stateOf(history).toAct).toBe(2);
-		expect(stateOf(play(history, act(2, "call"))).toAct).toBeNull();
+		// On the flop seat 3 is skipped again: after seat 2 the action goes to the button.
+		const flop = play(
+			history,
+			act(2, "call"),
+			act(1, "check"),
+			act(2, "check"),
+		);
+		expect(stateOf(flop)).toMatchObject({ street: "flop", toAct: 0 });
 	});
 
 	it("lets the first player after the button open each street, and ends when all check", () => {
-		const flop = toFlop(
-			play(threeHanded, act(0, "call"), act(1, "call"), act(2, "check")),
+		const flop = play(
+			threeHanded,
+			act(0, "call"),
+			act(1, "call"),
+			act(2, "check"),
 		);
-		expect(stateOf(flop).toAct).toBe(1);
+		expect(stateOf(flop)).toMatchObject({ street: "flop", toAct: 1 });
 		expect(
-			stateOf(play(flop, act(1, "check"), act(2, "check"), act(0, "check")))
-				.toAct,
-		).toBeNull();
+			stateOf(play(flop, act(1, "check"), act(2, "check"), act(0, "check"))),
+		).toMatchObject({ street: "turn", toAct: 1 });
 		const bet = play(flop, act(1, "check"), act(2, "bet", 10), act(0, "call"));
 		expect(stateOf(bet).toAct).toBe(1);
-		expect(stateOf(play(bet, act(1, "call"))).toAct).toBeNull();
+		expect(stateOf(play(bet, act(1, "call")))).toMatchObject({
+			street: "turn",
+			toAct: 1,
+		});
 	});
 
-	it("refuses to act once the round is over", () => {
+	it("refuses to act once the hand is over", () => {
 		const done = play(threeHanded, act(0, "fold"), act(1, "fold"));
-		given(done)
-			.when(act(2, "check"))
-			.then({ code: "hand.not-your-turn", params: { seat: 2 } });
+		given(done).when(act(2, "check")).then({ code: "hand.over" });
 	});
 });
 
@@ -149,8 +150,11 @@ describe("player actions (RULES §7)", () => {
 	});
 
 	it("§7 call needs a bet to call", () => {
-		const flop = toFlop(
-			play(threeHanded, act(0, "call"), act(1, "call"), act(2, "check")),
+		const flop = play(
+			threeHanded,
+			act(0, "call"),
+			act(1, "call"),
+			act(2, "check"),
 		);
 		given(flop).when(act(1, "call")).then({ code: "hand.nothing-to-call" });
 	});
@@ -159,8 +163,11 @@ describe("player actions (RULES §7)", () => {
 		given(threeHanded)
 			.when(act(0, "bet", 30))
 			.then({ code: "hand.illegal-bet" });
-		const flop = toFlop(
-			play(threeHanded, act(0, "call"), act(1, "call"), act(2, "check")),
+		const flop = play(
+			threeHanded,
+			act(0, "call"),
+			act(1, "call"),
+			act(2, "check"),
 		);
 		given(flop)
 			.when(act(1, "raise", 30))
@@ -171,10 +178,15 @@ describe("player actions (RULES §7)", () => {
 	});
 
 	it("TDA 58 fold is always allowed, even when checking is free", () => {
-		const limped = play(threeHanded, act(0, "call"), act(1, "call"));
-		given(limped)
-			.when(act(2, "fold"))
-			.then([acted(2, "fold")]);
+		const flop = play(
+			threeHanded,
+			act(0, "call"),
+			act(1, "call"),
+			act(2, "check"),
+		);
+		given(flop)
+			.when(act(1, "fold"))
+			.then([acted(1, "fold")]);
 	});
 
 	it("calls all-in for less when the stack is short of the call", () => {
@@ -192,8 +204,11 @@ describe("player actions (RULES §7)", () => {
 
 describe("no-limit betting (RULES §8)", () => {
 	it("§8 the minimum bet is the big blind", () => {
-		const flop = toFlop(
-			play(threeHanded, act(0, "call"), act(1, "call"), act(2, "check")),
+		const flop = play(
+			threeHanded,
+			act(0, "call"),
+			act(1, "call"),
+			act(2, "check"),
 		);
 		expect(legalActions(stateOf(flop), 1)?.aggression).toEqual({
 			kind: "bet",
@@ -212,14 +227,12 @@ describe("no-limit betting (RULES §8)", () => {
 		const config = handConfig({
 			players: [at(0, 1000), at(1, 1000), at(2, 1000), at(3, 17)],
 		});
-		const flop = toFlop(
-			play(
-				start(config),
-				act(3, "call"),
-				act(0, "call"),
-				act(1, "call"),
-				act(2, "check"),
-			),
+		const flop = play(
+			start(config),
+			act(3, "call"),
+			act(0, "call"),
+			act(1, "call"),
+			act(2, "check"),
 		);
 		// Seat 3 has 7 chips left: the only bet it can make is all-in for 7.
 		const history = play(flop, act(1, "check"), act(2, "check"));
@@ -256,7 +269,7 @@ describe("no-limit betting (RULES §8)", () => {
 		);
 		// After the flop: A (seat 1) bets 600, B raises to 1,600, C re-raises to 3,600.
 		const history = play(
-			toFlop(preflop),
+			preflop,
 			act(1, "bet", 600),
 			act(2, "raise", 1600),
 			act(3, "raise", 3600),
@@ -357,7 +370,11 @@ describe("no-limit betting (RULES §8)", () => {
 		given(history)
 			.when(act(0, "all-in"))
 			.then({ code: "hand.raise-not-allowed" });
-		expect(stateOf(play(history, act(0, "call"))).toAct).toBeNull();
+		// Nobody can bet after the call, so the board runs out to the showdown.
+		expect(stateOf(play(history, act(0, "call")))).toMatchObject({
+			street: "showdown",
+			toAct: null,
+		});
 	});
 });
 
@@ -366,9 +383,9 @@ describe("Timeout", () => {
 		given(threeHanded)
 			.when({ type: "Timeout", seat: 0 })
 			.then([{ ...acted(0, "fold"), auto: true }]);
-		given(play(threeHanded, act(0, "call"), act(1, "call")))
-			.when({ type: "Timeout", seat: 2 })
-			.then([{ ...acted(2, "check"), auto: true }]);
+		given(play(threeHanded, act(0, "call"), act(1, "call"), act(2, "check")))
+			.when({ type: "Timeout", seat: 1 })
+			.then([{ ...acted(1, "check"), auto: true }]);
 	});
 
 	it("refuses a stale timeout for a player who is not to act", () => {

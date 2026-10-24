@@ -50,29 +50,6 @@ function permitted(
 	}
 }
 
-/** Stands in for street progression (POK-51): collects the bets and deals the next street. */
-function dealNextStreet(events: readonly HandEvent[]): HandEvent[] | null {
-	const hand = stateOf(events);
-	const next = ({ preflop: "flop", flop: "turn", turn: "river" } as const)[
-		hand.street as "preflop"
-	];
-	if (!next || hand.players.filter((player) => !player.folded).length < 2) {
-		return null;
-	}
-	const count = next === "flop" ? 3 : 1;
-	return [
-		...events,
-		{ type: "PotsCollected", v: 1, pots: [] },
-		{
-			type: "StreetDealt",
-			v: 1,
-			street: next,
-			burn: hand.deck[hand.nextCard]!,
-			cards: hand.deck.slice(hand.nextCard + 1, hand.nextCard + 1 + count),
-		},
-	];
-}
-
 // Weighted so hands usually get past the flop: mostly the player to act, mostly calls and checks.
 const step = fc.record({
 	toActor: fc.oneof(
@@ -126,13 +103,13 @@ it("legalActions agrees with decide, and the round keeps its invariants, on rand
 					amountPick,
 					inRange,
 				} of steps) {
-					let hand = stateOf(events);
+					const hand = stateOf(events);
+					// Streets come on their own, so nobody to act means the showdown or the end.
 					if (hand.toAct === null) {
-						const next = dealNextStreet(events);
-						if (!next) break;
-						events = next;
-						hand = stateOf(events);
-						if (hand.toAct === null) continue;
+						expect(hand.status === "ended" || hand.street === "showdown").toBe(
+							true,
+						);
+						break;
 					}
 					const seat = toActor ? hand.toAct! : seatPick % stacks.length;
 					const legal = legalActions(hand, seat);
@@ -152,8 +129,13 @@ it("legalActions agrees with decide, and the round keeps its invariants, on rand
 
 					events = [...events, ...decision.events];
 					const after = stateOf(events);
+					// Once the hand ends the pots are back in the winners' stacks.
 					expect(
-						after.players.reduce((sum, p) => sum + p.stack + p.committed, 0),
+						after.players.reduce(
+							(sum, p) =>
+								sum + p.stack + (after.status === "ended" ? 0 : p.committed),
+							0,
+						),
 					).toBe(chips);
 					expect(
 						after.players.every(

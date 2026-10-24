@@ -199,20 +199,6 @@ describe("StartHand: short stacks", () => {
 		expect(state.currentBet).toBe(10);
 		expect(state.toAct).toBe(0);
 	});
-
-	it("has nobody to act when every player is all-in from the blinds", () => {
-		const config = handConfig({
-			players: [at(0, 5), at(1, 10)],
-			buttonSeat: 0,
-		});
-		const state = start(config).then([
-			handStarted(config),
-			blind(0, "small", 5, true),
-			blind(1, "big", 10, true),
-			dealt([1, 0]),
-		]) as ActiveHand;
-		expect(state.toAct).toBeNull();
-	});
 });
 
 describe("StartHand: antes", () => {

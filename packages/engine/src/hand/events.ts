@@ -11,7 +11,7 @@ export type ActedKind = "fold" | "check" | "call" | "bet" | "raise";
 
 export interface Pot {
 	readonly amount: Chips;
-	/** Seats still in the hand that can win it. */
+	/** Seats still in the hand when it was collected; a player who folds later drops out of it. */
 	readonly eligibleSeats: readonly SeatIndex[];
 }
 
@@ -78,7 +78,10 @@ export type HandEvent =
 	  }
 	/** Betting is over and two or more players remain: cards are shown or mucked (RULES §10). */
 	| { readonly type: "ShowdownStarted"; readonly v: 1 }
-	/** The bets of a finished round move into the pots; the list replaces the previous one. */
+	/**
+	 * The bets of a finished round move into the pots; the list replaces the previous one. Only when
+	 * there is something to collect: a round everyone checked adds nothing.
+	 */
 	| {
 			readonly type: "PotsCollected";
 			readonly v: 1;
