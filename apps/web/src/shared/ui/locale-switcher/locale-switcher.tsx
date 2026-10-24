@@ -18,7 +18,7 @@ export function LocaleSwitcher() {
 					locale={locale}
 					hrefLang={locale}
 					aria-current={locale === current ? "true" : undefined}
-					className="text-zinc-500 underline-offset-4 hover:underline aria-[current=true]:font-semibold aria-[current=true]:text-foreground"
+					className="focus-ring rounded-sm text-muted-foreground underline-offset-4 hover:underline aria-[current=true]:font-semibold aria-[current=true]:text-foreground"
 				>
 					{t(`locales.${locale}`)}
 				</Link>

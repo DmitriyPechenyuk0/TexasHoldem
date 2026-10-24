@@ -47,6 +47,11 @@ const eslintConfig = defineConfig([
 		},
 	},
 	{
+		// The /ui preview is a development tool that never ships.
+		files: ["src/_pages/ui-preview/**"],
+		rules: { "i18next/no-literal-string": "off" },
+	},
+	{
 		files: [
 			"src/shared/config/public-env.ts",
 			"src/shared/config/server-env.ts",

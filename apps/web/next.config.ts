@@ -1,5 +1,6 @@
 import { readdirSync } from "node:fs";
 import type { NextConfig } from "next";
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 import createNextIntlPlugin from "next-intl/plugin";
 
 // English is the source catalog: next-intl turns each of its namespaces into a `.d.json.ts`
@@ -15,8 +16,13 @@ const withNextIntl = createNextIntlPlugin({
 	},
 });
 
-const nextConfig: NextConfig = {
+const nextConfig = (phase: string): NextConfig => ({
 	cacheComponents: true,
+	// `page.dev.tsx` routes (the /ui preview) exist only under `next dev`.
+	pageExtensions:
+		phase === PHASE_DEVELOPMENT_SERVER
+			? ["dev.tsx", "tsx", "ts", "jsx", "js"]
+			: ["tsx", "ts", "jsx", "js"],
 	partialPrefetching: true,
 	turbopack: {
 		rules: {
@@ -26,6 +32,8 @@ const nextConfig: NextConfig = {
 			},
 		},
 	},
-};
+});
 
-export default withNextIntl(nextConfig);
+const config = (phase: string) => withNextIntl(nextConfig(phase));
+
+export default config;

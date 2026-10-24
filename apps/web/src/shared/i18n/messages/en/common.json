@@ -14,5 +14,21 @@
 		"title": "Page not found",
 		"description": "There is no table here. Check the link or go back to the start.",
 		"home": "Back to the start"
+	},
+	"ui": {
+		"close": "Close",
+		"loading": "Loading…",
+		"showPassword": "Show password",
+		"hidePassword": "Hide password",
+		"notification": "Notification",
+		"notifications": "Notifications ({hotkey})"
+	},
+	"themeSwitcher": {
+		"label": "Theme",
+		"options": {
+			"light": "Light",
+			"dark": "Dark",
+			"system": "System"
+		}
 	}
 }
