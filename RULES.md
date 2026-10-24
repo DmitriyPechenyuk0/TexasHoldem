@@ -434,7 +434,7 @@ Hands from strongest to weakest:
 > **Kicker decides:** board `K♠ 9♦ 7♣ 4♥ 2♠`. Player 1 has `K♦ Q♣` and Player 2 has `K♥ J♦`.
 > Both have a pair of kings, but the queen kicker beats the jack. **Player 1 wins.**
 
-> **Playing the board:** board `A♠ A♦ K♣ K♥ Q♠`. Player 1 has `J♣ T♣` and Player 2 has `5♦ 3♥`.
+> **Playing the board:** board `A♠ A♦ K♣ K♥ Q♠`. Player 1 has `J♣ 9♣` and Player 2 has `5♦ 3♥`.
 > Both play the board: `A-A-K-K-Q`. **Split pot.** Each player must still table both hole cards to
 > get a share (TDA 19).
 

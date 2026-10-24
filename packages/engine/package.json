@@ -15,7 +15,8 @@
 		"dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run --passWithNoTests",
-		"test:coverage": "vitest run --coverage --passWithNoTests"
+		"test:coverage": "vitest run --coverage --passWithNoTests",
+		"bench": "pnpm build && node scripts/bench.mjs"
 	},
 	"devDependencies": {
 		"@types/node": "^24.19.2",
