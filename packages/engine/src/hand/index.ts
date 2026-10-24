@@ -1,5 +1,6 @@
 export {
 	type Aggression,
+	bettingReopened,
 	type LegalActions,
 	legalActions,
 	needsToAct,

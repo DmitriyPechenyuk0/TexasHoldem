@@ -41,8 +41,10 @@ export type HandError =
 	| { readonly code: "hand.illegal-bet" }
 	/** Nobody has bet on this street: bet instead. */
 	| { readonly code: "hand.illegal-raise" }
-	/** Every opponent is all-in or folded, so only a call or a fold is left. */
+	/** Every opponent is all-in or folded, or the stack does not cover more than the call. */
 	| { readonly code: "hand.raise-not-allowed" }
+	/** A short all-in did not reopen the betting for a player who already acted: call or fold (TDA 47). */
+	| { readonly code: "hand.betting-not-reopened" }
 	/** A bet or raise needs a whole number of chips as its total. */
 	| { readonly code: "hand.invalid-amount" }
 	| {
