@@ -15,7 +15,10 @@ import {
  * or call, sometimes a bet or raise of a size in range, a fold or a timeout; at the showdown, show,
  * muck or let the timer muck.
  */
-function chooseCommand(hand: ActiveHand, pick: () => number): HandCommand {
+export function randomCommand(
+	hand: ActiveHand,
+	pick: () => number,
+): HandCommand {
 	const seat = hand.toAct as number;
 	if (hand.street === "showdown") {
 		const type = (["ShowCards", "MuckCards", "Timeout"] as const)[pick() % 3]!;
@@ -66,7 +69,7 @@ export function simulateHand(
 		if (state.status !== "in-progress") {
 			break;
 		}
-		command = chooseCommand(state, pick);
+		command = randomCommand(state, pick);
 	}
 	return events;
 }

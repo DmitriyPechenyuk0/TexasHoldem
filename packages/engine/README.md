@@ -19,6 +19,8 @@ pnpm test:coverage                      # with the 100% coverage gate
 pnpm bench                              # builds, then measures the evaluator
 ```
 
+`src/hand/simulation.spec.ts` plays random whole hands (2 to 9 players, any stacks, blinds, ante, button and deck) and checks the invariants after every event: chips are conserved, no stack goes negative, exactly one seat is to act while betting is open, cards come off the top of the deck in order, every pot is awarded and replaying the stored events gives the live state. CI plays 1,000 hands; run more locally with `HOLDEM_SIM_RUNS=10000 pnpm --filter @holdem/engine test simulation`. A failure prints a seed and a path: `HOLDEM_SIM_SEED=<seed> HOLDEM_SIM_PATH=<path>` replays that shrunk hand.
+
 Tests tagged `slow` are the exhaustive or statistical checks: every one of the 2,598,960 five-card hands ranked into the 7,462 known classes, and a chi-square test of the shuffle.
 
 ## Benchmark
