@@ -39,7 +39,7 @@ export function ServerClock() {
 
 	if (!data) {
 		return (
-			<p className="text-sm text-zinc-500">
+			<p className="text-sm text-muted-foreground">
 				{isError ? t("unavailable") : t("syncing")}
 			</p>
 		);
@@ -50,6 +50,8 @@ export function ServerClock() {
 		timeZone: "UTC",
 	});
 	return (
-		<p className="text-sm text-zinc-500 tabular-nums">{t("time", { time })}</p>
+		<p className="text-sm text-muted-foreground tabular-nums">
+			{t("time", { time })}
+		</p>
 	);
 }

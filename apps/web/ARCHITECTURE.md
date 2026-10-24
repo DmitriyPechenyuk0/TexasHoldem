@@ -11,6 +11,7 @@ app/                  Next.js routing only: route files that re-export from src,
     page.tsx          export { HomePage as default } from "@/_pages/home";
     not-found.tsx     localized 404 for notFound() under a locale
     [...rest]/        any unmatched path under a locale, so its 404 is localized too
+    ui/page.dev.tsx   the /ui preview of shared/ui, routed only under `next dev`
 instrumentation.ts    runs at server start; validates the environment
 proxy.ts              sends unprefixed URLs to a locale (next-intl middleware)
 scripts/              repository checks, e.g. check-messages.mjs
@@ -52,6 +53,15 @@ public/               static files
 - **Server error codes** (`Problem.code` from `@holdem/shared`) get translated on the client by their code, never shown as the server's text; their namespace arrives with the first page that shows one.
 
 `pnpm --filter @holdem/web lint:i18n` (`scripts/check-messages.mjs`, part of `pnpm lint`, the pre-commit hook and CI) fails when a locale has a missing or extra namespace or key, an empty or invalid ICU text, or ICU arguments that differ from English. ESLint (`i18next/no-literal-string`) rejects literal text in JSX and in readable attributes (`alt`, `aria-label`, `placeholder`, `title`, ...).
+
+## UI
+
+- **Design tokens** live in `src/_app/styles/globals.css` as CSS variables mapped into the Tailwind theme: semantic colors with light and dark values (`bg-surface`, `text-muted-foreground`, `border-input`, `bg-primary`, `text-danger-text`, ...), the spacing unit, radii, the type scale, motion (`duration-fast|normal|slow`, `ease-standard`, the `animate-*` keyframes) and the stacking order (`z-overlay`, `z-modal`, `z-dropdown`, `z-toast`, `z-tooltip`). Components use only these, never raw palette colors such as `zinc-500`.
+- **Dark mode** is the `dark` class on `<html>` (the `dark:` variant follows it). With no stored choice it follows the system; `ThemeSwitcher` stores light or dark in `localStorage`. The inline `themeScript` (`@/shared/lib`) applies it in `<head>` before the first paint, because the static HTML cannot know the choice; `<html>` has `suppressHydrationWarning` for that class only.
+- **Primitives** in `src/shared/ui` are built on [Radix](https://www.radix-ui.com/primitives) (the `radix-ui` package) with Tailwind; no component kit is installed. Icons come from `lucide-react`, classes are joined with `cn` (`clsx` + `tailwind-merge`). They are `Button`, `IconButton`, `Input`, `PasswordInput`, `Label`, `FormField`, `Dialog`, `DropdownMenu`, `Tooltip`, `Toast` (`toast()` + `Toaster`), `Tabs`, `Avatar`, `Slider`, `Switch`, `Spinner`, plus `LocaleSwitcher` and `ThemeSwitcher`.
+- **Accessibility rules**: every interactive element shows the `focus-ring` on keyboard focus; an `IconButton` needs a `label` (its accessible name and tooltip); a `Dialog` needs a `DialogTitle`; a control inside `FormField` gets its id, hint and error wired through `aria-describedby` and `aria-invalid`. Text inside primitives (close, loading, show password) comes from `common.ui` in the catalogs. Under `prefers-reduced-motion` animations stop, except elements marked `data-motion="essential"` (the spinner).
+- **Root providers**: the locale layout mounts `TooltipProvider` and `Toaster` once, inside `QueryProvider`.
+- **Preview**: `pnpm dev`, then `/en/ui` shows every primitive in each state. `next.config.ts` adds the `dev.tsx` page extension only in the development phase, so production builds have no such route. The preview text is English only; the i18n lint rule skips `_pages/ui-preview`.
 
 ## Configuration and contracts
 
