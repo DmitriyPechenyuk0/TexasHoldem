@@ -9,11 +9,14 @@ import {
 	DATABASE,
 } from "@/shared/infrastructure/database/index.js";
 import { AuthHttpHandler } from "./application/auth-http-handler.js";
+import { SetEmailLocaleHandler } from "./application/commands/set-email-locale/set-email-locale.handler.js";
 import { GetMeHandler } from "./application/queries/get-me/get-me.handler.js";
+import { UserRepository } from "./application/user.repository.js";
 import { BETTER_AUTH, createBetterAuth } from "./infrastructure/better-auth.js";
 import { BetterAuthHttpHandler } from "./infrastructure/better-auth-http.handler.js";
 import { BetterAuthViewerResolver } from "./infrastructure/better-auth-viewer.resolver.js";
 import { EmailThrottle } from "./infrastructure/email-throttle.js";
+import { DrizzleUserRepository } from "./infrastructure/persistence/drizzle-user.repository.js";
 import { MeController } from "./presentation/me.controller.js";
 
 /**
@@ -55,7 +58,9 @@ import { MeController } from "./presentation/me.controller.js";
 		EmailThrottle,
 		{ provide: AuthHttpHandler, useClass: BetterAuthHttpHandler },
 		{ provide: ViewerResolver, useClass: BetterAuthViewerResolver },
+		{ provide: UserRepository, useClass: DrizzleUserRepository },
 		GetMeHandler,
+		SetEmailLocaleHandler,
 	],
 	exports: [ViewerResolver, AuthHttpHandler],
 })

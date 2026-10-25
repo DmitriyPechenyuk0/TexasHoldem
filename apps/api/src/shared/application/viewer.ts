@@ -1,11 +1,7 @@
-import type { UserId } from "@holdem/shared";
+import type { Viewer } from "@holdem/shared/contracts/identity";
 
 /** Who sends a request: the user behind a valid session. Identity is the one context that knows how. */
-export interface Viewer {
-	readonly userId: UserId;
-	readonly username: string;
-	readonly emailVerified: boolean;
-}
+export type { Viewer };
 
 export type RequestHeaders = Readonly<
 	Record<string, string | readonly string[] | undefined>

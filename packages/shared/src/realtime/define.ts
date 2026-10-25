@@ -1,5 +1,6 @@
-import type { z } from "zod";
+import { z } from "zod";
 import type { Ack } from "../contracts/common/ack.js";
+import type { Viewer } from "../contracts/identity/viewer.js";
 
 /** Namespace of each realtime context. Connection-level events such as `ping` live on the root. */
 export const NAMESPACES = {
@@ -46,6 +47,18 @@ export function defineEvent(
 	return { name, payload, ack };
 }
 
+/**
+ * Sent on every namespace when the socket's session is gone (expired, signed out, revoked by a
+ * password reset), right before the server disconnects it. Sign in again, then reconnect.
+ */
+export const SessionExpiredEvent = defineEvent("session-expired", z.object({}));
+
+/** What the server keeps on each socket (socket.io's `socket.data`); clients never see it. */
+export interface SocketData {
+	/** The signed-in user; null on a public namespace without a session. */
+	viewer: Viewer | null;
+}
+
 type EventsByName<Events extends readonly EventDefinition[]> = {
 	readonly [Event in Events[number] as Event["name"]]: Event;
 };
@@ -62,7 +75,7 @@ export interface NamespaceDefinition<
 	readonly path: Path;
 	/** Events the client emits, by name: the server looks up the payload schema here. */
 	readonly clientToServer: ClientEvents;
-	/** Events the server emits, by name. */
+	/** Events the server emits, by name; `session-expired` is on every namespace. */
 	readonly serverToClient: ServerEvents;
 }
 
@@ -86,12 +99,12 @@ export function defineNamespace<
 ): NamespaceDefinition<
 	Path,
 	EventsByName<ClientEvents>,
-	EventsByName<ServerEvents>
+	EventsByName<[...ServerEvents, typeof SessionExpiredEvent]>
 > {
 	return {
 		path,
 		clientToServer: byName(events.clientToServer),
-		serverToClient: byName(events.serverToClient),
+		serverToClient: byName([...events.serverToClient, SessionExpiredEvent]),
 	};
 }
 

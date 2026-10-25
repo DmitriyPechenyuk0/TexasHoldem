@@ -40,7 +40,9 @@ export const systemNamespace = defineNamespace(NAMESPACES.system, {
 export type SystemClientToServerEvents = ClientToServerEvents<typeof systemNamespace>;
 ```
 
-- **Namespaces** are `/table`, `/lobby` and `/social`, plus the root `/` for connection-level events such as `ping` (`NAMESPACES`).
+- **Namespaces** are `/table`, `/lobby` and `/social`, plus the root `/` for connection-level events such as `ping` (`NAMESPACES`). Only the root is open without a session; the others refuse the connection with a 401 problem in `connect_error.data`.
+- **`session-expired`** (`SessionExpiredEvent`) is on every namespace's server-to-client side, added by `defineNamespace`. The server sends it when the socket's session is gone (signed out, expired, revoked by a password reset), then disconnects. The client signs in again and reconnects.
+- **`SocketData`** types what the api keeps on a socket (`socket.data.viewer`: the signed-in `Viewer`, or null on the root without a session): `Server<ClientToServer, ServerToClient, object, SocketData>`.
 - **Commands** (client → server) take an ack schema and are answered with `Ack<Data>`. Emit them with `emitWithAck`; the compiler requires the ack. **Events** without an ack are fire-and-forget.
 - **Event names are kebab-case and stable.** A name is part of the contract: a breaking change to its payload or ack gets a new name (`take-seat-v2`) while the old one is still served, and the old one is removed only when no client sends it.
 - **Realtime schemas never coerce or transform.** JSON keeps types over a socket, so the sender's type and the parsed type are the same.

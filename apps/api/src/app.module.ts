@@ -8,6 +8,7 @@ import {
 import { CqrsModule } from "@nestjs/cqrs";
 import { IdentityModule } from "@/modules/identity/identity.module.js";
 import { AuthMiddleware } from "@/modules/identity/presentation/auth.middleware.js";
+import { ProfileModule } from "@/modules/profile/profile.module.js";
 import { SystemModule } from "@/modules/system/system.module.js";
 import {
 	AppConfig,
@@ -47,6 +48,7 @@ export class AppModule implements NestModule {
 				MailModule,
 				SharedModule,
 				IdentityModule,
+				ProfileModule,
 				SystemModule,
 			],
 		};
