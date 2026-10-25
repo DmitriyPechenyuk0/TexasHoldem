@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { API_PREFIX } from "@holdem/shared";
 import type { Params } from "nestjs-pino";
 import pino, { type DestinationStream } from "pino";
 import pinoPretty from "pino-pretty";
@@ -26,8 +27,10 @@ export function logDestinationFor(config: AppConfig): DestinationStream {
 	return destination;
 }
 
+const HEALTH_PATH = `${API_PREFIX}/health`;
+
 const isHealthCheck = (url: string | undefined): boolean =>
-	url === "/health" || (url?.startsWith("/health/") ?? false);
+	url === HEALTH_PATH || (url?.startsWith(`${HEALTH_PATH}/`) ?? false);
 
 interface SerializedRequest {
 	readonly method: string;

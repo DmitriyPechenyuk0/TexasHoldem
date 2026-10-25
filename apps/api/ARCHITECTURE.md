@@ -36,7 +36,7 @@ A layer folder exists only once it has content. `modules/system` is the referenc
 
 - Domain code imports nothing from NestJS, I/O libraries or Node built-ins, and never reads the clock, randomness or config: they come in as arguments.
 - Command and event handlers reach adapters only through ports and import no I/O library (Drizzle, Redis, socket.io, S3, mail).
-- Query handlers may skip the domain and read tables directly through `shared/infrastructure/database` (ADR-003). That is the one place where application code touches infrastructure.
+- Query handlers may skip the domain and read tables directly through `shared/infrastructure/database` and their own context's `infrastructure/persistence` schema (ADR-003). That is the one place where application code touches infrastructure.
 - A context never imports another context's internals, only its `index.ts`: the application-level API and integration events it chooses to expose (Context Map).
 - `shared` imports no module, nothing imports `main.ts` or `app.module.ts` except tests, there are no cycles, and production code imports no tests or dev dependencies.
 
@@ -176,7 +176,7 @@ CI applies the migrations and fails when a schema change has no migration.
 
 - The shared Redis client comes through `@InjectRedis() private readonly redis: Redis`. Pub/sub subscribers and blocking commands need a dedicated connection: `RedisConnections.open("<purpose>")`, which the app closes on shutdown.
 - Clients connect in the background and reconnect on their own, so a Redis outage neither blocks startup nor crashes the process. Meanwhile commands wait in a bounded queue and fail after 2 s (`REDIS_COMMAND_TIMEOUT_MS`), so a caller never hangs; a connection for blocking commands will need a longer timeout.
-- `GET /health` is liveness and never touches a dependency. `GET /health/ready` asks every `HealthIndicator` (2 s each) and answers 503 when one is down.
+- `GET /api/health` is liveness and never touches a dependency. `GET /api/health/ready` asks every `HealthIndicator` (2 s each) and answers 503 when one is down.
 - A new dependency gets a `HealthIndicator` adapter next to its client, listed under `HEALTH_INDICATORS` in `SharedModule`.
 - SIGTERM and SIGINT stop the HTTP server and run the `onApplicationShutdown` hooks, which close the database pool and Redis. A process that has not exited after 10 s is stopped.
 
@@ -209,9 +209,22 @@ this.mailer.send({
 - Lines go to stdout through a buffer, so logging never blocks the event loop; what is left in it is written synchronously when the process exits.
 - Health checks are not logged. `LOG_LEVEL` sets the level: by default `debug` with readable lines in development, `info` with JSON lines elsewhere.
 
+## Identity and sessions
+
+Identity is a generic context run by Better Auth (ADR-005 and its addendum), in `modules/identity`:
+
+- Better Auth serves its own endpoints under `/api/auth/*`: sign-up, sign-in with email or username, sign-out, email verification. It owns the `identity_*` tables (`infrastructure/persistence/schema.ts`, hand-written to match what it expects).
+- `AuthMiddleware` mounts it. It runs after the request logger and the same-origin check, and adds what Better Auth lacks: JSON bodies only (415 otherwise; it would also parse HTML form posts), our contracts for the bodies we accept (`@holdem/shared/contracts/identity`, unknown keys dropped), the client address from Express's `req.ip` (so TRUST_PROXY decides, not a client-sent `X-Forwarded-For`) and problem details for its errors: `USERNAME_IS_ALREADY_TAKEN` becomes `auth.username-is-already-taken`.
+- No session before the email is verified; the link in the email signs the user in. A taken email answers exactly like a new sign-up. Callback URLs must lead to `WEB_ORIGIN`. Links in emails start at `API_ORIGIN`, never at the request's Host.
+- Protect a route with `@UseGuards(AuthGuard)` and read the user with `@CurrentUser() viewer: Viewer` (`shared/presentation/auth.guard.ts`). Both rely on the `ViewerResolver` port in `shared/application`, which identity implements, so other contexts never import identity.
+- Identity publishes `UserRegistered { userId, username, locale }` when an account is created; other contexts import it from `modules/identity/index.ts`.
+- The session cookie is `holdem.session_token`: HttpOnly, SameSite=Lax. In production it is `__Secure-holdem.session_token` and Secure, set for the one origin that serves both the web app and the api behind the reverse proxy.
+
 ## HTTP and sockets
 
-- `configureApp` (shared by `main.ts` and the e2e tests) sets the security headers (helmet), CORS for `WEB_ORIGIN` with credentials, `trust proxy` and the socket.io adapter.
+- Every REST route lives under `/api` (`API_PREFIX` from `@holdem/shared`), so production can serve the web app and the api from one origin behind a reverse proxy (`/api/*` and `/socket.io/*` → api). Requests outside it get a 404 problem too.
+- `configureApp` (shared by `main.ts` and the e2e tests) sets the global prefix, the security headers (helmet), CORS for `WEB_ORIGIN` with credentials (used in development, where web and api are two origins), `trust proxy`, a 16 KiB limit on JSON bodies and the socket.io adapter.
+- A request that changes state (anything but GET, HEAD and OPTIONS) from a browser page on another origin than `WEB_ORIGIN` is refused with 403 `request.cross-origin`, before any route sees it: cookies ride along regardless of CORS (login CSRF). Requests without `Origin` are not from a browser and pass. AppModule applies it, and the auth mount after it, because middleware of global modules runs first and the order must be: logger, origin check, auth.
 - socket.io refuses a connection whose `Origin` is not `WEB_ORIGIN`: CORS alone would let a page on another origin open a socket with the visitor's cookies (cross-site WebSocket hijacking). Clients without an `Origin` are not browsers and are let through. A message larger than `MAX_MESSAGE_BYTES` (64 KiB) closes the connection.
 
 ## Imports

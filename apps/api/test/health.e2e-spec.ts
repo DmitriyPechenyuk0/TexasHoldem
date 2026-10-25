@@ -31,7 +31,9 @@ async function waitForReadiness(
 ): Promise<request.Response> {
 	const deadline = Date.now() + 10_000;
 	for (;;) {
-		const response = await request(app.getHttpServer()).get("/health/ready");
+		const response = await request(app.getHttpServer()).get(
+			"/api/health/ready",
+		);
 		const matches =
 			response.status === expected.status &&
 			isDeepStrictEqual(response.body.checks, expected.checks);
@@ -59,15 +61,15 @@ describe("Health (e2e)", () => {
 			await app.close();
 		});
 
-		it("GET /health reports the process as alive", async () => {
+		it("GET /api/health reports the process as alive", async () => {
 			const response = await request(app.getHttpServer())
-				.get("/health")
+				.get("/api/health")
 				.expect(200);
 
 			expect(LivenessResponse.parse(response.body)).toEqual({ status: "ok" });
 		});
 
-		it("GET /health/ready reports every dependency as up", async () => {
+		it("GET /api/health/ready reports every dependency as up", async () => {
 			const response = await waitForReadiness(app, ALL_UP);
 
 			expect(response.status).toBe(200);
@@ -110,7 +112,7 @@ describe("Health (e2e)", () => {
 				status: "not-ready",
 				checks: { database: "up", redis: "down" },
 			});
-			await request(app.getHttpServer()).get("/health").expect(200);
+			await request(app.getHttpServer()).get("/api/health").expect(200);
 
 			// A command does not hang while Redis is away: it fails after the command timeout.
 			const startedAt = performance.now();

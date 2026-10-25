@@ -33,6 +33,7 @@ describe("parseConfig", () => {
 			nodeEnv: "development",
 			port: 4000,
 			webOrigin: "http://localhost:3000",
+			apiOrigin: "http://localhost:4000",
 			database: { url: "postgres://holdem:holdem@127.0.0.1:5433/holdem" },
 			smtp: {
 				host: "127.0.0.1",
@@ -52,6 +53,7 @@ describe("parseConfig", () => {
 
 	it("lists every missing required variable at once", () => {
 		expect(problemsOf({})).toEqual([
+			"API_ORIGIN: is required",
 			"AUTH_SECRET: is required",
 			"DATABASE_URL: is required",
 			"REDIS_URL: is required",

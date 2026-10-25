@@ -218,11 +218,11 @@ describe("Realtime (e2e)", () => {
 	describe("CORS", () => {
 		it("lets the web app call HTTP endpoints with credentials, and nobody else", async () => {
 			const allowed = await request(baseUrl)
-				.get("/system/time")
+				.get("/api/system/time")
 				.set("origin", webOrigin)
 				.expect(200);
 			const foreign = await request(baseUrl)
-				.get("/system/time")
+				.get("/api/system/time")
 				.set("origin", "https://evil.example")
 				.expect(200);
 

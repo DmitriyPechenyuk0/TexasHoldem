@@ -21,7 +21,7 @@ The project is in early development. Done: the foundation (monorepo, API and web
 
 ```
 apps/
-  api/          NestJS server: REST + socket.io on http://localhost:4000
+  api/          NestJS server: REST under /api + socket.io on http://localhost:4000
   web/          Next.js app on http://localhost:3000
 packages/
   engine/       @holdem/engine: the rules of the game, no I/O
@@ -60,7 +60,7 @@ Then open http://localhost:3000. The home page shows the server time when the we
 | Service | Address |
 | --- | --- |
 | Web app | http://localhost:3000 (UI component preview: http://localhost:3000/en/ui) |
-| API | http://localhost:4000 (health: `/health`, readiness: `/health/ready`) |
+| API | http://localhost:4000/api (health: `/api/health`, readiness: `/api/health/ready`) |
 | Mailpit inbox | http://localhost:8025 |
 | S3 console | http://localhost:9001 (user `holdem`, password `holdem-dev-secret`) |
 | PostgreSQL | `127.0.0.1:5433`, user, password and database `holdem` |
