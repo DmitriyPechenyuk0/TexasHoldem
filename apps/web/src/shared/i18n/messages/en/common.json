@@ -30,5 +30,13 @@
 			"dark": "Dark",
 			"system": "System"
 		}
+	},
+	"header": {
+		"signIn": "Sign in",
+		"account": "Account of {username}"
+	},
+	"unverifiedBanner": {
+		"label": "Email confirmation",
+		"text": "Confirm {email} to take a seat at a table."
 	}
 }

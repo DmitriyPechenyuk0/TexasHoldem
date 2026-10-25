@@ -1,0 +1,10 @@
+{
+	"metaTitle": "Account · Texas Hold'em",
+	"title": "Account",
+	"username": "Username",
+	"email": "Email",
+	"status": "Email status",
+	"verified": "Confirmed",
+	"unverified": "Not confirmed",
+	"verifyHint": "Confirm your email to take a seat at a table."
+}

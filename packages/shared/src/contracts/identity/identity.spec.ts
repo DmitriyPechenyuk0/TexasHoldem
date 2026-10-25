@@ -4,6 +4,7 @@ import {
 	RequestPasswordResetRequest,
 	ResetPasswordRequest,
 	SendVerificationEmailRequest,
+	SESSION_COOKIE_NAMES,
 	SignInEmailRequest,
 	SignInUsernameRequest,
 	SignUpRequest,
@@ -119,5 +120,12 @@ describe("identity contracts", () => {
 				revokeOtherSessions: false,
 			}),
 		).toEqual({ token: "t", newPassword: signUp.password });
+	});
+
+	it("names the session cookie with and without the __Secure- prefix", () => {
+		expect(SESSION_COOKIE_NAMES).toEqual([
+			"holdem.session_token",
+			"__Secure-holdem.session_token",
+		]);
 	});
 });
