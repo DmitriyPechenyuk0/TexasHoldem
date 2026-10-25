@@ -46,6 +46,8 @@ jobs:
       - uses: ./.github/actions/setup
       # Known advisories that have no fix are listed, with the reason, under auditConfig in pnpm-workspace.yaml.
       - run: pnpm audit --audit-level moderate
+      # An update outside a plugin's peer range installs and lints fine, then breaks silently.
+      - run: pnpm peers check
 
   typecheck:
     name: Typecheck
