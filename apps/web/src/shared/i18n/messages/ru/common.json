@@ -33,7 +33,8 @@
 	},
 	"header": {
 		"signIn": "Войти",
-		"account": "Аккаунт {username}"
+		"account": "Аккаунт {username}",
+		"chooseUsername": "Выбрать имя"
 	},
 	"unverifiedBanner": {
 		"label": "Подтверждение почты",

@@ -1,5 +1,8 @@
 import { API_PREFIX } from "../common/index.js";
 import {
+	ChooseUsernameRequest,
+	LinkedAccountsResponse,
+	LinkSocialRequest,
 	MeResponse,
 	RequestPasswordResetRequest,
 	ResetPasswordRequest,
@@ -7,7 +10,9 @@ import {
 	SESSION_COOKIE_NAMES,
 	SignInEmailRequest,
 	SignInUsernameRequest,
+	SignInSocialRequest,
 	SignUpRequest,
+	UnlinkAccountRequest,
 	Username,
 } from "./index.js";
 
@@ -81,6 +86,71 @@ describe("identity contracts", () => {
 		};
 		expect(MeResponse.parse(me)).toEqual(me);
 		expect(MeResponse.safeParse({ ...me, id: "42" }).success).toBe(false);
+		// An OAuth account before its username is chosen.
+		expect(MeResponse.parse({ ...me, username: null }).username).toBeNull();
+	});
+
+	it("SignInSocialRequest drops an id token and extra scopes, and knows only our providers", () => {
+		expect(
+			SignInSocialRequest.parse({
+				provider: "github",
+				callbackURL: "/en",
+				locale: "ru",
+				idToken: { token: "forged" },
+				scopes: ["repo"],
+				additionalData: { locale: "ru" },
+			}),
+		).toEqual({ provider: "github", callbackURL: "/en", locale: "ru" });
+		expect(
+			SignInSocialRequest.safeParse({ provider: "apple", callbackURL: "/en" })
+				.success,
+		).toBe(false);
+	});
+
+	it("LinkSocialRequest needs where to come back to", () => {
+		expect(LinkSocialRequest.safeParse({ provider: "google" }).success).toBe(
+			false,
+		);
+		expect(
+			LinkSocialRequest.parse({
+				provider: "discord",
+				callbackURL: "/en/settings",
+				idToken: { token: "forged" },
+			}),
+		).toEqual({ provider: "discord", callbackURL: "/en/settings" });
+	});
+
+	it("UnlinkAccountRequest and LinkedAccountsResponse keep only what the client uses", () => {
+		expect(UnlinkAccountRequest.safeParse({ accountId: "" }).success).toBe(
+			false,
+		);
+		expect(
+			LinkedAccountsResponse.parse([
+				{
+					id: "a1",
+					providerId: "credential",
+					accountId: "u1",
+					userId: "u1",
+					scopes: [],
+					createdAt: "2026-10-25T10:00:00.000Z",
+				},
+			]),
+		).toEqual([
+			{
+				id: "a1",
+				providerId: "credential",
+				createdAt: "2026-10-25T10:00:00.000Z",
+			},
+		]);
+	});
+
+	it("ChooseUsernameRequest holds the username to the sign-up rules", () => {
+		expect(ChooseUsernameRequest.safeParse({ username: "a.b" }).success).toBe(
+			false,
+		);
+		expect(ChooseUsernameRequest.parse({ username: "Alice_01" })).toEqual({
+			username: "Alice_01",
+		});
 	});
 
 	it("SendVerificationEmailRequest needs a valid email and drops other keys", () => {

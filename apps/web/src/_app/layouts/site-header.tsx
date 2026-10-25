@@ -6,6 +6,7 @@ import { getViewer } from "@/entities/viewer/index.server";
 import { getQueryClient } from "@/shared/api";
 import { Link } from "@/shared/i18n";
 import { UnverifiedBanner } from "./unverified-banner";
+import { UsernameGate } from "./username-gate";
 import { ViewerNav } from "./viewer-nav";
 
 /** The bar on every page; `children` is its right side. Also the fallback while the session loads. */
@@ -45,6 +46,7 @@ export async function SiteHeader() {
 				<ViewerNav />
 			</SiteHeaderBar>
 			<UnverifiedBanner />
+			<UsernameGate />
 		</HydrationBoundary>
 	);
 }

@@ -2,12 +2,15 @@ import { createHash } from "node:crypto";
 import { STATUS_CODES } from "node:http";
 import { PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import {
+	LinkSocialRequest,
 	RequestPasswordResetRequest,
 	ResetPasswordRequest,
 	SendVerificationEmailRequest,
 	SignInEmailRequest,
+	SignInSocialRequest,
 	SignInUsernameRequest,
 	SignUpRequest,
+	UnlinkAccountRequest,
 } from "@holdem/shared/contracts/identity";
 import { HttpException, Injectable, type NestMiddleware } from "@nestjs/common";
 import { toNodeHandler } from "better-auth/node";
@@ -37,6 +40,10 @@ const BODY_CONTRACTS: Readonly<Record<string, z.ZodType>> = {
 	[`${AUTH_BASE_PATH}/sign-up/email`]: SignUpRequest,
 	[`${AUTH_BASE_PATH}/sign-in/email`]: SignInEmailRequest,
 	[`${AUTH_BASE_PATH}/sign-in/username`]: SignInUsernameRequest,
+	// No `idToken`, `scopes` or `additionalData`: only the redirect flow, with the default scopes.
+	[`${AUTH_BASE_PATH}/sign-in/social`]: SignInSocialRequest,
+	[`${AUTH_BASE_PATH}/link-social`]: LinkSocialRequest,
+	[`${AUTH_BASE_PATH}/unlink-account`]: UnlinkAccountRequest,
 	[`${AUTH_BASE_PATH}/send-verification-email`]: SendVerificationEmailRequest,
 	[`${AUTH_BASE_PATH}/request-password-reset`]: RequestPasswordResetRequest,
 	[`${AUTH_BASE_PATH}/reset-password`]: ResetPasswordRequest,

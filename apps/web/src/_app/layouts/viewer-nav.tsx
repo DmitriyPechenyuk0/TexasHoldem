@@ -21,6 +21,16 @@ export function ViewerNav() {
 			</Button>
 		);
 	}
+	if (viewer.username === null) {
+		return (
+			<>
+				<Button asChild variant="ghost" size="sm">
+					<Link href={ROUTES.chooseUsername}>{t("chooseUsername")}</Link>
+				</Button>
+				<SignOutButton size="sm" />
+			</>
+		);
+	}
 	return (
 		<>
 			<Button asChild variant="ghost" size="sm">

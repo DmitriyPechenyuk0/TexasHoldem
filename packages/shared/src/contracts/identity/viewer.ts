@@ -6,6 +6,7 @@ import type { UserId } from "../common/ids.js";
  */
 export interface Viewer {
 	readonly userId: UserId;
-	readonly username: string;
+	/** Null until an account created by an OAuth sign-in has chosen one. */
+	readonly username: string | null;
 	readonly emailVerified: boolean;
 }

@@ -1,5 +1,16 @@
+export { ChooseUsernameRequest } from "./choose-username.js";
 export { Email, NewPassword, Username } from "./credentials.js";
 export { MeResponse } from "./me.js";
+export {
+	LinkedAccount,
+	LinkedAccountsResponse,
+	LinkSocialRequest,
+	OAUTH_PROVIDERS,
+	OAuthProvider,
+	OAuthProvidersResponse,
+	SignInSocialRequest,
+	UnlinkAccountRequest,
+} from "./oauth.js";
 export {
 	RequestPasswordResetRequest,
 	ResetPasswordRequest,

@@ -17,14 +17,20 @@ const updatedAt = () =>
 
 export const users = table("users", {
 	id: id(),
-	/** Mirrors `username`: Better Auth requires a name, and display names belong to Profile. */
+	/**
+	 * Mirrors `username`: Better Auth requires a name, and display names belong to Profile. Until
+	 * an OAuth account has chosen its username, the provider's name, which only emails greet by.
+	 */
 	name: text().notNull(),
 	email: text().notNull().unique(),
 	emailVerified: boolean().notNull().default(false),
 	/** Unused: avatars belong to Profile. Kept because Better Auth reads and writes it. */
 	image: text(),
-	/** Lowercase, unique. */
-	username: text().notNull().unique(),
+	/**
+	 * Lowercase, unique. Null only for an account an OAuth sign-in created without a usable
+	 * handle, until it chooses one; such an account is not announced to other contexts before.
+	 */
+	username: text().unique(),
 	/** The language of the user's emails. */
 	locale: text().notNull().default("en"),
 	createdAt: createdAt(),

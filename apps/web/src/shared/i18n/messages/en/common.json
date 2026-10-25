@@ -33,7 +33,8 @@
 	},
 	"header": {
 		"signIn": "Sign in",
-		"account": "Account of {username}"
+		"account": "Account of {username}",
+		"chooseUsername": "Choose a username"
 	},
 	"unverifiedBanner": {
 		"label": "Email confirmation",
