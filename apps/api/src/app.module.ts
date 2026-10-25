@@ -7,6 +7,7 @@ import {
 } from "@/shared/infrastructure/config/index.js";
 import { DatabaseModule } from "@/shared/infrastructure/database/index.js";
 import { LoggingModule } from "@/shared/infrastructure/logging/index.js";
+import { MailModule } from "@/shared/infrastructure/mail/index.js";
 import { RedisModule } from "@/shared/infrastructure/redis/index.js";
 import { SharedModule } from "@/shared/shared.module.js";
 
@@ -22,6 +23,7 @@ export class AppModule {
 				CqrsModule.forRoot(),
 				DatabaseModule,
 				RedisModule,
+				MailModule,
 				SharedModule,
 				SystemModule,
 			],

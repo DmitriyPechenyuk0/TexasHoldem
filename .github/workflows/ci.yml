@@ -72,20 +72,20 @@ jobs:
       # The same compose file as local dev, so image tags and the holdem_test init never drift.
       # Containers boot while dependencies install.
       # Docker Hub sometimes answers 502, so pulling is retried before giving up.
-      - name: Start Postgres and Redis
+      - name: Start Postgres, Redis and Mailpit
         run: |
           for attempt in 1 2 3; do
-            docker compose pull --quiet postgres redis && break
+            docker compose pull --quiet postgres redis mailpit && break
             echo "pull failed (attempt $attempt), retrying"
             sleep $((attempt * 10))
           done
-          docker compose up -d postgres redis
+          docker compose up -d postgres redis mailpit
 
       - uses: ./.github/actions/setup
       - run: pnpm build:packages
 
-      - name: Wait for Postgres and Redis
-        run: docker compose up -d --wait postgres redis
+      - name: Wait for Postgres, Redis and Mailpit
+        run: docker compose up -d --wait postgres redis mailpit
 
       # A schema change committed without its migration makes `generate` write a new one.
       - name: Check that migrations match the schema

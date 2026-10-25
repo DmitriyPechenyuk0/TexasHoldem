@@ -23,6 +23,11 @@ export class TcpProxy {
 		return `redis://127.0.0.1:${this.port}`;
 	}
 
+	/** The port on 127.0.0.1 that forwards to the target, once started. */
+	get localPort(): number {
+		return this.port;
+	}
+
 	/** Listens on a free port the first time, then on the same port again. */
 	async start(): Promise<void> {
 		const server = net.createServer((client) => {
