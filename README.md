@@ -70,6 +70,18 @@ Every service port binds to `127.0.0.1` only. If one is taken, override it in a 
 
 `pnpm infra:down` stops the services and keeps their data; `pnpm infra:reset` wipes the data and starts them again.
 
+### Signing in with Google, GitHub or Discord
+
+Optional: without keys a provider's button simply does not show. Create a development app at each provider you want, then put its client id and secret into `apps/api/.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and so on) and restart the api. The callback URL is always `http://localhost:4000/api/auth/callback/<provider>`.
+
+| Provider | Where | Settings |
+| --- | --- | --- |
+| Google | [Google Cloud console](https://console.cloud.google.com/apis/credentials) → Create credentials → OAuth client ID → Web application | Authorized redirect URI `http://localhost:4000/api/auth/callback/google`. On the consent screen choose External and add yourself as a test user. |
+| GitHub | [Developer settings](https://github.com/settings/developers) → OAuth Apps → New OAuth App | Homepage URL `http://localhost:3000`, authorization callback URL `http://localhost:4000/api/auth/callback/github`. |
+| Discord | [Developer portal](https://discord.com/developers/applications) → New Application → OAuth2 | Redirect `http://localhost:4000/api/auth/callback/discord`. |
+
+In production the callback is `https://<your domain>/api/auth/callback/<provider>`, on the same origin as the web app.
+
 ## Scripts
 
 Run from the repository root:

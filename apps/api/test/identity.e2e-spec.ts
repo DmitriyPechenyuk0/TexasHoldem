@@ -24,7 +24,7 @@ import type { Viewer } from "@/shared/application/viewer.js";
 import type { AppConfig } from "@/shared/infrastructure/config/index.js";
 import { REDIS, type Redis } from "@/shared/infrastructure/redis/index.js";
 import { AuthGuard, CurrentUser } from "@/shared/presentation/auth.guard.js";
-import { RequireVerified } from "@/shared/presentation/require-verified.guard.js";
+import { RequirePlayer } from "@/shared/presentation/require-player.guard.js";
 import { createTestApp } from "./support/create-test-app.js";
 import { exampleConfig } from "./support/example-config.js";
 import {
@@ -48,7 +48,7 @@ import {
 @Controller("probe")
 class VerifiedOnlyController {
 	@Get("verified-only")
-	@UseGuards(AuthGuard, RequireVerified)
+	@UseGuards(AuthGuard, RequirePlayer)
 	enter(@CurrentUser() viewer: Viewer) {
 		return { userId: viewer.userId };
 	}

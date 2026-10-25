@@ -5,3 +5,8 @@ export {
 	viewerQuery,
 } from "./api/viewer";
 export { useViewer } from "./model/use-viewer";
+export {
+	chooseUsernameRedirect,
+	type UsernameError,
+	usernameError,
+} from "./model/username";

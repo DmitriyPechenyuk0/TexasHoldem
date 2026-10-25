@@ -4,6 +4,7 @@ describe("isProtectedRoute", () => {
 	it.each([
 		["/settings", true],
 		["/settings/profile", true],
+		["/choose-username", true],
 		["/settingsx", false],
 		["/", false],
 		["/verify-email", false],

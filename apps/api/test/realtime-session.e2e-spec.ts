@@ -19,7 +19,7 @@ import { users } from "@/modules/identity/infrastructure/persistence/schema.js";
 import type { Viewer } from "@/shared/application/viewer.js";
 import { CurrentUser } from "@/shared/presentation/auth.guard.js";
 import { RealtimeGateway } from "@/shared/presentation/realtime/realtime-gateway.decorator.js";
-import { RequireVerified } from "@/shared/presentation/require-verified.guard.js";
+import { RequirePlayer } from "@/shared/presentation/require-player.guard.js";
 import { createTestApp } from "./support/create-test-app.js";
 import {
 	browser,
@@ -71,7 +71,7 @@ class TableProbeGateway {
 	}
 
 	@SubscribeMessage("take-seat")
-	@UseGuards(RequireVerified)
+	@UseGuards(RequirePlayer)
 	takeSeat(): Ack<Record<string, never>> {
 		return { ok: true, data: {} };
 	}
@@ -193,7 +193,7 @@ describe("Realtime sessions (e2e)", () => {
 		expect(await root.emitWithAck("viewer", {})).toEqual(expected);
 	});
 
-	it("reads the session again on every command, so RequireVerified sees the email as it is now", async () => {
+	it("reads the session again on every command, so RequirePlayer sees the email as it is now", async () => {
 		const { cookie, email } = await signedInCookie();
 		const socket = open<TableSocket>("/table", cookie);
 		await connected(socket);

@@ -9,12 +9,16 @@ import {
 	DATABASE,
 } from "@/shared/infrastructure/database/index.js";
 import { AuthHttpHandler } from "./application/auth-http-handler.js";
+import { ChooseUsernameHandler } from "./application/commands/choose-username/choose-username.handler.js";
 import { SetEmailLocaleHandler } from "./application/commands/set-email-locale/set-email-locale.handler.js";
+import { OAuthProviders } from "./application/oauth-providers.js";
 import { GetMeHandler } from "./application/queries/get-me/get-me.handler.js";
+import { GetOAuthProvidersHandler } from "./application/queries/get-oauth-providers/get-oauth-providers.handler.js";
 import { UserRepository } from "./application/user.repository.js";
 import { BETTER_AUTH, createBetterAuth } from "./infrastructure/better-auth.js";
 import { BetterAuthHttpHandler } from "./infrastructure/better-auth-http.handler.js";
 import { BetterAuthViewerResolver } from "./infrastructure/better-auth-viewer.resolver.js";
+import { ConfiguredOAuthProviders } from "./infrastructure/configured-oauth-providers.js";
 import { EmailThrottle } from "./infrastructure/email-throttle.js";
 import { DrizzleUserRepository } from "./infrastructure/persistence/drizzle-user.repository.js";
 import { MeController } from "./presentation/me.controller.js";
@@ -59,8 +63,11 @@ import { MeController } from "./presentation/me.controller.js";
 		{ provide: AuthHttpHandler, useClass: BetterAuthHttpHandler },
 		{ provide: ViewerResolver, useClass: BetterAuthViewerResolver },
 		{ provide: UserRepository, useClass: DrizzleUserRepository },
+		{ provide: OAuthProviders, useClass: ConfiguredOAuthProviders },
 		GetMeHandler,
+		GetOAuthProvidersHandler,
 		SetEmailLocaleHandler,
+		ChooseUsernameHandler,
 	],
 	exports: [ViewerResolver, AuthHttpHandler],
 })

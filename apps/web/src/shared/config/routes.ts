@@ -3,6 +3,7 @@ export const ROUTES = {
 	home: "/",
 	signIn: "/sign-in",
 	signUp: "/sign-up",
+	chooseUsername: "/choose-username",
 	settings: "/settings",
 	verifyEmail: "/verify-email",
 	forgotPassword: "/forgot-password",
@@ -13,7 +14,10 @@ export const ROUTES = {
  * Pages that need a session, with everything under them. Without a session cookie the proxy sends
  * the visitor to sign-in with `?next=` before any rendering; the page checks the session itself too.
  */
-export const PROTECTED_ROUTES: readonly string[] = [ROUTES.settings];
+export const PROTECTED_ROUTES: readonly string[] = [
+	ROUTES.settings,
+	ROUTES.chooseUsername,
+];
 
 /** Whether a path without its locale prefix is a protected page or lies under one. */
 export const isProtectedRoute = (path: string): boolean =>

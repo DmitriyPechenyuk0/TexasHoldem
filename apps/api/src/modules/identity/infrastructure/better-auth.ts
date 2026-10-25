@@ -1,11 +1,19 @@
 import { Locale, UserId } from "@holdem/shared";
-import { SESSION_COOKIE_PREFIX } from "@holdem/shared/contracts/identity";
+import {
+	SESSION_COOKIE_PREFIX,
+	Username,
+} from "@holdem/shared/contracts/identity";
 import { Logger } from "@nestjs/common";
 import { and, eq, not } from "drizzle-orm";
 import type { EventBus } from "@nestjs/cqrs";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import {
+	APIError,
+	addOAuthServerContext,
+	createAuthMiddleware,
+	getOAuthState,
+} from "better-auth/api";
 import { username } from "better-auth/plugins/username";
 import type { Mailer } from "@/shared/application/mailer.js";
 import type { RateLimiter } from "@/shared/application/rate-limiter.js";
@@ -17,6 +25,7 @@ import {
 } from "../application/auth-http-handler.js";
 import { UserRegistered } from "../application/events/user-registered.event.js";
 import { UserVerified } from "../application/events/user-verified.event.js";
+import { enabledOAuthProviders } from "./configured-oauth-providers.js";
 import type { EmailKind, EmailThrottle } from "./email-throttle.js";
 import {
 	accounts,
@@ -38,7 +47,19 @@ export const AUTH_RATE_LIMITS = {
 } as const;
 
 /** Body fields that name where a link or a redirect leads. */
-const REDIRECT_FIELDS = ["callbackURL", "redirectTo"] as const;
+const REDIRECT_FIELDS = [
+	"callbackURL",
+	"redirectTo",
+	"newUserCallbackURL",
+	"errorCallbackURL",
+] as const;
+
+/** The endpoint every OAuth provider sends the browser back to: `/callback/google`, ... */
+const isOAuthCallback = (path: string | undefined): boolean =>
+	path?.startsWith("/callback/") ?? false;
+
+/** Longest provider name kept as `name` until the username is chosen; emails greet by it. */
+const MAX_PROVIDER_NAME = 64;
 
 /** The only sign-up fields Better Auth may see; `name` is filled from `username`. */
 const SIGN_UP_FIELDS = new Set([
@@ -85,6 +106,35 @@ export function createBetterAuth({
 	rateLimiter,
 }: BetterAuthDependencies) {
 	const logger = new Logger("BetterAuth");
+	const oauth = config.auth.oauth;
+
+	// Other contexts learn of an account once it has a username, so `UserVerified` never comes
+	// before `UserRegistered`; choosing the username announces both (ChooseUsernameHandler).
+	const announceVerified = (user: { id: string; username?: unknown }) => {
+		if (typeof user.username === "string") {
+			eventBus.publish(new UserVerified(UserId.parse(user.id)));
+		}
+	};
+
+	/**
+	 * A provider's handle becomes the username of a new account when it is valid and free. If not,
+	 * the account starts without one and the web app asks for it. A sign-up that takes the same
+	 * name in between makes this account fail with `USERNAME_IS_ALREADY_TAKEN`; trying again works.
+	 */
+	const usernameFromHandle = async (
+		handle: unknown,
+	): Promise<{ username?: string }> => {
+		if (typeof handle !== "string" || !Username.safeParse(handle).success) {
+			return {};
+		}
+		const username = handle.toLowerCase();
+		const [taken] = await db
+			.select({ id: users.id })
+			.from(users)
+			.where(eq(users.username, username))
+			.limit(1);
+		return taken ? {} : { username };
+	};
 
 	// Started without awaiting, the throttle included: the answer takes the same time whether or
 	// not an email goes out, so it does not tell which addresses have an account.
@@ -155,9 +205,9 @@ export function createBetterAuth({
 					.update(users)
 					.set({ emailVerified: true })
 					.where(and(eq(users.id, user.id), not(users.emailVerified)))
-					.returning({ id: users.id });
+					.returning({ id: users.id, username: users.username });
 				if (verified) {
-					eventBus.publish(new UserVerified(UserId.parse(verified.id)));
+					announceVerified(verified);
 				}
 			},
 		},
@@ -173,7 +223,7 @@ export function createBetterAuth({
 				sendLink("verify-email", user, url, EMAIL_VERIFICATION_EXPIRES_IN);
 			},
 			afterEmailVerification: async (user) => {
-				eventBus.publish(new UserVerified(UserId.parse(user.id)));
+				announceVerified(user);
 			},
 		},
 		user: {
@@ -187,7 +237,41 @@ export function createBetterAuth({
 			},
 		},
 		session: { expiresIn: 30 * DAY, updateAge: DAY },
-		account: { encryptOAuthTokens: true },
+		// Only providers with keys exist; their callback is `${API_ORIGIN}/api/auth/callback/<id>`.
+		socialProviders: {
+			...(oauth.google && {
+				// Google has no handle: a new account always chooses its username.
+				google: { ...oauth.google, prompt: "select_account" },
+			}),
+			...(oauth.github && {
+				github: {
+					...oauth.github,
+					mapProfileToUser: (profile) => usernameFromHandle(profile.login),
+				},
+			}),
+			...(oauth.discord && {
+				discord: {
+					...oauth.discord,
+					mapProfileToUser: (profile) => usernameFromHandle(profile.username),
+				},
+			}),
+		},
+		account: {
+			encryptOAuthTokens: true,
+			accountLinking: {
+				enabled: true,
+				// A provider account is never added to an existing one because their emails match:
+				// whoever holds that address at the provider would get in. The sign-in fails with
+				// `account_not_linked`; the owner signs in and links the provider from settings.
+				disableImplicitLinking: true,
+				// Linking is always explicit, by the signed-in owner, so whether the provider
+				// verified its email, or which email it is, does not matter.
+				trustedProviders: enabledOAuthProviders(config),
+				allowDifferentEmails: true,
+			},
+		},
+		// An OAuth failure without its own `errorCallbackURL` lands on sign-in, with `?error=<code>`.
+		onAPIError: { errorURL: `${config.webOrigin}/sign-in` },
 		// A database leak alone must not be enough to use a reset link. Verification links are
 		// signed JWTs and never stored.
 		verification: { storeIdentifier: "hashed" },
@@ -273,6 +357,12 @@ export function createBetterAuth({
 				) {
 					body.callbackURL = `${config.webOrigin}/`;
 				}
+				if (context.path === "/sign-in/social") {
+					// Kept in the state on the server, unlike `additionalData`, which the contract
+					// drops: the client cannot forge it on the way back.
+					await addOAuthServerContext({ locale: body.locale });
+					return;
+				}
 				if (context.path !== "/sign-up/email") {
 					return;
 				}
@@ -288,11 +378,36 @@ export function createBetterAuth({
 		databaseHooks: {
 			user: {
 				create: {
+					before: async (user, context) => {
+						if (!isOAuthCallback(context?.path)) {
+							return;
+						}
+						const created = user as typeof user & { username?: string };
+						const locale = Locale.safeParse(
+							(await getOAuthState())?.serverContext?.locale,
+						);
+						return {
+							data: {
+								...user,
+								name:
+									created.username ??
+									(created.name.trim().slice(0, MAX_PROVIDER_NAME) ||
+										created.email.split("@")[0]),
+								// Avatars belong to Profile; the provider's picture is not kept.
+								image: null,
+								locale: locale.success ? locale.data : "en",
+							},
+						};
+					},
 					after: async (user) => {
 						const created = user as typeof user & {
-							username: string;
+							username: string | null;
 							locale: string;
 						};
+						// Announced once it has chosen one.
+						if (typeof created.username !== "string") {
+							return;
+						}
 						const userId = UserId.parse(created.id);
 						eventBus.publish(
 							new UserRegistered(
@@ -304,6 +419,15 @@ export function createBetterAuth({
 						// An OAuth provider that vouches for the email skips the link.
 						if (created.emailVerified) {
 							eventBus.publish(new UserVerified(userId));
+						}
+					},
+				},
+				update: {
+					after: async (user, context) => {
+						// The only user update during an OAuth callback: the provider now vouches for
+						// an email it did not vouch for when the account was created.
+						if (isOAuthCallback(context?.path) && user.emailVerified) {
+							announceVerified(user);
 						}
 					},
 				},

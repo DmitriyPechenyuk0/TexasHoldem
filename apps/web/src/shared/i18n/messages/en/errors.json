@@ -3,7 +3,27 @@
 		"invalid-token": "This link has expired or was already used.",
 		"invalid-callback-url": "This link leads outside the site.",
 		"unauthenticated": "Sign in to continue.",
-		"email-not-verified": "Confirm your email first."
+		"email-not-verified": "Confirm your email first.",
+		"invalid-email-or-password": "Wrong email or password.",
+		"invalid-username-or-password": "Wrong username or password.",
+		"username-is-already-taken": "This username is taken. Try another one.",
+		"username-required": "Choose a username first.",
+		"session-not-fresh": "For your safety, sign out and sign in again, then try once more.",
+		"failed-to-unlink-last-account": "This is your only way to sign in, so it stays.",
+		"provider-not-found": "This way of signing in is not available right now."
+	},
+	"identity": {
+		"username-taken": "This username is taken. Try another one.",
+		"username-already-chosen": "Your account already has a username."
+	},
+	"oauth": {
+		"account_not_linked": "An account with this email already exists. Sign in to it as usual, then link this provider in your account settings.",
+		"access_denied": "Signing in was cancelled at the provider.",
+		"account_already_linked_to_different_user": "This provider account is already linked to another player.",
+		"email_not_found": "The provider did not share an email address. Allow it, or sign up with your email.",
+		"unable_to_link_account": "The provider account could not be linked. Try again.",
+		"USERNAME_IS_ALREADY_TAKEN": "Your username was taken a moment ago. Try again.",
+		"default": "Signing in with the provider didn't work. Try again."
 	},
 	"request": {
 		"invalid": "Check the highlighted fields.",

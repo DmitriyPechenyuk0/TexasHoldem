@@ -24,8 +24,7 @@ export class BetterAuthViewerResolver extends ViewerResolver {
 		}
 		return {
 			userId: UserId.parse(session.user.id),
-			// Always set for our accounts; `name` mirrors it.
-			username: session.user.username ?? session.user.name,
+			username: session.user.username ?? null,
 			emailVerified: session.user.emailVerified,
 		};
 	}

@@ -1,12 +1,26 @@
 import { getTranslations } from "next-intl/server";
 import { requireViewer } from "@/entities/viewer/index.server";
+import { fetchOAuthProviders } from "@/features/oauth-sign-in";
 import { ResendVerification } from "@/features/resend-verification";
 import { SignOutButton } from "@/features/sign-out";
+import { getServerHttp } from "@/shared/api/index.server";
 import { ROUTES } from "@/shared/config";
 import { CardDescription, CardTitle } from "@/shared/ui";
+import { SignInMethods } from "./sign-in-methods";
 
-export async function AccountDetails() {
+export interface SettingsSearchParams {
+	/** Why linking a provider failed, from the api's redirect back here. */
+	readonly error?: string | string[];
+}
+
+export async function AccountDetails({
+	searchParams,
+}: {
+	readonly searchParams: Promise<SettingsSearchParams>;
+}) {
 	const viewer = await requireViewer(ROUTES.settings);
+	const { error } = await searchParams;
+	const providers = await fetchOAuthProviders(await getServerHttp());
 	const t = await getTranslations("settings");
 
 	return (
@@ -26,6 +40,10 @@ export async function AccountDetails() {
 					<ResendVerification email={viewer.email} next={ROUTES.settings} />
 				</>
 			)}
+			<SignInMethods
+				providers={providers}
+				error={typeof error === "string" ? error : null}
+			/>
 			<SignOutButton variant="secondary" className="self-start" />
 		</>
 	);

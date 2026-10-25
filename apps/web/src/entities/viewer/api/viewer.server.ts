@@ -5,6 +5,7 @@ import { getServerHttp } from "@/shared/api/index.server";
 import { ROUTES } from "@/shared/config";
 import { redirect } from "@/shared/i18n";
 import { safeNextPath } from "@/shared/lib";
+import { chooseUsernameRedirect } from "../model/username";
 import { fetchViewer, type Viewer } from "./viewer";
 
 /**
@@ -17,8 +18,9 @@ export const getViewer = cache(async (): Promise<Viewer | null> =>
 
 /**
  * For a protected page: its viewer, or a redirect to sign-in that comes back to `path`. Like
- * every `next`, the path has no locale prefix: links to it add the current one. The proxy already sent visitors without a cookie there; this
- * catches an expired or revoked session.
+ * every `next`, the path has no locale prefix: links to it add the current one. The proxy already
+ * sent visitors without a cookie there; this catches an expired or revoked session. A viewer
+ * without a username goes to the username step first.
  */
 export async function requireViewer(path: string): Promise<Viewer> {
 	const viewer = await getViewer();
@@ -28,6 +30,10 @@ export async function requireViewer(path: string): Promise<Viewer> {
 			href: { pathname: ROUTES.signIn, query: { next: path } },
 			locale: await getLocale(),
 		});
+	}
+	const chooseUsername = chooseUsernameRedirect(viewer, path);
+	if (chooseUsername) {
+		return redirect({ href: chooseUsername, locale: await getLocale() });
 	}
 	return viewer;
 }

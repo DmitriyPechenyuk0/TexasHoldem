@@ -12,7 +12,8 @@ export function UnverifiedBanner() {
 	const t = useTranslations("common.unverifiedBanner");
 	const viewer = useViewer();
 
-	if (!viewer || viewer.emailVerified) {
+	// Without a username the account is on its way to that step first.
+	if (!viewer || viewer.emailVerified || viewer.username === null) {
 		return null;
 	}
 	return (

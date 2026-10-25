@@ -6,5 +6,15 @@
 	"status": "Email status",
 	"verified": "Confirmed",
 	"unverified": "Not confirmed",
-	"verifyHint": "Confirm your email to take a seat at a table."
+	"verifyHint": "Confirm your email to take a seat at a table.",
+	"methods": {
+		"title": "Ways to sign in",
+		"password": "Email and password",
+		"linked": "Set up",
+		"link": "Link",
+		"unlink": "Unlink",
+		"linkLabel": "Link {provider}",
+		"unlinkLabel": "Unlink {provider}",
+		"lastMethod": "Your only way to sign in can't be unlinked. Link another one first."
+	}
 }
