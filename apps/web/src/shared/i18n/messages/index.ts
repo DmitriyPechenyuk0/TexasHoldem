@@ -1,12 +1,24 @@
 import type { Locale } from "../routing";
+import enAuth from "./en/auth.json";
 import enCommon from "./en/common.json";
+import enErrors from "./en/errors.json";
 import enHome from "./en/home.json";
+import enSettings from "./en/settings.json";
+import ruAuth from "./ru/auth.json";
 import ruCommon from "./ru/common.json";
+import ruErrors from "./ru/errors.json";
 import ruHome from "./ru/home.json";
+import ruSettings from "./ru/settings.json";
 
 // One JSON file per namespace and locale. English is the source catalog: its generated
 // declarations keep the literal texts, which is how next-intl types ICU arguments.
-const en = { common: enCommon, home: enHome };
+const en = {
+	auth: enAuth,
+	common: enCommon,
+	errors: enErrors,
+	home: enHome,
+	settings: enSettings,
+};
 
 export type Messages = typeof en;
 
@@ -18,7 +30,13 @@ type Catalog<T> = {
 
 const catalogs = {
 	en,
-	ru: { common: ruCommon, home: ruHome },
+	ru: {
+		auth: ruAuth,
+		common: ruCommon,
+		errors: ruErrors,
+		home: ruHome,
+		settings: ruSettings,
+	},
 } satisfies Record<Locale, Catalog<Messages>>;
 
 // next-intl types every locale as the source catalog. The shapes match (checked above);

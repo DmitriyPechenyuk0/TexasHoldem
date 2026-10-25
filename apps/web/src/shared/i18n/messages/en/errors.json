@@ -1,0 +1,19 @@
+{
+	"auth": {
+		"invalid-token": "This link has expired or was already used.",
+		"invalid-callback-url": "This link leads outside the site.",
+		"unauthenticated": "Sign in to continue.",
+		"email-not-verified": "Confirm your email first."
+	},
+	"request": {
+		"invalid": "Check the highlighted fields.",
+		"rate-limited": "Too many attempts. Wait a minute and try again.",
+		"cross-origin": "This request did not come from the site. Reload the page and try again."
+	},
+	"network": {
+		"unreachable": "The server cannot be reached. Check your connection.",
+		"timeout": "The server took too long to answer. Try again."
+	},
+	"internal": "Something went wrong on our side. Try again in a moment.",
+	"unknown": "Something went wrong. Try again."
+}

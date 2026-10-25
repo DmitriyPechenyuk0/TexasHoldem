@@ -1,4 +1,5 @@
 import { Locale, UserId } from "@holdem/shared";
+import { SESSION_COOKIE_PREFIX } from "@holdem/shared/contracts/identity";
 import { Logger } from "@nestjs/common";
 import { and, eq, not } from "drizzle-orm";
 import type { EventBus } from "@nestjs/cqrs";
@@ -225,7 +226,7 @@ export function createBetterAuth({
 			"/account-info",
 		],
 		advanced: {
-			cookiePrefix: "holdem",
+			cookiePrefix: SESSION_COOKIE_PREFIX,
 			// Secure cookies get the `__Secure-` prefix; Better Auth would otherwise read NODE_ENV itself.
 			useSecureCookies: config.nodeEnv === "production",
 			ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },

@@ -21,6 +21,9 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
+	Card,
+	CardDescription,
+	CardTitle,
 	FormField,
 	IconButton,
 	Input,
@@ -293,6 +296,16 @@ export function UiPreviewPage() {
 					<Spinner />
 					<Spinner size="lg" />
 				</Row>
+			</Section>
+
+			<Section title="Card">
+				<Card className="max-w-sm">
+					<CardTitle>Check your inbox</CardTitle>
+					<CardDescription>
+						Open the link we emailed you to finish signing up.
+					</CardDescription>
+					<Button>Continue</Button>
+				</Card>
 			</Section>
 		</main>
 	);
