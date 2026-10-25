@@ -1,6 +1,7 @@
 import { API_PREFIX } from "../common/index.js";
 import {
 	MeResponse,
+	SendVerificationEmailRequest,
 	SignInEmailRequest,
 	SignInUsernameRequest,
 	SignUpRequest,
@@ -77,5 +78,18 @@ describe("identity contracts", () => {
 		};
 		expect(MeResponse.parse(me)).toEqual(me);
 		expect(MeResponse.safeParse({ ...me, id: "42" }).success).toBe(false);
+	});
+
+	it("SendVerificationEmailRequest needs a valid email and drops other keys", () => {
+		expect(
+			SendVerificationEmailRequest.parse({
+				email: signUp.email,
+				callbackURL: "/welcome",
+				username: "alice_01",
+			}),
+		).toEqual({ email: signUp.email, callbackURL: "/welcome" });
+		expect(
+			SendVerificationEmailRequest.safeParse({ email: "alice" }).success,
+		).toBe(false);
 	});
 });

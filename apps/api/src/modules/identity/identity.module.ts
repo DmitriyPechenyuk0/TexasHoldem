@@ -12,6 +12,7 @@ import { GetMeHandler } from "./application/queries/get-me/get-me.handler.js";
 import { BETTER_AUTH, createBetterAuth } from "./infrastructure/better-auth.js";
 import { BetterAuthHttpHandler } from "./infrastructure/better-auth-http.handler.js";
 import { BetterAuthViewerResolver } from "./infrastructure/better-auth-viewer.resolver.js";
+import { EmailCooldown } from "./infrastructure/email-cooldown.js";
 import { MeController } from "./presentation/me.controller.js";
 
 /**
@@ -25,14 +26,16 @@ import { MeController } from "./presentation/me.controller.js";
 	providers: [
 		{
 			provide: BETTER_AUTH,
-			inject: [AppConfig, DATABASE, Mailer, EventBus],
+			inject: [AppConfig, DATABASE, Mailer, EventBus, EmailCooldown],
 			useFactory: (
 				config: AppConfig,
 				db: Database,
 				mailer: Mailer,
 				eventBus: EventBus,
-			) => createBetterAuth({ config, db, mailer, eventBus }),
+				cooldown: EmailCooldown,
+			) => createBetterAuth({ config, db, mailer, eventBus, cooldown }),
 		},
+		EmailCooldown,
 		{ provide: AuthHttpHandler, useClass: BetterAuthHttpHandler },
 		{ provide: ViewerResolver, useClass: BetterAuthViewerResolver },
 		GetMeHandler,
