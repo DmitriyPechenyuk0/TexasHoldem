@@ -5,9 +5,9 @@ import { filter, firstValueFrom } from "rxjs";
 import type { App } from "supertest/types.js";
 import { UserVerified } from "@/modules/identity/index.js";
 import { PASSWORD_RESET_EXPIRES_IN } from "@/modules/identity/infrastructure/better-auth.js";
-import { emailCooldownKey } from "@/modules/identity/infrastructure/email-cooldown.js";
+import { emailThrottleKeys } from "@/modules/identity/infrastructure/email-throttle.js";
 import { users } from "@/modules/identity/infrastructure/persistence/schema.js";
-import { REDIS, type Redis } from "@/shared/infrastructure/redis/index.js";
+import { RateLimiter } from "@/shared/application/rate-limiter.js";
 import { createTestApp } from "./support/create-test-app.js";
 import {
 	type Account,
@@ -81,7 +81,9 @@ describe("Password reset (e2e)", () => {
 		});
 
 	const clearCooldown = (email: string) =>
-		app.get<Redis>(REDIS).del(emailCooldownKey("reset-password", email));
+		app
+			.get(RateLimiter)
+			.reset(emailThrottleKeys("reset-password", email).minute);
 
 	it("sets a new password through the emailed link and signs every session out", async () => {
 		const first = browser(app);

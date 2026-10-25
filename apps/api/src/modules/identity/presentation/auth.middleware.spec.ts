@@ -57,6 +57,7 @@ describe("asProblem", () => {
 		);
 
 		expect(response.headers.get("x-retry-after")).toBe("7");
+		expect(response.headers.get("retry-after")).toBe("7");
 		expect(await response.json()).toMatchObject({
 			status: 429,
 			code: "request.rate-limited",

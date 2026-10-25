@@ -7,6 +7,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { username } from "better-auth/plugins/username";
 import type { Mailer } from "@/shared/application/mailer.js";
+import type { RateLimiter } from "@/shared/application/rate-limiter.js";
 import type { AppConfig } from "@/shared/infrastructure/config/index.js";
 import type { Database } from "@/shared/infrastructure/database/index.js";
 import {
@@ -15,7 +16,7 @@ import {
 } from "../application/auth-http-handler.js";
 import { UserRegistered } from "../application/events/user-registered.event.js";
 import { UserVerified } from "../application/events/user-verified.event.js";
-import type { EmailCooldown, EmailKind } from "./email-cooldown.js";
+import type { EmailKind, EmailThrottle } from "./email-throttle.js";
 import {
 	accounts,
 	sessions,
@@ -27,6 +28,13 @@ const HOUR = 60 * 60;
 const DAY = 24 * HOUR;
 export const EMAIL_VERIFICATION_EXPIRES_IN = DAY;
 export const PASSWORD_RESET_EXPIRES_IN = HOUR;
+
+/** Better Auth's limits per client address and path, a minute each. */
+export const AUTH_RATE_LIMITS = {
+	signIn: { window: 60, max: 20 },
+	signUp: { window: 60, max: 3 },
+	email: { window: 60, max: 3 },
+} as const;
 
 /** Body fields that name where a link or a redirect leads. */
 const REDIRECT_FIELDS = ["callbackURL", "redirectTo"] as const;
@@ -62,7 +70,8 @@ export interface BetterAuthDependencies {
 	readonly db: Database;
 	readonly mailer: Mailer;
 	readonly eventBus: EventBus;
-	readonly cooldown: EmailCooldown;
+	readonly emailThrottle: EmailThrottle;
+	readonly rateLimiter: RateLimiter;
 }
 
 /** Settings from ADR-005 and its addendum; every value that differs from Better Auth's default is deliberate. */
@@ -71,11 +80,12 @@ export function createBetterAuth({
 	db,
 	mailer,
 	eventBus,
-	cooldown,
+	emailThrottle,
+	rateLimiter,
 }: BetterAuthDependencies) {
 	const logger = new Logger("BetterAuth");
 
-	// Started without awaiting, the cooldown included: the answer takes the same time whether or
+	// Started without awaiting, the throttle included: the answer takes the same time whether or
 	// not an email goes out, so it does not tell which addresses have an account.
 	const sendLink = (
 		template: EmailKind,
@@ -83,7 +93,7 @@ export function createBetterAuth({
 		url: string,
 		expiresIn: number,
 	): void => {
-		void cooldown.claim(template, user.email).then((claimed) => {
+		void emailThrottle.claim(template, user.email).then((claimed) => {
 			if (claimed) {
 				mailer.send({
 					to: user.email,
@@ -152,7 +162,7 @@ export function createBetterAuth({
 		},
 		emailVerification: {
 			sendOnSignUp: true,
-			// A correct password on an unverified account sends the link again, under the cooldown.
+			// A correct password on an unverified account sends the link again, under the throttle.
 			sendOnSignIn: true,
 			autoSignInAfterVerification: true,
 			// The link is a JWT signed with AUTH_SECRET, not a database row: nothing to leak or to reuse,
@@ -180,9 +190,32 @@ export function createBetterAuth({
 		// A database leak alone must not be enough to use a reset link. Verification links are
 		// signed JWTs and never stored.
 		verification: { storeIdentifier: "hashed" },
-		// In memory per instance for now; POK-65 moves it to Redis and tunes the rules. Better Auth's
-		// own rules already allow 3 sign-ins or sign-ups per 10 s and 3 resends per minute per IP.
-		rateLimit: { enabled: true },
+		// Per client address and path, in Redis for every instance. On top of these, the HTTP mount
+		// allows 5 sign-ins a minute per address and identifier, and EmailThrottle bounds the emails
+		// per recipient.
+		rateLimit: {
+			enabled: true,
+			window: 60,
+			max: 100,
+			customRules: {
+				// Loose, for many users behind one NAT; the per-identifier limit is the tight one.
+				"/sign-in/*": AUTH_RATE_LIMITS.signIn,
+				"/sign-up/email": AUTH_RATE_LIMITS.signUp,
+				"/send-verification-email": AUTH_RATE_LIMITS.email,
+				"/request-password-reset": AUTH_RATE_LIMITS.email,
+			},
+			customStorage: {
+				consume: async (key, { window, max }) => {
+					const decision = await rateLimiter.consume(`auth:${key}`, {
+						max,
+						windowSeconds: window,
+					});
+					return decision.allowed
+						? { allowed: true, retryAfter: null }
+						: { allowed: false, retryAfter: decision.retryAfterSeconds };
+				},
+			},
+		},
 		disabledPaths: [
 			// Profile owns display data, and this endpoint accepted any `image`, `javascript:` included.
 			"/update-user",
