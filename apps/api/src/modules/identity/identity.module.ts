@@ -1,6 +1,7 @@
 import { Global, Module } from "@nestjs/common";
 import { EventBus } from "@nestjs/cqrs";
 import { Mailer } from "@/shared/application/mailer.js";
+import { RateLimiter } from "@/shared/application/rate-limiter.js";
 import { ViewerResolver } from "@/shared/application/viewer.js";
 import { AppConfig } from "@/shared/infrastructure/config/index.js";
 import {
@@ -12,7 +13,7 @@ import { GetMeHandler } from "./application/queries/get-me/get-me.handler.js";
 import { BETTER_AUTH, createBetterAuth } from "./infrastructure/better-auth.js";
 import { BetterAuthHttpHandler } from "./infrastructure/better-auth-http.handler.js";
 import { BetterAuthViewerResolver } from "./infrastructure/better-auth-viewer.resolver.js";
-import { EmailCooldown } from "./infrastructure/email-cooldown.js";
+import { EmailThrottle } from "./infrastructure/email-throttle.js";
 import { MeController } from "./presentation/me.controller.js";
 
 /**
@@ -26,16 +27,32 @@ import { MeController } from "./presentation/me.controller.js";
 	providers: [
 		{
 			provide: BETTER_AUTH,
-			inject: [AppConfig, DATABASE, Mailer, EventBus, EmailCooldown],
+			inject: [
+				AppConfig,
+				DATABASE,
+				Mailer,
+				EventBus,
+				EmailThrottle,
+				RateLimiter,
+			],
 			useFactory: (
 				config: AppConfig,
 				db: Database,
 				mailer: Mailer,
 				eventBus: EventBus,
-				cooldown: EmailCooldown,
-			) => createBetterAuth({ config, db, mailer, eventBus, cooldown }),
+				emailThrottle: EmailThrottle,
+				rateLimiter: RateLimiter,
+			) =>
+				createBetterAuth({
+					config,
+					db,
+					mailer,
+					eventBus,
+					emailThrottle,
+					rateLimiter,
+				}),
 		},
-		EmailCooldown,
+		EmailThrottle,
 		{ provide: AuthHttpHandler, useClass: BetterAuthHttpHandler },
 		{ provide: ViewerResolver, useClass: BetterAuthViewerResolver },
 		GetMeHandler,

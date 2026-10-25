@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { STATUS_CODES } from "node:http";
 import { PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import {
@@ -15,6 +16,10 @@ import type {
 	Response as ExpressResponse,
 } from "express";
 import type { z } from "zod";
+import {
+	RateLimiter,
+	type RateLimitRule,
+} from "@/shared/application/rate-limiter.js";
 import {
 	HttpProblem,
 	type ProblemContext,
@@ -37,6 +42,33 @@ const BODY_CONTRACTS: Readonly<Record<string, z.ZodType>> = {
 	[`${AUTH_BASE_PATH}/reset-password`]: ResetPasswordRequest,
 };
 
+/** Sign-ins per client address and identifier; Better Auth's own limit is per address only. */
+export const SIGN_IN_RULE: RateLimitRule = { max: 5, windowSeconds: 60 };
+
+/** The identifier a sign-in names, by path; the username plugin matches it in any case. */
+const SIGN_IN_IDENTIFIER: Readonly<
+	Record<string, (body: Record<string, string>) => string>
+> = {
+	[`${AUTH_BASE_PATH}/sign-in/email`]: (body) => body.email!,
+	[`${AUTH_BASE_PATH}/sign-in/username`]: (body) => body.username!,
+};
+
+/** A digest, so Redis holds neither addresses nor usernames. */
+export const signInLimitKey = (ip: string, identifier: string): string =>
+	`identity:sign-in:${createHash("sha256").update(`${ip}|${identifier.toLowerCase()}`).digest("hex")}`;
+
+const tooManyRequests = (
+	response: ExpressResponse,
+	retryAfterSeconds: number,
+): HttpProblem => {
+	response.setHeader("Retry-After", String(retryAfterSeconds));
+	return new HttpProblem(
+		429,
+		"request.rate-limited",
+		"Too many attempts. Try again later.",
+	);
+};
+
 const hasBody = (request: ExpressRequest): boolean =>
 	Number(request.headers["content-length"] ?? 0) > 0 ||
 	request.headers["transfer-encoding"] !== undefined;
@@ -44,7 +76,7 @@ const hasBody = (request: ExpressRequest): boolean =>
 /**
  * Turns Better Auth's error answers (`{ code: "USERNAME_IS_ALREADY_TAKEN", message }`) into the
  * api's problem details, with the code as `auth.username-is-already-taken`. Headers such as
- * `Set-Cookie` and `X-Retry-After` are kept.
+ * `Set-Cookie` are kept, and Better Auth's `X-Retry-After` is copied to the standard `Retry-After`.
  */
 export async function asProblem(
 	response: Response,
@@ -74,6 +106,11 @@ export async function asProblem(
 
 	const headers = new Headers(response.headers);
 	headers.set("content-type", PROBLEM_CONTENT_TYPE);
+	// Better Auth names the standard header its own way.
+	const retryAfter = headers.get("x-retry-after");
+	if (response.status === 429 && retryAfter !== null) {
+		headers.set("retry-after", retryAfter);
+	}
 	headers.delete("content-length");
 	return new Response(JSON.stringify(problemFor(error, context).problem), {
 		status: response.status,
@@ -89,7 +126,10 @@ export async function asProblem(
  */
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
-	constructor(private readonly handler: AuthHttpHandler) {}
+	constructor(
+		private readonly handler: AuthHttpHandler,
+		private readonly limiter: RateLimiter,
+	) {}
 
 	async use(
 		request: ExpressRequest & { id?: unknown },
@@ -112,6 +152,21 @@ export class AuthMiddleware implements NestMiddleware {
 			request.body = new ZodValidationPipe(contract).transform(
 				request.body ?? {},
 			);
+		}
+
+		const identifierOf =
+			request.method === "POST" ? SIGN_IN_IDENTIFIER[path] : undefined;
+		if (identifierOf) {
+			const decision = await this.limiter.consume(
+				signInLimitKey(
+					request.ip ?? "unknown",
+					identifierOf(request.body as Record<string, string>),
+				),
+				SIGN_IN_RULE,
+			);
+			if (!decision.allowed) {
+				throw tooManyRequests(response, decision.retryAfterSeconds);
+			}
 		}
 
 		if (request.ip) {

@@ -4,4 +4,8 @@ export {
 	RedisConnections,
 } from "./redis-connections.js";
 export { RedisHealthIndicator } from "./redis-health.indicator.js";
+export {
+	RATE_LIMIT_NAMESPACE,
+	RedisRateLimiter,
+} from "./redis-rate-limiter.js";
 export { RedisModule } from "./redis.module.js";

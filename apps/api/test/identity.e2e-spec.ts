@@ -12,12 +12,14 @@ import request from "supertest";
 import type { App } from "supertest/types.js";
 import { UserRegistered, UserVerified } from "@/modules/identity/index.js";
 import {
+	AUTH_RATE_LIMITS,
 	BETTER_AUTH,
 	type BetterAuth,
 	EMAIL_VERIFICATION_EXPIRES_IN,
 } from "@/modules/identity/infrastructure/better-auth.js";
-import { emailCooldownKey } from "@/modules/identity/infrastructure/email-cooldown.js";
+import { emailThrottleKeys } from "@/modules/identity/infrastructure/email-throttle.js";
 import { users } from "@/modules/identity/infrastructure/persistence/schema.js";
+import { RateLimiter } from "@/shared/application/rate-limiter.js";
 import type { Viewer } from "@/shared/application/viewer.js";
 import type { AppConfig } from "@/shared/infrastructure/config/index.js";
 import { REDIS, type Redis } from "@/shared/infrastructure/redis/index.js";
@@ -444,6 +446,11 @@ describe("Identity (e2e)", () => {
 
 	describe("sending the link again", () => {
 		const redis = () => app.get<Redis>(REDIS);
+		/** As if the minute since the last email to the address were over. */
+		const minutePasses = (email: string) =>
+			app
+				.get(RateLimiter)
+				.reset(emailThrottleKeys("verify-email", email).minute);
 		const resend = (client: Browser, email: string) =>
 			client.post("/api/auth/send-verification-email", { email });
 		/** Nothing more arrives: wait past the background delivery, then count. */
@@ -472,7 +479,7 @@ describe("Identity (e2e)", () => {
 			]);
 		});
 
-		it("sends at most one email a minute to an address, whoever asks", async () => {
+		it("sends one email a minute and three an hour to an address, whoever asks", async () => {
 			const account = newAccount();
 			await browser(app).post("/api/auth/sign-up/email", account).expect(200);
 			await waitForEmailCount(account.email, 1);
@@ -487,16 +494,12 @@ describe("Identity (e2e)", () => {
 				.expect(403);
 			await settle();
 			expect(await countEmails(account.email)).toBe(1);
-			expect(
-				await redis().ttl(emailCooldownKey("verify-email", account.email)),
-			).toBeGreaterThan(50);
 
-			// The minute is over.
-			await redis().del(emailCooldownKey("verify-email", account.email));
+			await minutePasses(account.email);
 			await resend(browser(app), account.email).expect(200);
 			await waitForEmailCount(account.email, 2);
 
-			await redis().del(emailCooldownKey("verify-email", account.email));
+			await minutePasses(account.email);
 			await browser(app)
 				.post("/api/auth/sign-in/username", {
 					username: account.username,
@@ -504,16 +507,31 @@ describe("Identity (e2e)", () => {
 				})
 				.expect(403);
 			await waitForEmailCount(account.email, 3);
+
+			// The hour's three are spent; the answer stays the same.
+			await minutePasses(account.email);
+			await resend(browser(app), account.email).expect(200);
+			await settle();
+			expect(await countEmails(account.email)).toBe(3);
 		});
 
-		it("keeps no address in Redis", async () => {
+		it("keeps no address or username in Redis", async () => {
 			const account = newAccount();
 			await browser(app).post("/api/auth/sign-up/email", account).expect(200);
+			await browser(app)
+				.post("/api/auth/sign-in/username", {
+					username: account.username,
+					password: PASSWORD,
+				})
+				.expect(403);
 			await waitForEmailCount(account.email, 1);
 
-			const keys = await redis().keys("identity:email-cooldown:*");
-			expect(keys).toContain(emailCooldownKey("verify-email", account.email));
-			expect(keys.join()).not.toContain(account.email);
+			const keys = (await redis().keys("*")).join().toLowerCase();
+			expect(keys).toContain(
+				emailThrottleKeys("verify-email", account.email).hour,
+			);
+			expect(keys).not.toContain(account.email);
+			expect(keys).not.toContain(account.username.toLowerCase());
 		});
 
 		it("is rate limited per client", async () => {
@@ -708,19 +726,42 @@ describe("Identity in production (e2e)", () => {
 		expect(cookie).toMatch(/; Secure/i);
 	});
 
-	it("keeps one rate-limit bucket however the client rewrites X-Forwarded-For", async () => {
-		// TRUST_PROXY is off: the api is reached directly, so the header is the client's own words.
+	/** Sign-in guesses from one client that rewrites X-Forwarded-For on every request. */
+	async function guess(
+		attempts: number,
+		body: (attempt: number) => { email: string } | { username: string },
+	) {
 		const statuses: number[] = [];
-		for (let attempt = 1; attempt <= 4; attempt++) {
-			// A path no other test here signs in on, so the bucket starts empty.
+		for (let attempt = 1; attempt <= attempts; attempt++) {
+			const identifier = body(attempt);
 			const response = await request(app.getHttpServer())
-				.post("/api/auth/sign-in/username")
+				.post(
+					`/api/auth/sign-in/${"email" in identifier ? "email" : "username"}`,
+				)
 				.set("Origin", WEB_ORIGIN)
 				.set("X-Forwarded-For", `198.51.100.${attempt}`)
-				.send({ username: "victim", password: `guess number ${attempt}` });
+				.send({ ...identifier, password: `guess ${attempt}` });
 			statuses.push(response.status);
 		}
+		return statuses;
+	}
 
-		expect(statuses).toEqual([401, 401, 401, 429]);
+	// TRUST_PROXY is off: the api is reached directly, so the header is the client's own words.
+	// The two tests sign in on different paths, which Better Auth counts apart.
+	it("keeps one bucket per identifier however the client rewrites X-Forwarded-For", async () => {
+		expect(await guess(6, () => ({ email: "victim@example.test" }))).toEqual([
+			401, 401, 401, 401, 401, 429,
+		]);
+	});
+
+	it("keeps one bucket per client however it rewrites X-Forwarded-For", async () => {
+		const max = AUTH_RATE_LIMITS.signIn.max;
+
+		const statuses = await guess(max + 1, (attempt) => ({
+			username: `sprayed_${attempt}`,
+		}));
+
+		expect(statuses.slice(0, max)).not.toContain(429);
+		expect(statuses.at(-1)).toBe(429);
 	});
 });
