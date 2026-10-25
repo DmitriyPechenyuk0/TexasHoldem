@@ -13,6 +13,8 @@ import {
 	CLIENT_IP_HEADER,
 } from "../application/auth-http-handler.js";
 import { UserRegistered } from "../application/events/user-registered.event.js";
+import { UserVerified } from "../application/events/user-verified.event.js";
+import type { EmailCooldown } from "./email-cooldown.js";
 import {
 	accounts,
 	sessions,
@@ -33,6 +35,14 @@ const SIGN_UP_FIELDS = new Set([
 	"callbackURL",
 ]);
 
+/** Endpoints whose email links lead to `callbackURL`, `/` of the api by default. */
+const SENDS_VERIFICATION_LINK = new Set([
+	"/sign-up/email",
+	"/sign-in/email",
+	"/sign-in/username",
+	"/send-verification-email",
+]);
+
 /** Better Auth's log levels on Nest's logger: its routine messages are debug output for us. */
 const LOG_METHOD = {
 	error: "error",
@@ -47,6 +57,7 @@ export interface BetterAuthDependencies {
 	readonly db: Database;
 	readonly mailer: Mailer;
 	readonly eventBus: EventBus;
+	readonly cooldown: EmailCooldown;
 }
 
 /** Settings from ADR-005 and its addendum; every value that differs from Better Auth's default is deliberate. */
@@ -55,8 +66,29 @@ export function createBetterAuth({
 	db,
 	mailer,
 	eventBus,
+	cooldown,
 }: BetterAuthDependencies) {
 	const logger = new Logger("BetterAuth");
+
+	const sendVerificationLink = async (
+		user: { readonly email: string; readonly name: string },
+		url: string,
+	): Promise<void> => {
+		if (!(await cooldown.claim("verify-email", user.email))) {
+			return;
+		}
+		mailer.send({
+			to: user.email,
+			locale: (user as { locale?: string }).locale,
+			template: "verify-email",
+			params: {
+				// `name` mirrors the username.
+				username: user.name,
+				url,
+				expiresInMinutes: EMAIL_VERIFICATION_EXPIRES_IN / 60,
+			},
+		});
+	};
 
 	return betterAuth({
 		appName: "Texas Hold'em",
@@ -88,22 +120,19 @@ export function createBetterAuth({
 		},
 		emailVerification: {
 			sendOnSignUp: true,
+			// A correct password on an unverified account sends the link again, under the cooldown.
+			sendOnSignIn: true,
 			autoSignInAfterVerification: true,
+			// The link is a JWT signed with AUTH_SECRET, not a database row: nothing to leak or to reuse,
+			// since a verified account gets no session from it.
 			expiresIn: EMAIL_VERIFICATION_EXPIRES_IN,
-			// Not awaited by design: Mailer.send returns at once, so the answer takes the same time
-			// whether or not an email was sent.
+			// Not awaited by design, the cooldown included: the answer takes the same time whether or
+			// not an email goes out, so it does not tell which addresses have an unverified account.
 			sendVerificationEmail: async ({ user, url }) => {
-				mailer.send({
-					to: user.email,
-					locale: (user as { locale?: string }).locale,
-					template: "verify-email",
-					params: {
-						// `name` mirrors the username.
-						username: user.name,
-						url,
-						expiresInMinutes: EMAIL_VERIFICATION_EXPIRES_IN / 60,
-					},
-				});
+				void sendVerificationLink(user, url);
+			},
+			afterEmailVerification: async (user) => {
+				eventBus.publish(new UserVerified(UserId.parse(user.id)));
 			},
 		},
 		user: {
@@ -118,9 +147,11 @@ export function createBetterAuth({
 		},
 		session: { expiresIn: 30 * DAY, updateAge: DAY },
 		account: { encryptOAuthTokens: true },
-		// A database leak alone must not be enough to replay verification or reset links.
+		// A database leak alone must not be enough to replay reset links. Verification links are
+		// signed JWTs and never stored.
 		verification: { storeIdentifier: "hashed" },
-		// In memory per instance for now; POK-65 moves it to Redis and tunes the rules.
+		// In memory per instance for now; POK-65 moves it to Redis and tunes the rules. Better Auth's
+		// own rules already allow 3 sign-ins or sign-ups per 10 s and 3 resends per minute per IP.
 		rateLimit: { enabled: true },
 		disabledPaths: [
 			// Profile owns display data, and this endpoint accepted any `image`, `javascript:` included.
@@ -150,20 +181,28 @@ export function createBetterAuth({
 			// context is merged into the original, so unknown keys are deleted in place.
 			before: createAuthMiddleware(async (context) => {
 				const body = context.body as Record<string, unknown> | undefined;
+				if (!body) {
+					return;
+				}
 				// Better Auth checks callback URLs only on requests that carry cookies, so a sign-up
 				// could get an emailed link that leads to another site after verifying.
-				const callbackURL = body?.callbackURL;
-				if (
-					typeof callbackURL === "string" &&
-					(!URL.canParse(callbackURL, config.webOrigin) ||
-						new URL(callbackURL, config.webOrigin).origin !== config.webOrigin)
-				) {
-					throw new APIError("FORBIDDEN", {
-						code: "INVALID_CALLBACK_URL",
-						message: "The callback URL must lead to the web app.",
-					});
+				const { callbackURL } = body;
+				if (typeof callbackURL === "string") {
+					const target = URL.canParse(callbackURL, config.webOrigin)
+						? new URL(callbackURL, config.webOrigin)
+						: undefined;
+					if (target?.origin !== config.webOrigin) {
+						throw new APIError("FORBIDDEN", {
+							code: "INVALID_CALLBACK_URL",
+							message: "The callback URL must lead to the web app.",
+						});
+					}
+					// Better Auth would resolve a relative URL against the api.
+					body.callbackURL = target.href;
+				} else if (SENDS_VERIFICATION_LINK.has(context.path)) {
+					body.callbackURL = `${config.webOrigin}/`;
 				}
-				if (context.path !== "/sign-up/email" || !body) {
+				if (context.path !== "/sign-up/email") {
 					return;
 				}
 				for (const key of Object.keys(body)) {
@@ -183,13 +222,18 @@ export function createBetterAuth({
 							username: string;
 							locale: string;
 						};
+						const userId = UserId.parse(created.id);
 						eventBus.publish(
 							new UserRegistered(
-								UserId.parse(created.id),
+								userId,
 								created.username,
 								Locale.catch("en").parse(created.locale),
 							),
 						);
+						// An OAuth provider that vouches for the email skips the link.
+						if (created.emailVerified) {
+							eventBus.publish(new UserVerified(userId));
+						}
 					},
 				},
 			},

@@ -13,6 +13,7 @@ const viewer: Viewer = {
 
 const contextFor = (request: object) =>
 	({
+		getType: () => "http",
 		switchToHttp: () => ({ getRequest: () => request }),
 	}) as ExecutionContext;
 

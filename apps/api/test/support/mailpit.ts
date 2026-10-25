@@ -52,3 +52,28 @@ export async function waitForEmail(
 		await new Promise((resolve) => setTimeout(resolve, 100));
 	}
 }
+
+/** How many emails to `to` Mailpit holds now. */
+export async function countEmails(to: string): Promise<number> {
+	const { messages_count: count } = await getJson<{ messages_count: number }>(
+		`/search?query=${encodeURIComponent(`to:"${to}"`)}`,
+	);
+	return count;
+}
+
+/** Polls until Mailpit holds `count` emails to `to`. */
+export async function waitForEmailCount(
+	to: string,
+	count: number,
+	timeoutMs = 10_000,
+): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while ((await countEmails(to)) < count) {
+		if (Date.now() > deadline) {
+			throw new Error(
+				`Fewer than ${count} emails to ${to} within ${timeoutMs} ms`,
+			);
+		}
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	}
+}

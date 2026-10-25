@@ -1,6 +1,7 @@
 import { STATUS_CODES } from "node:http";
 import { PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import {
+	SendVerificationEmailRequest,
 	SignInEmailRequest,
 	SignInUsernameRequest,
 	SignUpRequest,
@@ -29,6 +30,7 @@ const BODY_CONTRACTS: Readonly<Record<string, z.ZodType>> = {
 	[`${AUTH_BASE_PATH}/sign-up/email`]: SignUpRequest,
 	[`${AUTH_BASE_PATH}/sign-in/email`]: SignInEmailRequest,
 	[`${AUTH_BASE_PATH}/sign-in/username`]: SignInUsernameRequest,
+	[`${AUTH_BASE_PATH}/send-verification-email`]: SendVerificationEmailRequest,
 };
 
 const hasBody = (request: ExpressRequest): boolean =>
