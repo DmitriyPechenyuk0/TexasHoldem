@@ -11,7 +11,7 @@ src/
   shared/                 cross-cutting building blocks, layered like a context
     domain/               DomainError, Result, shared kernel types (e.g. UserId)
     application/          ports used by every context (Clock)
-    infrastructure/       config, adapters (SystemClock), later database and Redis clients
+    infrastructure/       config, database, Redis, logging, mail, adapters (SystemClock)
     presentation/         HTTP mapping of domain errors
     shared.module.ts
   modules/<context>/
@@ -179,6 +179,25 @@ CI applies the migrations and fails when a schema change has no migration.
 - `GET /health` is liveness and never touches a dependency. `GET /health/ready` asks every `HealthIndicator` (2 s each) and answers 503 when one is down.
 - A new dependency gets a `HealthIndicator` adapter next to its client, listed under `HEALTH_INDICATORS` in `SharedModule`.
 - SIGTERM and SIGINT stop the HTTP server and run the `onApplicationShutdown` hooks, which close the database pool and Redis. A process that has not exited after 10 s is stopped.
+
+## Email
+
+Handlers send email through the `Mailer` port in `shared/application`. The email names a template and its values; the recipient's locale picks the language:
+
+```ts
+this.mailer.send({
+	to: user.email,
+	locale: user.locale, // "ru", "ru-RU", …; unknown or missing → English
+	template: "verify-email",
+	params: { username: user.username, url, expiresInMinutes: 24 * 60 },
+});
+```
+
+- `send` renders the email and returns at once. `SmtpMailer` (nodemailer) delivers it in the background, so a slow or failing mail server never fails or delays the request. A transient failure is retried after 1 s, 5 s and 25 s; a permanent rejection (5xx reply, invalid address) is not. Each failed attempt is logged with the template and the SMTP code, never the recipient's address.
+- On shutdown, attempts in flight finish and pending retries are dropped, with an error line each.
+- Templates live in `shared/infrastructure/mail/templates`: one file per template with its copy in every locale (a missing translation fails to compile), and one layout that renders it as HTML and plain text. Copy is plain text, and the layout escapes every value it puts into the HTML. The layout uses the web app's colours, follows the reader's dark mode where the client supports it, and keeps every style inline, so clients that drop `<style>` still show the light version. `preview` is the line inbox lists show next to the subject. A new template is a new member of the `EmailContent` union plus its file.
+- Locally, Mailpit catches every email (http://localhost:8025); the e2e tests read it through its API (`test/support/mailpit.ts`). In production, STARTTLS is required.
+- There is no mail `HealthIndicator`: delivery is retried in the background, so a mail outage must not take the api out of the load balancer.
 
 ## Logging
 
