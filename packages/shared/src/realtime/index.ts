@@ -8,6 +8,8 @@ export {
 	type NamespacePath,
 	NAMESPACES,
 	type ServerToClientEvents,
+	SessionExpiredEvent,
+	type SocketData,
 } from "./define.js";
 export {
 	PingAck,

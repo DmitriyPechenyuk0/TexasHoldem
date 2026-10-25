@@ -28,7 +28,8 @@ class SeatTakenError extends DomainError {
 }
 
 const Seat = z.object({ seat: z.int() });
-const probeNamespace = defineNamespace(NAMESPACES.table, {
+// On the public root namespace, next to ping: these tests are about failures, not sessions.
+const probeNamespace = defineNamespace(NAMESPACES.system, {
 	clientToServer: [
 		defineEvent("take-seat", Seat, Seat),
 		defineEvent("crash", Seat, Seat),
@@ -149,7 +150,7 @@ describe("Realtime (e2e)", () => {
 		>;
 
 		beforeAll(async () => {
-			socket = await connect("/table");
+			socket = await connect("/");
 		});
 
 		it("reply to a domain error with its problem, code and params", async () => {

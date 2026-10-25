@@ -6,6 +6,8 @@ import helmet from "helmet";
 import { Logger } from "nestjs-pino";
 import type { AppConfig } from "@/shared/infrastructure/config/index.js";
 import { SocketIoAdapter } from "@/shared/infrastructure/realtime/socket-io.adapter.js";
+import { ViewerResolver } from "@/shared/application/viewer.js";
+import { authenticateSockets } from "@/shared/presentation/realtime/socket-session.js";
 import { problemFor } from "@/shared/presentation/problem.js";
 
 /** Larger JSON bodies are refused with 413. */
@@ -48,5 +50,9 @@ export function configureApp(app: INestApplication, config: AppConfig): void {
 	(app as NestExpressApplication).useBodyParser("json", {
 		limit: JSON_BODY_LIMIT,
 	});
-	app.useWebSocketAdapter(new SocketIoAdapter(app, config));
+	app.useWebSocketAdapter(
+		new SocketIoAdapter(app, config, [
+			authenticateSockets(app.get(ViewerResolver)),
+		]),
+	);
 }
