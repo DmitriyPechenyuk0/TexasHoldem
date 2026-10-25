@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { Problem, PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import { MeResponse } from "@holdem/shared/contracts/identity";
 import {
 	Controller,
@@ -28,36 +26,21 @@ import { RequireVerified } from "@/shared/presentation/require-verified.guard.js
 import { createTestApp } from "./support/create-test-app.js";
 import { exampleConfig } from "./support/example-config.js";
 import {
-	countEmails,
-	waitForEmail,
-	waitForEmailCount,
-} from "./support/mailpit.js";
+	type Browser,
+	browser,
+	newAccount,
+	PASSWORD,
+	problemOf,
+	sessionCookieOf,
+	signUpAndVerify,
+	verificationLinkFor,
+	WEB_ORIGIN,
+} from "./support/identity.js";
+import { countEmails, waitForEmailCount } from "./support/mailpit.js";
 import {
 	createTestDatabase,
 	type TestDatabase,
 } from "./support/test-database.js";
-
-const WEB_ORIGIN = exampleConfig().webOrigin;
-const PASSWORD = "correct horse battery";
-
-const problemOf = (response: request.Response): Problem => {
-	expect(response.headers["content-type"]).toMatch(
-		new RegExp(`^${PROBLEM_CONTENT_TYPE.replace("+", "\\+")}`),
-	);
-	return Problem.parse(response.body);
-};
-
-/** A new account's details, unique per call: every test shares one database and Mailpit. */
-const newAccount = () => {
-	const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
-	return {
-		username: `User_${suffix}`,
-		email: `user.${suffix}@example.test`,
-		password: PASSWORD,
-	};
-};
-
-let lastAddress = 0;
 
 /** A route only verified users may reach, like the play endpoints to come. */
 @Controller("probe")
@@ -67,50 +50,6 @@ class VerifiedOnlyController {
 	enter(@CurrentUser() viewer: Viewer) {
 		return { userId: viewer.userId };
 	}
-}
-
-/**
- * One browser: its own cookies and, through TRUST_PROXY, its own client address, so the rate
- * limits of one test never spill into another.
- */
-function browser(app: INestApplication<App>) {
-	const agent = request.agent(app.getHttpServer());
-	const ip = `203.0.113.${++lastAddress}`;
-	const authed = <T extends request.Test>(test: T): T =>
-		test.set("X-Forwarded-For", ip).set("Origin", WEB_ORIGIN) as T;
-	return {
-		ip,
-		get: (path: string) => authed(agent.get(path)),
-		post: (path: string, body?: object) =>
-			authed(agent.post(path)).send(body ?? {}),
-	};
-}
-type Browser = ReturnType<typeof browser>;
-
-const sessionCookieOf = (response: request.Response): string | undefined =>
-	([] as string[])
-		.concat(response.headers["set-cookie"] ?? [])
-		.find((cookie) => /^(__Secure-)?holdem\.session_token=[^;]+/.test(cookie));
-
-/** The verification link from the email Mailpit caught, as a path on the api. */
-async function verificationLinkFor(email: string): Promise<URL> {
-	const message = await waitForEmail(email);
-	const link = /https?:\/\/\S+\/api\/auth\/verify-email\?\S+/.exec(
-		message.Text,
-	)?.[0];
-	expect(link).toBeDefined();
-	return new URL(link!);
-}
-
-/** Signs up and opens the link from the email, which signs the browser in. */
-async function signUpAndVerify(
-	client: Browser,
-	account = newAccount(),
-): Promise<typeof account> {
-	await client.post("/api/auth/sign-up/email", account).expect(200);
-	const link = await verificationLinkFor(account.email);
-	await client.get(`${link.pathname}${link.search}`).expect(302);
-	return account;
 }
 
 describe("Identity (e2e)", () => {

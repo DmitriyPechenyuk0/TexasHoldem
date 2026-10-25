@@ -1,5 +1,6 @@
 import { Locale, UserId } from "@holdem/shared";
 import { Logger } from "@nestjs/common";
+import { and, eq, not } from "drizzle-orm";
 import type { EventBus } from "@nestjs/cqrs";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -14,7 +15,7 @@ import {
 } from "../application/auth-http-handler.js";
 import { UserRegistered } from "../application/events/user-registered.event.js";
 import { UserVerified } from "../application/events/user-verified.event.js";
-import type { EmailCooldown } from "./email-cooldown.js";
+import type { EmailCooldown, EmailKind } from "./email-cooldown.js";
 import {
 	accounts,
 	sessions,
@@ -25,6 +26,10 @@ import {
 const HOUR = 60 * 60;
 const DAY = 24 * HOUR;
 export const EMAIL_VERIFICATION_EXPIRES_IN = DAY;
+export const PASSWORD_RESET_EXPIRES_IN = HOUR;
+
+/** Body fields that name where a link or a redirect leads. */
+const REDIRECT_FIELDS = ["callbackURL", "redirectTo"] as const;
 
 /** The only sign-up fields Better Auth may see; `name` is filled from `username`. */
 const SIGN_UP_FIELDS = new Set([
@@ -70,23 +75,28 @@ export function createBetterAuth({
 }: BetterAuthDependencies) {
 	const logger = new Logger("BetterAuth");
 
-	const sendVerificationLink = async (
+	// Started without awaiting, the cooldown included: the answer takes the same time whether or
+	// not an email goes out, so it does not tell which addresses have an account.
+	const sendLink = (
+		template: EmailKind,
 		user: { readonly email: string; readonly name: string },
 		url: string,
-	): Promise<void> => {
-		if (!(await cooldown.claim("verify-email", user.email))) {
-			return;
-		}
-		mailer.send({
-			to: user.email,
-			locale: (user as { locale?: string }).locale,
-			template: "verify-email",
-			params: {
-				// `name` mirrors the username.
-				username: user.name,
-				url,
-				expiresInMinutes: EMAIL_VERIFICATION_EXPIRES_IN / 60,
-			},
+		expiresIn: number,
+	): void => {
+		void cooldown.claim(template, user.email).then((claimed) => {
+			if (claimed) {
+				mailer.send({
+					to: user.email,
+					locale: (user as { locale?: string }).locale,
+					template,
+					// `name` mirrors the username.
+					params: {
+						username: user.name,
+						url,
+						expiresInMinutes: expiresIn / 60,
+					},
+				});
+			}
 		});
 	};
 
@@ -117,6 +127,28 @@ export function createBetterAuth({
 			requireEmailVerification: true,
 			minPasswordLength: 10,
 			maxPasswordLength: 128,
+			// The reset token is a random id stored hashed (`storeIdentifier` below) and used once.
+			resetPasswordTokenExpiresIn: PASSWORD_RESET_EXPIRES_IN,
+			sendResetPassword: async ({ user, url }) => {
+				sendLink("reset-password", user, url, PASSWORD_RESET_EXPIRES_IN);
+			},
+			// Whoever held the old password, or a stolen session, is signed out everywhere.
+			revokeSessionsOnPasswordReset: true,
+			onPasswordReset: async ({ user }) => {
+				// Every other reset link of the account dies with this one. Among the endpoints we
+				// enable, only reset tokens store the bare user id (two-factor would too).
+				await db.delete(verifications).where(eq(verifications.value, user.id));
+				// The link reached the inbox, which proves the address as well as the verification
+				// link would; otherwise the next sign-in would be refused for it.
+				const [verified] = await db
+					.update(users)
+					.set({ emailVerified: true })
+					.where(and(eq(users.id, user.id), not(users.emailVerified)))
+					.returning({ id: users.id });
+				if (verified) {
+					eventBus.publish(new UserVerified(UserId.parse(verified.id)));
+				}
+			},
 		},
 		emailVerification: {
 			sendOnSignUp: true,
@@ -126,10 +158,8 @@ export function createBetterAuth({
 			// The link is a JWT signed with AUTH_SECRET, not a database row: nothing to leak or to reuse,
 			// since a verified account gets no session from it.
 			expiresIn: EMAIL_VERIFICATION_EXPIRES_IN,
-			// Not awaited by design, the cooldown included: the answer takes the same time whether or
-			// not an email goes out, so it does not tell which addresses have an unverified account.
 			sendVerificationEmail: async ({ user, url }) => {
-				void sendVerificationLink(user, url);
+				sendLink("verify-email", user, url, EMAIL_VERIFICATION_EXPIRES_IN);
 			},
 			afterEmailVerification: async (user) => {
 				eventBus.publish(new UserVerified(UserId.parse(user.id)));
@@ -147,7 +177,7 @@ export function createBetterAuth({
 		},
 		session: { expiresIn: 30 * DAY, updateAge: DAY },
 		account: { encryptOAuthTokens: true },
-		// A database leak alone must not be enough to replay reset links. Verification links are
+		// A database leak alone must not be enough to use a reset link. Verification links are
 		// signed JWTs and never stored.
 		verification: { storeIdentifier: "hashed" },
 		// In memory per instance for now; POK-65 moves it to Redis and tunes the rules. Better Auth's
@@ -186,10 +216,13 @@ export function createBetterAuth({
 				}
 				// Better Auth checks callback URLs only on requests that carry cookies, so a sign-up
 				// could get an emailed link that leads to another site after verifying.
-				const { callbackURL } = body;
-				if (typeof callbackURL === "string") {
-					const target = URL.canParse(callbackURL, config.webOrigin)
-						? new URL(callbackURL, config.webOrigin)
+				for (const field of REDIRECT_FIELDS) {
+					const value = body[field];
+					if (typeof value !== "string") {
+						continue;
+					}
+					const target = URL.canParse(value, config.webOrigin)
+						? new URL(value, config.webOrigin)
 						: undefined;
 					if (target?.origin !== config.webOrigin) {
 						throw new APIError("FORBIDDEN", {
@@ -198,8 +231,12 @@ export function createBetterAuth({
 						});
 					}
 					// Better Auth would resolve a relative URL against the api.
-					body.callbackURL = target.href;
-				} else if (SENDS_VERIFICATION_LINK.has(context.path)) {
+					body[field] = target.href;
+				}
+				if (
+					body.callbackURL === undefined &&
+					SENDS_VERIFICATION_LINK.has(context.path)
+				) {
 					body.callbackURL = `${config.webOrigin}/`;
 				}
 				if (context.path !== "/sign-up/email") {

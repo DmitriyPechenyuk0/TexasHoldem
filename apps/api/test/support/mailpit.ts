@@ -77,3 +77,33 @@ export async function waitForEmailCount(
 		await new Promise((resolve) => setTimeout(resolve, 100));
 	}
 }
+
+/**
+ * Polls Mailpit until an email to `to` holds a link that matches `pattern`, newest first, and
+ * returns it. For addresses that get more than one kind of email.
+ */
+export async function waitForLink(
+	to: string,
+	pattern: RegExp,
+	timeoutMs = 10_000,
+): Promise<URL> {
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		const { messages } = await getJson<{
+			messages: readonly { readonly ID: string }[];
+		}>(`/search?query=${encodeURIComponent(`to:"${to}"`)}`);
+		for (const { ID } of messages) {
+			const { Text } = await getJson<MailpitMessage>(`/message/${ID}`);
+			const link = pattern.exec(Text)?.[0];
+			if (link) {
+				return new URL(link);
+			}
+		}
+		if (Date.now() > deadline) {
+			throw new Error(
+				`No link like ${pattern} reached ${to} within ${timeoutMs} ms`,
+			);
+		}
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	}
+}
