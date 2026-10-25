@@ -16,7 +16,10 @@ updates:
       minor-and-patch:
         update-types: [minor, patch]
     # TypeScript stays on 6.x; @types/node follows the Node 24 runtime. Both move by hand.
+    # ESLint stays on 9.x until eslint-config-next's plugins (import, jsx-a11y, react) accept 10.
     ignore:
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
       - dependency-name: typescript
         update-types: [version-update:semver-major]
       - dependency-name: "@types/node"
