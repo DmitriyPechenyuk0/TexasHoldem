@@ -1,6 +1,8 @@
 import { API_PREFIX } from "../common/index.js";
 import {
 	MeResponse,
+	RequestPasswordResetRequest,
+	ResetPasswordRequest,
 	SendVerificationEmailRequest,
 	SignInEmailRequest,
 	SignInUsernameRequest,
@@ -91,5 +93,31 @@ describe("identity contracts", () => {
 		expect(
 			SendVerificationEmailRequest.safeParse({ email: "alice" }).success,
 		).toBe(false);
+	});
+
+	it("RequestPasswordResetRequest needs the page the link leads to", () => {
+		expect(
+			RequestPasswordResetRequest.safeParse({ email: signUp.email }).success,
+		).toBe(false);
+		expect(
+			RequestPasswordResetRequest.parse({
+				email: signUp.email,
+				redirectTo: "/en/reset-password",
+			}),
+		).toEqual({ email: signUp.email, redirectTo: "/en/reset-password" });
+	});
+
+	it("ResetPasswordRequest holds the new password to the sign-up rules", () => {
+		expect(
+			ResetPasswordRequest.safeParse({ token: "t", newPassword: "short" })
+				.success,
+		).toBe(false);
+		expect(
+			ResetPasswordRequest.parse({
+				token: "t",
+				newPassword: signUp.password,
+				revokeOtherSessions: false,
+			}),
+		).toEqual({ token: "t", newPassword: signUp.password });
 	});
 });

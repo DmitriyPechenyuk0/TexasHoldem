@@ -1,6 +1,8 @@
 import { STATUS_CODES } from "node:http";
 import { PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import {
+	RequestPasswordResetRequest,
+	ResetPasswordRequest,
 	SendVerificationEmailRequest,
 	SignInEmailRequest,
 	SignInUsernameRequest,
@@ -31,6 +33,8 @@ const BODY_CONTRACTS: Readonly<Record<string, z.ZodType>> = {
 	[`${AUTH_BASE_PATH}/sign-in/email`]: SignInEmailRequest,
 	[`${AUTH_BASE_PATH}/sign-in/username`]: SignInUsernameRequest,
 	[`${AUTH_BASE_PATH}/send-verification-email`]: SendVerificationEmailRequest,
+	[`${AUTH_BASE_PATH}/request-password-reset`]: RequestPasswordResetRequest,
+	[`${AUTH_BASE_PATH}/reset-password`]: ResetPasswordRequest,
 };
 
 const hasBody = (request: ExpressRequest): boolean =>

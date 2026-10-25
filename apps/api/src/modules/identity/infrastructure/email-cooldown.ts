@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Injectable, Logger } from "@nestjs/common";
+import type { Email } from "@/shared/application/mailer.js";
 import {
 	InjectRedis,
 	type Redis,
@@ -8,7 +9,8 @@ import {
 /** At most one email of a kind to an address in this many seconds, on top of the per-IP limit. */
 export const EMAIL_COOLDOWN_SECONDS = 60;
 
-export type EmailKind = "verify-email";
+/** The emails anyone can trigger with just an address; each kind cools down on its own. */
+export type EmailKind = Email["template"];
 
 /** The key is a digest, so Redis holds no addresses. */
 export const emailCooldownKey = (kind: EmailKind, email: string): string =>
