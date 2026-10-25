@@ -46,12 +46,15 @@ const config: IConfiguration = {
 		{
 			name: "queries-read-only-the-database",
 			comment:
-				"Query handlers may read through the shared database client (ADR-003), but use no other adapter.",
+				"Query handlers may read through the shared database client and their own context's table schemas (ADR-003), but use no other adapter.",
 			severity: "error",
-			from: { path: `^${UNIT}/application/queries/` },
+			from: { path: `^(${UNIT})/application/queries/` },
 			to: {
 				path: `^${UNIT}/(?:infrastructure|presentation)/`,
-				pathNot: "^src/shared/infrastructure/database/",
+				pathNot: [
+					"^src/shared/infrastructure/database/",
+					"^$1/infrastructure/persistence/",
+				],
 			},
 		},
 		{

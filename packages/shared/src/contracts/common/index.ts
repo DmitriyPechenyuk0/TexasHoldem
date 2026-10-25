@@ -1,3 +1,4 @@
+export { API_PREFIX } from "./api.js";
 export { type Ack, type AckFailure, type AckSuccess, ackOf } from "./ack.js";
 export { Chips } from "./chips.js";
 export { HandId, TableId, UserId } from "./ids.js";

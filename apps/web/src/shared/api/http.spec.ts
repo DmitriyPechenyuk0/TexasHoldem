@@ -41,7 +41,7 @@ describe("createHttpClient", () => {
 
 		expect(item).toEqual({ id: "t1" });
 		const { url, init, headers } = lastRequest();
-		expect(url).toBe("http://api.test/tables/t1?page=2&open=true");
+		expect(url).toBe("http://api.test/api/tables/t1?page=2&open=true");
 		expect(init.method).toBe("GET");
 		expect(init.credentials).toBe("include");
 		expect(init.body).toBeUndefined();
@@ -190,7 +190,7 @@ describe("createHttpClient", () => {
 
 		await expect(
 			client.request("/tables/t1", { schema: Item }),
-		).rejects.toThrow("GET /tables/t1 answered outside its contract");
+		).rejects.toThrow("GET /api/tables/t1 answered outside its contract");
 	});
 
 	it("rejects an answer that breaks its contract", async () => {
@@ -198,6 +198,6 @@ describe("createHttpClient", () => {
 
 		await expect(
 			client.request("/tables/t1", { schema: Item }),
-		).rejects.toThrow("GET /tables/t1 answered outside its contract");
+		).rejects.toThrow("GET /api/tables/t1 answered outside its contract");
 	});
 });

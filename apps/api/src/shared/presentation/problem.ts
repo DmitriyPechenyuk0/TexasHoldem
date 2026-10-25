@@ -23,6 +23,18 @@ const CODE_BY_STATUS: Readonly<Record<number, string>> = {
 	429: "request.rate-limited",
 };
 
+/** An HTTP error with its own stable `code`, for refusals that are not domain rules. */
+export class HttpProblem extends HttpException {
+	constructor(
+		status: number,
+		readonly code: string,
+		message: string,
+	) {
+		super(message, status);
+		this.name = "HttpProblem";
+	}
+}
+
 export interface ProblemContext {
 	/** Path of the request, without its query string. */
 	readonly instance?: string;
@@ -99,8 +111,10 @@ export function problemFor(
 		return {
 			problem: problem(
 				status,
-				CODE_BY_STATUS[status] ??
-					(status >= 500 ? "internal" : `http.${status}`),
+				error instanceof HttpProblem
+					? error.code
+					: (CODE_BY_STATUS[status] ??
+							(status >= 500 ? "internal" : `http.${status}`)),
 				// Messages of client errors are meant for the client; server errors stay generic.
 				status < 500 ? { detail: (error as Error).message } : {},
 			),

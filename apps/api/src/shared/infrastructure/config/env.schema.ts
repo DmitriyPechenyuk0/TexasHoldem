@@ -8,6 +8,11 @@ const port = z
 	.pipe(z.int({ error: portError }).min(1, portError).max(65535, portError));
 const httpUrl = z.url({ protocol: /^https?$/ });
 const databaseUrl = z.url({ protocol: /^postgres(ql)?$/ });
+const origin = (example: string) =>
+	httpUrl.refine(
+		(value) => !URL.canParse(value) || new URL(value).origin === value,
+		`must be a bare origin such as ${example}, without a path or trailing slash`,
+	);
 
 /** The AUTH_SECRET in .env.example. Anyone can read it, so production refuses it. */
 export const DEVELOPMENT_AUTH_SECRET =
@@ -66,10 +71,8 @@ export const envSchema = z
 			.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
 			.optional(),
 		TRUST_PROXY: trustProxy.optional(),
-		WEB_ORIGIN: httpUrl.refine(
-			(value) => !URL.canParse(value) || new URL(value).origin === value,
-			"must be a bare origin such as http://localhost:3000, without a path or trailing slash",
-		),
+		WEB_ORIGIN: origin("http://localhost:3000"),
+		API_ORIGIN: origin("http://localhost:4000"),
 
 		DATABASE_URL: databaseUrl,
 		REDIS_URL: z.url({ protocol: /^rediss?$/ }),
@@ -110,6 +113,7 @@ export const envSchema = z
 			pretty: env.NODE_ENV === "development",
 		},
 		webOrigin: env.WEB_ORIGIN,
+		apiOrigin: env.API_ORIGIN,
 		trustProxy: env.TRUST_PROXY ?? false,
 		database: { url: env.DATABASE_URL },
 		redis: { url: env.REDIS_URL },

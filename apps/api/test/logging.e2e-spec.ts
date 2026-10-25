@@ -93,7 +93,7 @@ describe("Logging (e2e)", () => {
 
 	it("puts the request id on every line written while handling the request", async () => {
 		const response = await request(app.getHttpServer())
-			.get("/probe/seat/ok")
+			.get("/api/probe/seat/ok")
 			.expect(200);
 		const requestId = response.headers["x-request-id"] as string;
 
@@ -110,7 +110,7 @@ describe("Logging (e2e)", () => {
 
 	it("keeps a request id sent by a proxy", async () => {
 		await request(app.getHttpServer())
-			.get("/probe/seat/ok")
+			.get("/api/probe/seat/ok")
 			.set("x-request-id", "edge-7f3a")
 			.expect("x-request-id", "edge-7f3a");
 
@@ -118,9 +118,9 @@ describe("Logging (e2e)", () => {
 	});
 
 	it("logs every command with its name, duration and outcome at debug level", async () => {
-		await request(app.getHttpServer()).get("/probe/seat/ok").expect(200);
-		await request(app.getHttpServer()).get("/probe/seat/rule").expect(409);
-		await request(app.getHttpServer()).get("/probe/seat/bug").expect(500);
+		await request(app.getHttpServer()).get("/api/probe/seat/ok").expect(200);
+		await request(app.getHttpServer()).get("/api/probe/seat/rule").expect(409);
+		await request(app.getHttpServer()).get("/api/probe/seat/bug").expect(500);
 
 		const commands = lines.filter((line) => line.msg === "command handled");
 		expect(commands).toEqual([
@@ -146,7 +146,7 @@ describe("Logging (e2e)", () => {
 
 	it("never writes passwords, tokens, cookies or authorization headers", async () => {
 		await request(app.getHttpServer())
-			.get("/probe/secrets?token=query-token-value&next=/lobby")
+			.get("/api/probe/secrets?token=query-token-value&next=/lobby")
 			.set("authorization", "Bearer bearer-token-value")
 			.set("cookie", "session=session-cookie-value")
 			.expect(200);
@@ -175,20 +175,23 @@ describe("Logging (e2e)", () => {
 		expect(lines).toContainEqual(
 			expect.objectContaining({
 				msg: "request completed",
-				req: expect.objectContaining({ method: "GET", path: "/probe/secrets" }),
+				req: expect.objectContaining({
+					method: "GET",
+					path: "/api/probe/secrets",
+				}),
 			}),
 		);
 	});
 
 	it("logs the client address, not a forwarded one it does not trust", async () => {
 		await request(app.getHttpServer())
-			.get("/system/time")
+			.get("/api/system/time")
 			.set("x-forwarded-for", "203.0.113.7")
 			.expect(200);
 		const completed = lines.findLast(
 			(line) => line.msg === "request completed",
 		);
-		expect(completed?.req).toMatchObject({ path: "/system/time" });
+		expect(completed?.req).toMatchObject({ path: "/api/system/time" });
 		expect(completed?.req).not.toMatchObject({ remoteAddress: "203.0.113.7" });
 	});
 
@@ -196,7 +199,7 @@ describe("Logging (e2e)", () => {
 		const behindProxy = await createTestApp({ config: { trustProxy: 1 } });
 		try {
 			await request(behindProxy.getHttpServer())
-				.get("/system/time")
+				.get("/api/system/time")
 				.set("x-forwarded-for", "203.0.113.7")
 				.expect(200);
 			const completed = lines.findLast(
@@ -209,7 +212,7 @@ describe("Logging (e2e)", () => {
 	});
 
 	it("does not log health checks", async () => {
-		await request(app.getHttpServer()).get("/health").expect(200);
+		await request(app.getHttpServer()).get("/api/health").expect(200);
 
 		expect(lines).toEqual([]);
 	});

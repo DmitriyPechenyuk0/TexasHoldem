@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** `GET /system/time`: the server clock, so clients can correct theirs before rendering turn timers. */
+/** `GET /api/system/time`: the server clock, so clients can correct theirs before rendering turn timers. */
 export const ServerTimeResponse = z.object({
 	/** ISO 8601, UTC. */
 	now: z.iso.datetime(),

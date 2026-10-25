@@ -1,6 +1,6 @@
 # @holdem/api
 
-The NestJS server: REST and socket.io on http://localhost:4000. Layers, CQRS conventions and error handling: [ARCHITECTURE.md](ARCHITECTURE.md).
+The NestJS server: REST under `/api` and socket.io on http://localhost:4000. Layers, CQRS conventions and error handling: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```bash
 cp .env.example .env     # once; every variable is documented there
