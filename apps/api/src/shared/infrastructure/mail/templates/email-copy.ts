@@ -18,6 +18,14 @@ export type LocalizedCopy<Params> = Readonly<
 	Record<Locale, (params: Params) => EmailCopy>
 >;
 
+/** The first line of an email: by username, or without a name before the account has one. */
+export function greeting(username: string | null, locale: Locale): string {
+	if (locale === "ru") {
+		return username ? `Здравствуйте, ${username}!` : "Здравствуйте!";
+	}
+	return username ? `Hi ${username},` : "Hi,";
+}
+
 /** `90` → "90 minutes", `1440` → "24 hours" ("24 часа"), with the locale's plural forms. */
 export function formatDuration(minutes: number, locale: Locale): string {
 	const [value, unit] =

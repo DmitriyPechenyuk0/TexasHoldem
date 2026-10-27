@@ -1,3 +1,4 @@
+export { ChangePasswordRequest } from "./change-password.js";
 export { ChooseUsernameRequest } from "./choose-username.js";
 export { Email, NewPassword, Username } from "./credentials.js";
 export { MeResponse } from "./me.js";

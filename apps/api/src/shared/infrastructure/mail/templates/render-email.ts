@@ -2,7 +2,9 @@ import { LOCALES, type Locale } from "@holdem/shared/contracts/common";
 import type { EmailContent } from "../../../application/mailer.js";
 import type { EmailCopy } from "./email-copy.js";
 import { type RenderedEmail, renderLayout } from "./layout.js";
+import { passwordChanged } from "./password-changed.js";
 import { resetPassword } from "./reset-password.js";
+import { signInMethodAdded } from "./sign-in-method-added.js";
 import { verifyEmail } from "./verify-email.js";
 
 /** `ru`, `ru-RU` and `RU` → `ru`; anything unsupported or missing → `en`. */
@@ -17,6 +19,10 @@ function copyOf(content: EmailContent, locale: Locale): EmailCopy {
 			return verifyEmail[locale](content.params);
 		case "reset-password":
 			return resetPassword[locale](content.params);
+		case "password-changed":
+			return passwordChanged[locale](content.params);
+		case "sign-in-method-added":
+			return signInMethodAdded[locale](content.params);
 	}
 }
 

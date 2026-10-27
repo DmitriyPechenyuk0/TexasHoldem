@@ -1,6 +1,9 @@
 import {
+	AVATAR_CONTENT_TYPES,
+	AVATAR_MAX_BYTES,
 	MyProfileResponse,
 	PublicProfileResponse,
+	RequestAvatarUploadRequest,
 	UpdateLocaleRequest,
 	UpdateNicknameRequest,
 } from "./index.js";
@@ -25,6 +28,7 @@ describe("profile contracts", () => {
 			userId: "0b7c6f1e-58a4-4f6b-9a39-5f0f6a8a1c2d",
 			username: "alice_01",
 			nickname: "Alice",
+			avatarUrl: "http://127.0.0.1:9000/avatars/avatars/u/a.webp",
 			locale: "en",
 			createdAt: "2026-10-25T12:00:00.000Z",
 		};
@@ -33,7 +37,21 @@ describe("profile contracts", () => {
 		expect(PublicProfileResponse.parse(mine)).toEqual({
 			username: "alice_01",
 			nickname: "Alice",
+			avatarUrl: "http://127.0.0.1:9000/avatars/avatars/u/a.webp",
 			createdAt: "2026-10-25T12:00:00.000Z",
 		});
+	});
+
+	it("accepts avatars of 2 MB at most, as PNG, JPEG or WebP", () => {
+		expect(AVATAR_MAX_BYTES).toBe(2_097_152);
+		expect(AVATAR_CONTENT_TYPES).toEqual([
+			"image/png",
+			"image/jpeg",
+			"image/webp",
+		]);
+		expect(
+			RequestAvatarUploadRequest.safeParse({ contentType: "image/svg+xml" })
+				.success,
+		).toBe(false);
 	});
 });

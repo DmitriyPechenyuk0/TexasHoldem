@@ -16,6 +16,8 @@ const verify = (
 	params: { username: "alice", url, expiresInMinutes: 24 * 60, ...params },
 });
 
+const settings = "https://holdem.example/en/settings?tab=account";
+
 const reset = (): EmailContent => ({
 	template: "reset-password",
 	params: { username: "alice", url, expiresInMinutes: 30 },
@@ -130,6 +132,59 @@ describe("renderEmail", () => {
 		// The text version is not HTML, so it keeps values as they are.
 		expect(email.text).toContain(`<img src=x onerror="alert(1)">`);
 	});
+
+	it("greets without a name before the account has a username", () => {
+		const en = renderEmail(verify({ username: null }), "en");
+		const ru = renderEmail(verify({ username: null }), "ru");
+
+		expect(en.text).toContain("\n\nHi,\n\n");
+		expect(ru.text).toContain("\n\nЗдравствуйте!\n\n");
+	});
+
+	it.each([
+		["en", "Your Texas Hold'em password was changed", "Review your account"],
+		["ru", "Пароль в Техасском холдеме изменён", "Проверить аккаунт"],
+	] as const)("renders password-changed in %s", (locale, subject, action) => {
+		const email = renderEmail(
+			{
+				template: "password-changed",
+				params: { username: "alice", url: settings },
+			},
+			locale,
+		);
+
+		expect(email.subject).toBe(subject);
+		expect(email.text).toContain(`${action}:\n${settings}`);
+		expect(email.text).toContain("alice");
+	});
+
+	it.each([
+		[
+			"en",
+			"GitHub can now sign in to your Texas Hold'em account",
+			"unlink GitHub",
+		],
+		[
+			"ru",
+			"Теперь GitHub входит в ваш аккаунт Техасского холдема",
+			"отвяжите GitHub",
+		],
+	] as const)(
+		"renders sign-in-method-added in %s",
+		(locale, subject, advice) => {
+			const email = renderEmail(
+				{
+					template: "sign-in-method-added",
+					params: { username: null, provider: "GitHub", url: settings },
+				},
+				locale,
+			);
+
+			expect(email.subject).toBe(subject);
+			expect(email.text).toContain(settings);
+			expect(email.text).toContain(advice);
+		},
+	);
 
 	it.each(["javascript:alert(1)", "/api/auth/verify-email", "mailto:a@b.c"])(
 		"refuses %s as a link",

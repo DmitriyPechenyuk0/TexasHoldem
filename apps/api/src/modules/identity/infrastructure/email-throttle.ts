@@ -7,7 +7,10 @@ import {
 } from "@/shared/application/rate-limiter.js";
 
 /** The emails anyone can trigger with just an address; each kind is throttled on its own. */
-export type EmailKind = Email["template"];
+export type EmailKind = Extract<
+	Email["template"],
+	"verify-email" | "reset-password"
+>;
 
 /** Per address and kind: one email a minute, three an hour. */
 export const EMAIL_RULES = {

@@ -7,9 +7,9 @@ const UNIT = "src/(?:modules/[^/]+|shared)";
 // `@holdem/engine` resolves to packages/engine/dist, or stays unresolved until the package is built.
 const ENGINE = "(?:^|/)packages/engine/|^@holdem/engine(?:/|$)";
 
-// Libraries that only adapters may use (storage, messaging, mail, auth, logging backends), matched installed (…/node_modules/<name>/) or not yet installed (<name>).
+// Libraries that only adapters may use (storage, messaging, mail, auth, images, logging backends), matched installed (…/node_modules/<name>/) or not yet installed (<name>).
 const IO_LIBRARIES =
-	"(?:^|/node_modules/)(?:drizzle-orm|pg|postgres|ioredis|redis|@redis/[^/]+|socket\\.io|@aws-sdk/[^/]+|nodemailer|better-auth|nestjs-pino|pino|pino-http|pino-pretty)(?:/|$)";
+	"(?:^|/node_modules/)(?:drizzle-orm|pg|postgres|ioredis|redis|@redis/[^/]+|socket\\.io|@aws-sdk/[^/]+|nodemailer|better-auth|sharp|nestjs-pino|pino|pino-http|pino-pretty)(?:/|$)";
 
 const config: IConfiguration = {
 	forbidden: [

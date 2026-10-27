@@ -3,6 +3,7 @@ export { publicEnv } from "./public-env";
 export {
 	isProtectedRoute,
 	PROTECTED_ROUTES,
+	profilePath,
 	ROUTES,
 	signInRedirectFor,
 } from "./routes";

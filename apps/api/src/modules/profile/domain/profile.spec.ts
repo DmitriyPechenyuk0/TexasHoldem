@@ -1,4 +1,9 @@
-import { changeLocale, createProfile, renameProfile } from "./profile.js";
+import {
+	changeAvatar,
+	changeLocale,
+	createProfile,
+	renameProfile,
+} from "./profile.js";
 
 const created = createProfile({
 	userId: "0b7c6f1e-58a4-4f6b-9a39-5f0f6a8a1c2d",
@@ -34,5 +39,21 @@ describe("Profile", () => {
 
 	it("changes the locale", () => {
 		expect(changeLocale(created, "ru")).toEqual({ ...created, locale: "ru" });
+	});
+
+	it("takes a new avatar and names the one it replaces", () => {
+		const first = changeAvatar(created, "avatars/u/1.webp");
+		const second = changeAvatar(first.profile, "avatars/u/2.webp");
+		const removed = changeAvatar(second.profile, null);
+
+		expect(first).toEqual({
+			profile: { ...created, avatarKey: "avatars/u/1.webp" },
+			replacedKey: null,
+		});
+		expect(second.replacedKey).toBe("avatars/u/1.webp");
+		expect(removed).toEqual({
+			profile: { ...created, avatarKey: null },
+			replacedKey: "avatars/u/2.webp",
+		});
 	});
 });

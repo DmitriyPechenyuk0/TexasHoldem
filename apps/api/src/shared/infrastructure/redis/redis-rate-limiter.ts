@@ -4,6 +4,7 @@ import {
 	RateLimiter,
 	type RateLimitRule,
 } from "../../application/rate-limiter.js";
+import { MemoryRateLimiter } from "./memory-rate-limiter.js";
 import { InjectRedis, type Redis } from "./redis.js";
 
 /** Prefix of every counter's key. Tests give each app its own, since they share one Redis. */
@@ -19,12 +20,14 @@ return { hits, redis.call("TTL", KEYS[1]) }
 `;
 
 /**
- * Fixed-window counters in Redis. With Redis unavailable every hit is allowed: refusing them would
- * turn an outage into a sign-in outage, and Redis comes back on its own.
+ * Fixed-window counters in Redis. With Redis unavailable, each instance counts in its own memory:
+ * refusing every hit would turn an outage into a sign-in outage, and allowing every one would lift
+ * the limits on guessing passwords and sending emails for as long as it lasts.
  */
 @Injectable()
 export class RedisRateLimiter extends RateLimiter {
 	private readonly logger = new Logger(RateLimiter.name);
+	private readonly fallback = new MemoryRateLimiter();
 	private failing = false;
 
 	constructor(
@@ -45,10 +48,10 @@ export class RedisRateLimiter extends RateLimiter {
 			if (!this.failing) {
 				this.failing = true;
 				this.logger.warn(
-					`Rate limits are off until Redis answers: ${(error as Error).message}`,
+					`Rate limits count per instance until Redis answers: ${(error as Error).message}`,
 				);
 			}
-			return { allowed: true };
+			return this.fallback.consume(key, rule);
 		}
 		this.failing = false;
 		const [hits, ttl] = reply as [number, number];
@@ -58,6 +61,7 @@ export class RedisRateLimiter extends RateLimiter {
 	}
 
 	async reset(key: string): Promise<void> {
+		await this.fallback.reset(key);
 		await this.redis.del(this.keyOf(key));
 	}
 

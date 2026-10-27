@@ -1,6 +1,7 @@
 import type { PublicProfileResponse } from "@holdem/shared/contracts/profile";
 import { type IQueryHandler, QueryHandler } from "@nestjs/cqrs";
 import { eq } from "drizzle-orm";
+import { ObjectStorage } from "@/shared/application/object-storage.js";
 import {
 	type Database,
 	InjectDatabase,
@@ -11,7 +12,10 @@ import { GetPublicProfileQuery } from "./get-public-profile.query.js";
 
 @QueryHandler(GetPublicProfileQuery)
 export class GetPublicProfileHandler implements IQueryHandler<GetPublicProfileQuery> {
-	constructor(@InjectDatabase() private readonly db: Database) {}
+	constructor(
+		@InjectDatabase() private readonly db: Database,
+		private readonly storage: ObjectStorage,
+	) {}
 
 	async execute({
 		username,
@@ -20,6 +24,7 @@ export class GetPublicProfileHandler implements IQueryHandler<GetPublicProfileQu
 			.select({
 				username: profiles.username,
 				nickname: profiles.nickname,
+				avatarKey: profiles.avatarKey,
 				createdAt: profiles.createdAt,
 			})
 			.from(profiles)
@@ -27,6 +32,11 @@ export class GetPublicProfileHandler implements IQueryHandler<GetPublicProfileQu
 		if (!profile) {
 			throw new ProfileNotFoundError();
 		}
-		return { ...profile, createdAt: profile.createdAt.toISOString() };
+		const { avatarKey, ...rest } = profile;
+		return {
+			...rest,
+			avatarUrl: avatarKey ? this.storage.publicUrl(avatarKey) : null,
+			createdAt: profile.createdAt.toISOString(),
+		};
 	}
 }

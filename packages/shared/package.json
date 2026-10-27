@@ -1,6 +1,6 @@
 {
 	"name": "@holdem/shared",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"private": true,
 	"license": "MIT",
 	"description": "Contracts and types shared between web and api",

@@ -17,6 +17,7 @@ import {
 import { DatabaseModule } from "@/shared/infrastructure/database/index.js";
 import { LoggingModule } from "@/shared/infrastructure/logging/index.js";
 import { MailModule } from "@/shared/infrastructure/mail/index.js";
+import { StorageModule } from "@/shared/infrastructure/storage/index.js";
 import { RedisModule } from "@/shared/infrastructure/redis/index.js";
 import { sameOriginOnly } from "@/shared/presentation/same-origin.middleware.js";
 import { SharedModule } from "@/shared/shared.module.js";
@@ -46,6 +47,7 @@ export class AppModule implements NestModule {
 				DatabaseModule,
 				RedisModule,
 				MailModule,
+				StorageModule,
 				SharedModule,
 				IdentityModule,
 				ProfileModule,

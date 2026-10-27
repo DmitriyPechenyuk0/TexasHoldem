@@ -8,7 +8,12 @@ export const ROUTES = {
 	verifyEmail: "/verify-email",
 	forgotPassword: "/forgot-password",
 	resetPassword: "/reset-password",
+	profile: "/profile",
 } as const;
+
+/** A player's public profile. */
+export const profilePath = (username: string): string =>
+	`${ROUTES.profile}/${encodeURIComponent(username)}`;
 
 /**
  * Pages that need a session, with everything under them. Without a session cookie the proxy sends

@@ -4,7 +4,7 @@ import type { Params } from "nestjs-pino";
 import pino, { type DestinationStream } from "pino";
 import pinoPretty from "pino-pretty";
 import type { AppConfig } from "../config/index.js";
-import { redactSecrets } from "./redact-secrets.js";
+import { REDACTED, redactSecrets } from "./redact-secrets.js";
 import { REQUEST_ID_HEADER, requestIdFor } from "./request-id.js";
 
 /** Where log lines go. Tests replace this provider to read them. */
@@ -31,6 +31,13 @@ const HEALTH_PATH = `${API_PREFIX}/health`;
 
 const isHealthCheck = (url: string | undefined): boolean =>
 	url === HEALTH_PATH || (url?.startsWith(`${HEALTH_PATH}/`) ?? false);
+
+/** The password reset link carries its token as a path segment: `/api/auth/reset-password/<token>`. */
+const TOKEN_IN_PATH = new RegExp(`^(${API_PREFIX}/auth/reset-password/)[^/?]+`);
+
+/** The path of a request as logs show it: no query string, and no token in the path either. */
+export const loggedPath = (url: string): string =>
+	url.split("?")[0]!.replace(TOKEN_IN_PATH, `$1${REDACTED}`);
 
 interface SerializedRequest {
 	readonly method: string;
@@ -59,10 +66,10 @@ export function loggerParams(
 				},
 				serializers: {
 					// Method and path only: headers carry cookies and tokens, query strings carry
-					// verification and reset tokens.
+					// verification tokens, and the reset link's path carries its token.
 					req: (req: SerializedRequest) => ({
 						method: req.method,
-						path: req.url.split("?")[0],
+						path: loggedPath(req.url),
 						remoteAddress: req.raw.ip ?? req.remoteAddress,
 					}),
 					res: (res: { readonly statusCode: number }) => ({

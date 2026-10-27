@@ -57,3 +57,14 @@ export function renameProfile(
 export function changeLocale(profile: Profile, locale: string): Profile {
 	return { ...profile, locale };
 }
+
+/** The profile with a new avatar, and the key of the one it replaces, to delete. */
+export function changeAvatar(
+	profile: Profile,
+	avatarKey: string | null,
+): { readonly profile: Profile; readonly replacedKey: string | null } {
+	return {
+		profile: { ...profile, avatarKey },
+		replacedKey: profile.avatarKey,
+	};
+}

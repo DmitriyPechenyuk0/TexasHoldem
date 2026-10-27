@@ -5,7 +5,11 @@ import { useTranslations } from "next-intl";
 import { type FormEvent, useEffect, useState } from "react";
 import { ApiError, http } from "@/shared/api";
 import { ROUTES } from "@/shared/config";
-import { VIEWER_QUERY_KEY } from "@/entities/viewer";
+import {
+	type PasswordError,
+	passwordError,
+	VIEWER_QUERY_KEY,
+} from "@/entities/viewer";
 import { Link, useErrorMessage } from "@/shared/i18n";
 import { endSessionState } from "@/shared/lib";
 import {
@@ -16,7 +20,6 @@ import {
 	PasswordInput,
 } from "@/shared/ui";
 import { resetPassword } from "../api/reset-password";
-import { type PasswordError, passwordError } from "../model/password-error";
 import { InvalidResetLink } from "./invalid-reset-link";
 
 /** The new password for the account behind `token`, which the emailed link carried. */

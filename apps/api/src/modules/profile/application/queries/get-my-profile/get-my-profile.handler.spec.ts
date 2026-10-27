@@ -1,5 +1,6 @@
 import { UserId } from "@holdem/shared";
 import type { Database } from "@/shared/infrastructure/database/index.js";
+import { InMemoryObjectStorage } from "../../../../../../test/support/in-memory-object-storage.js";
 import { GetMyProfileHandler } from "./get-my-profile.handler.js";
 import { GetMyProfileQuery } from "./get-my-profile.query.js";
 
@@ -20,10 +21,12 @@ describe("GetMyProfileHandler", () => {
 					userId,
 					username: "alice_01",
 					nickname: "Alice",
+					avatarKey: "avatars/u/a.webp",
 					locale: "de",
 					createdAt,
 				},
 			]),
+			new InMemoryObjectStorage(),
 		);
 
 		await expect(
@@ -32,6 +35,7 @@ describe("GetMyProfileHandler", () => {
 			userId,
 			username: "alice_01",
 			nickname: "Alice",
+			avatarUrl: "https://cdn.test/avatars/u/a.webp",
 			locale: "en",
 			createdAt: "2026-10-25T12:00:00.000Z",
 		});
@@ -39,9 +43,10 @@ describe("GetMyProfileHandler", () => {
 
 	it("throws profile.not-found without a profile", async () => {
 		await expect(
-			new GetMyProfileHandler(databaseWith([])).execute(
-				new GetMyProfileQuery(userId),
-			),
+			new GetMyProfileHandler(
+				databaseWith([]),
+				new InMemoryObjectStorage(),
+			).execute(new GetMyProfileQuery(userId)),
 		).rejects.toMatchObject({ code: "profile.not-found" });
 	});
 });

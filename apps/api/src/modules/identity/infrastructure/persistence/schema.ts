@@ -19,7 +19,8 @@ export const users = table("users", {
 	id: id(),
 	/**
 	 * Mirrors `username`: Better Auth requires a name, and display names belong to Profile. Until
-	 * an OAuth account has chosen its username, the provider's name, which only emails greet by.
+	 * an OAuth account has chosen its username, the provider's name, shown nowhere: anyone can set
+	 * it to any text, so emails greet by the username or by no name.
 	 */
 	name: text().notNull(),
 	email: text().notNull().unique(),

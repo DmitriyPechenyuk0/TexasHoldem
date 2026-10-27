@@ -54,7 +54,7 @@ describe("RedisRateLimiter", () => {
 		expect(del).toHaveBeenCalledWith("ns:sign-in:x");
 	});
 
-	it("allows every hit while Redis fails, and warns once per outage", async () => {
+	it("counts in memory while Redis fails, and warns once per outage", async () => {
 		const warn = vi
 			.spyOn(Logger.prototype, "warn")
 			.mockImplementation(() => {});
@@ -62,13 +62,21 @@ describe("RedisRateLimiter", () => {
 		const { redis } = redisReplying(down, down, [1, 60], down);
 		const limiter = new RedisRateLimiter(redis, "rate-limit");
 
+		const decisions = [];
 		for (let hit = 0; hit < 4; hit++) {
-			expect(await limiter.consume("k", RULE)).toEqual({ allowed: true });
+			decisions.push(await limiter.consume("k", RULE));
 		}
 
+		// Memory counted the three hits Redis missed: the third is over the limit of two.
+		expect(decisions).toEqual([
+			{ allowed: true },
+			{ allowed: true },
+			{ allowed: true },
+			{ allowed: false, retryAfterSeconds: 60 },
+		]);
 		expect(warn).toHaveBeenCalledTimes(2);
 		expect(warn).toHaveBeenCalledWith(
-			"Rate limits are off until Redis answers: The client is closed",
+			"Rate limits count per instance until Redis answers: The client is closed",
 		);
 	});
 });

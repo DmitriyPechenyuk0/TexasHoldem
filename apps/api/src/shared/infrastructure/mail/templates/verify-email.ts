@@ -1,13 +1,13 @@
-import type { EmailLink } from "../../../application/mailer.js";
-import { type LocalizedCopy, formatDuration } from "./email-copy.js";
+import type { EmailGreeting, EmailLink } from "../../../application/mailer.js";
+import { type LocalizedCopy, formatDuration, greeting } from "./email-copy.js";
 
-export const verifyEmail: LocalizedCopy<EmailLink & { username: string }> = {
+export const verifyEmail: LocalizedCopy<EmailLink & EmailGreeting> = {
 	en: ({ username, url, expiresInMinutes }) => ({
 		subject: "Confirm your email for Texas Hold'em",
 		preview: "One click to finish signing up.",
 		heading: "Confirm your email",
 		paragraphs: [
-			`Hi ${username},`,
+			greeting(username, "en"),
 			"Thanks for signing up. Confirm your email address to finish creating your account and sign in.",
 		],
 		action: { label: "Confirm email", url },
@@ -21,7 +21,7 @@ export const verifyEmail: LocalizedCopy<EmailLink & { username: string }> = {
 		preview: "Один клик, и регистрация завершена.",
 		heading: "Подтвердите почту",
 		paragraphs: [
-			`Здравствуйте, ${username}!`,
+			greeting(username, "ru"),
 			"Спасибо за регистрацию. Подтвердите адрес почты, чтобы завершить создание аккаунта и войти.",
 		],
 		action: { label: "Подтвердить почту", url },

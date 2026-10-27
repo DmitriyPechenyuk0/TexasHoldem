@@ -73,6 +73,7 @@ describe("Profile (e2e)", () => {
 		expect(MyProfileResponse.parse(response.body)).toMatchObject({
 			username,
 			nickname: username,
+			avatarUrl: null,
 			locale: "en",
 		});
 		expect(
@@ -150,6 +151,7 @@ describe("Profile (e2e)", () => {
 			.expect(200);
 
 		expect(Object.keys(response.body).sort()).toEqual([
+			"avatarUrl",
 			"createdAt",
 			"nickname",
 			"username",

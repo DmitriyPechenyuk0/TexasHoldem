@@ -65,7 +65,8 @@ public/               static files
 
 ## Configuration and contracts
 
-- Environment variables are read only in `src/shared/config`: `publicEnv` from `@/shared/config`, `serverEnv` from `@/shared/config/index.server` (enforced by lint).
+- Environment variables are read only in `src/shared/config`: `publicEnv` from `@/shared/config`, `serverEnv` from `@/shared/config/index.server` (enforced by lint). The one other reader is `next.config.ts`, which runs before the app.
+- Every page carries security headers (`src/shared/config/security-headers.ts`, applied by `next.config.ts`): a Content Security Policy by allowlist, `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy, a Permissions-Policy that turns off camera, microphone, geolocation and payment, and HSTS outside `next dev`. The policy lets pages load code only from their own origin and connect only to the api (HTTP and WebSocket) and the storage. `STORAGE_ORIGINS` names the storage: where avatars are read from (the api's `S3_PUBLIC_URL`) and uploaded to (its `S3_ENDPOINT`). It is read when the app is built, so changing it needs a rebuild. Scripts stay `'unsafe-inline'`, since Next.js inlines its own and a nonce would make every page dynamic, giving up Cache Components; `next dev` adds `'unsafe-eval'` for its tools.
 - Requests and socket messages are typed and parsed with the contracts of `@holdem/shared` (`src/shared/api`).
 
 ## Data fetching and state
@@ -90,6 +91,13 @@ public/               static files
 - **Providers** (`features/oauth-sign-in`): the buttons show the providers `GET /api/oauth-providers` names, and a click sends the browser to the provider through the api. It comes back to `next`, to `/choose-username?next=` for a new account, or to the page it started from with `?error=<code>`, which `OAuthError` explains. Settings link and unlink them (`_pages/settings`).
 - **The username step**: a provider's first sign-in may leave the account without a username (`viewer.username === null`). `chooseUsernameRedirect` (`entities/viewer`) sends such a viewer to `/choose-username?next=<path>` from every page: `requireViewer` on the server for protected ones, `UsernameGate` in the layout for the rest. The step moves on to `next` once the username exists.
 - **Emailed links** land on `/verify-email` (with `?next=`) and `/reset-password`. The api has already checked the token and adds `?error=TOKEN_EXPIRED` or `?error=INVALID_TOKEN` when it failed. The reset page takes the token out of the address bar as soon as it has read it.
+
+## Profile
+
+- **Players** are the `entities/user` slice: `UserAvatar` (the picture, or an identicon drawn from the username when there is none, the same everywhere) and `UserName`, for the header, the table, friends and chat. `useMyProfile()` reads the viewer's profile, which the site header prefetches next to the viewer; every change writes the api's answer back into the query cache, so the header follows a new nickname or avatar at once.
+- **Settings** (`/settings`) has three tabs, kept in `?tab=`: profile (avatar, nickname), account (email, ways to sign in, password) and language, which saves the language of the site and the emails, then reloads the page in it.
+- **Avatar upload** goes straight from the browser to storage: the api presigns it, `uploadToStorage` posts the file with XMLHttpRequest for its progress (fetch cannot report upload progress), then the api confirms it. The type and size are checked before anything is sent, but only the api's check of the file itself counts. The picked picture shows at once in the circle while it uploads.
+- **Public profiles** live at `/profile/<username>` (`profilePath`), readable signed out; an unknown player gets the localized 404.
 
 ## Tests
 
