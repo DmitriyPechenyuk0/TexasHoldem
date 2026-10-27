@@ -109,14 +109,14 @@ describe("Problems (e2e)", () => {
 	describe("validation", () => {
 		it("answers an invalid body with 400 and every invalid field", async () => {
 			const response = await request(app.getHttpServer())
-				.post("/probe/seats")
+				.post("/api/probe/seats")
 				.send({ seat: 12, buyIn: -5 })
 				.expect(400);
 
 			expect(problemOf(response)).toMatchObject({
 				status: 400,
 				code: "request.invalid",
-				instance: "/probe/seats",
+				instance: "/api/probe/seats",
 				errors: [
 					{ path: ["seat"], code: "too_big", message: expect.any(String) },
 					{ path: ["buyIn"], code: "too_small", message: expect.any(String) },
@@ -126,10 +126,10 @@ describe("Problems (e2e)", () => {
 
 		it("answers an invalid query or route param with the offending name", async () => {
 			const query = await request(app.getHttpServer())
-				.get("/probe/tables?limit=ten")
+				.get("/api/probe/tables?limit=ten")
 				.expect(400);
 			const param = await request(app.getHttpServer())
-				.get("/probe/tables/not-a-uuid")
+				.get("/api/probe/tables/not-a-uuid")
 				.expect(400);
 
 			expect(problemOf(query).errors?.map((error) => error.path)).toEqual([
@@ -142,11 +142,11 @@ describe("Problems (e2e)", () => {
 
 		it("hands handlers the parsed values", async () => {
 			await request(app.getHttpServer())
-				.post("/probe/seats")
+				.post("/api/probe/seats")
 				.send({ seat: 3, buyIn: 1000, extra: "dropped" })
 				.expect(201, { seat: 3, buyIn: 1000 });
 			await request(app.getHttpServer())
-				.get("/probe/tables?limit=50")
+				.get("/api/probe/tables?limit=50")
 				.expect(200, { limit: 50 });
 		});
 	});
@@ -161,7 +161,7 @@ describe("Problems (e2e)", () => {
 			"answer a %s error with %i, its code as message key and its params",
 			async (kind, status) => {
 				const response = await request(app.getHttpServer())
-					.get(`/probe/domain/${kind}`)
+					.get(`/api/probe/domain/${kind}`)
 					.expect(status);
 
 				expect(problemOf(response)).toMatchObject({
@@ -177,17 +177,19 @@ describe("Problems (e2e)", () => {
 	describe("HTTP errors", () => {
 		it.each([
 			[
-				"/probe/unauthenticated",
+				"/api/probe/unauthenticated",
 				401,
 				"auth.unauthenticated",
 				"Sign in to take a seat",
 			],
 			[
-				"/probe/forbidden",
+				"/api/probe/forbidden",
 				403,
 				"auth.forbidden",
 				"Only the host can close the table",
 			],
+			["/api/nowhere", 404, "http.not-found", "Cannot GET /api/nowhere"],
+			// Outside the global prefix Nest has no handlers; the api still answers with a problem.
 			["/nowhere", 404, "http.not-found", "Cannot GET /nowhere"],
 		])("answer %s with %i %s", async (path, status, code, detail) => {
 			const response = await request(app.getHttpServer())
@@ -199,7 +201,7 @@ describe("Problems (e2e)", () => {
 
 		it("answer a malformed JSON body with 400", async () => {
 			const response = await request(app.getHttpServer())
-				.post("/probe/seats")
+				.post("/api/probe/seats")
 				.set("content-type", "application/json")
 				.send('{"seat":')
 				.expect(400);
@@ -209,7 +211,7 @@ describe("Problems (e2e)", () => {
 
 		it("answer an oversized body with 413", async () => {
 			const response = await request(app.getHttpServer())
-				.post("/probe/seats")
+				.post("/api/probe/seats")
 				.send({ seat: 1, buyIn: 1, note: "x".repeat(200_000) })
 				.expect(413);
 
@@ -221,7 +223,7 @@ describe("Problems (e2e)", () => {
 		it("answer with a bare 500 and log the error with its stack and request id", async () => {
 			lines.length = 0;
 			const response = await request(app.getHttpServer())
-				.get("/probe/crash")
+				.get("/api/probe/crash")
 				.expect(500);
 
 			const problem = problemOf(response);
@@ -230,7 +232,7 @@ describe("Problems (e2e)", () => {
 				title: "Internal Server Error",
 				status: 500,
 				code: "internal",
-				instance: "/probe/crash",
+				instance: "/api/probe/crash",
 				requestId: problem.requestId,
 			});
 			expect(response.text).not.toMatch(/boom|secret|postgres/);
@@ -251,7 +253,7 @@ describe("Problems (e2e)", () => {
 		it("end a response that had already started, instead of failing in the filter", async () => {
 			lines.length = 0;
 			const response = await request(app.getHttpServer())
-				.get("/probe/stream-crash")
+				.get("/api/probe/stream-crash")
 				.expect(200);
 
 			expect(response.text).toBe("first chunk;");
@@ -268,8 +270,8 @@ describe("Problems (e2e)", () => {
 
 		it("do not log expected failures as errors", async () => {
 			lines.length = 0;
-			await request(app.getHttpServer()).get("/probe/domain/conflict");
-			await request(app.getHttpServer()).post("/probe/seats").send({});
+			await request(app.getHttpServer()).get("/api/probe/domain/conflict");
+			await request(app.getHttpServer()).post("/api/probe/seats").send({});
 
 			expect(lines.filter((line) => line.context === "ProblemFilter")).toEqual(
 				[],

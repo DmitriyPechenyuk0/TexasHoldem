@@ -1,4 +1,4 @@
-import { Problem, PROBLEM_CONTENT_TYPE } from "@holdem/shared";
+import { API_PREFIX, Problem, PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import type { z } from "zod";
 import { publicEnv } from "@/shared/config";
 import { ApiError, NetworkError, RequestTimeoutError } from "./errors";
@@ -24,7 +24,7 @@ export interface RequestOptions<Schema extends z.ZodType> {
 }
 
 export interface HttpClient {
-	/** `path` starts at the api root, e.g. `/system/time`. */
+	/** `path` starts at the api root, e.g. `/system/time` for `GET /api/system/time`. */
 	request<Schema extends z.ZodType>(
 		path: string,
 		options: RequestOptions<Schema>,
@@ -32,7 +32,7 @@ export interface HttpClient {
 }
 
 export interface HttpClientConfig {
-	/** The api origin. */
+	/** The api origin; every path is resolved under its `/api` prefix. */
 	readonly baseUrl: string;
 	/** Sent with every request, e.g. the cookie the server forwards. */
 	readonly headers?: Readonly<Record<string, string>>;
@@ -52,7 +52,7 @@ export function createHttpClient({
 }: HttpClientConfig): HttpClient {
 	return {
 		async request(path, { method = "GET", schema, body, query, signal }) {
-			const url = new URL(path, baseUrl);
+			const url = new URL(`${API_PREFIX}${path}`, baseUrl);
 			for (const [name, value] of Object.entries(query ?? {})) {
 				if (value !== undefined) {
 					url.searchParams.set(name, String(value));

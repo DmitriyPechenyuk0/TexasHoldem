@@ -63,9 +63,12 @@ describe("dependency rules", () => {
 					'import { Clock } from "../../../../shared/application/clock.js";\n' +
 					'import { Injectable } from "@nestjs/common";\n' +
 					"export const handler = [table, Clock, Injectable];\n",
+				"src/modules/table/infrastructure/persistence/schema.ts":
+					exportsValue("tables"),
 				"src/modules/table/application/queries/get-table.handler.ts":
 					'import { db } from "../../../../shared/infrastructure/database/client.js";\n' +
-					"export const query = db;\n",
+					'import { tables } from "../../infrastructure/persistence/schema.js";\n' +
+					"export const query = [db, tables];\n",
 				"src/modules/table/infrastructure/table.repository.ts":
 					'import { table } from "../domain/table.js";\n' +
 					'import { handler } from "../application/commands/take-seat.handler.js";\n' +

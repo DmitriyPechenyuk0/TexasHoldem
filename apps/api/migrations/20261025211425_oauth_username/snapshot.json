@@ -1,0 +1,38 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "71126bfe-2b68-4f39-b534-2492bbd3cead",
+  "prevIds": [
+    "19b8c566-6743-428e-a8ac-777526aae4e5"
+  ],
+  "footprints": [
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "identity_users",
+        "username"
+      ],
+      "writes": [
+        "s|colprop|public.identity_users.username.notNull"
+      ],
+      "reads": [
+        "n|tbl|public.identity_users",
+        "n|sch|public",
+        "n|col|public.identity_users.username"
+      ],
+      "sqlHash": "611a7a69208ebfb0"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"identity_users\",\"username\"]",
+      "set": {
+        "notNull": false
+      }
+    }
+  ]
+}

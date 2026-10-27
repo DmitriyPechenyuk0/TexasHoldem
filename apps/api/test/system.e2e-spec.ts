@@ -15,10 +15,10 @@ describe("System (e2e)", () => {
 		await app.close();
 	});
 
-	it("GET /system/time returns the current server time, as the contract describes", async () => {
+	it("GET /api/system/time returns the current server time, as the contract describes", async () => {
 		const before = Date.now();
 		const response = await request(app.getHttpServer())
-			.get("/system/time")
+			.get("/api/system/time")
 			.expect(200);
 		const after = Date.now();
 
@@ -29,7 +29,7 @@ describe("System (e2e)", () => {
 
 	it("answers with security headers and without naming the framework", async () => {
 		const response = await request(app.getHttpServer())
-			.get("/system/time")
+			.get("/api/system/time")
 			.expect(200);
 
 		expect(response.headers).toMatchObject({

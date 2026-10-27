@@ -86,6 +86,8 @@ services:
       AWS_SECRET_ACCESS_KEY: holdem-dev-secret
       AWS_DEFAULT_REGION: us-east-1
       AWS_ENDPOINT_URL: http://s3:9000
+      # The web app's origin, allowed to upload avatars from the browser.
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
     entrypoint: ["/bin/sh", "/init/init.sh"]
     volumes:
       - ./infra/s3:/init:ro

@@ -1,0 +1,55 @@
+{
+	"auth": {
+		"invalid-token": "This link has expired or was already used.",
+		"invalid-callback-url": "This link leads outside the site.",
+		"unauthenticated": "Sign in to continue.",
+		"email-not-verified": "Confirm your email first.",
+		"invalid-email-or-password": "Wrong email or password.",
+		"invalid-username-or-password": "Wrong username or password.",
+		"username-is-already-taken": "This username is taken. Try another one.",
+		"username-required": "Choose a username first.",
+		"session-not-fresh": "For your safety, sign out and sign in again, then try once more.",
+		"failed-to-unlink-last-account": "This is your only way to sign in, so it stays.",
+		"provider-not-found": "This way of signing in is not available right now.",
+		"invalid-password": "The current password is wrong.",
+		"credential-account-not-found": "Your account has no password.",
+		"password-compromised": "This password has appeared in a data breach, so it is easy to guess. Choose another one."
+	},
+	"identity": {
+		"username-taken": "This username is taken. Try another one.",
+		"username-already-chosen": "Your account already has a username."
+	},
+	"oauth": {
+		"account_not_linked": "An account with this email already exists. Sign in to it as usual, then link this provider in your account settings.",
+		"access_denied": "Signing in was cancelled at the provider.",
+		"account_already_linked_to_different_user": "This provider account is already linked to another player.",
+		"email_not_found": "The provider did not share an email address. Allow it, or sign up with your email.",
+		"email_not_verified": "The provider has not confirmed your email address. Confirm it there and try again, or sign up with your email.",
+		"unable_to_link_account": "The provider account could not be linked. Try again.",
+		"USERNAME_IS_ALREADY_TAKEN": "Your username was taken a moment ago. Try again.",
+		"default": "Signing in with the provider didn't work. Try again."
+	},
+	"profile": {
+		"not-found": "This player doesn't exist.",
+		"nickname-too-short": "Use at least {min} characters.",
+		"nickname-too-long": "Use at most {max} characters.",
+		"nickname-invalid-characters": "Use letters, digits, spaces and _ . - ' only.",
+		"avatar-invalid-image": "This file isn't a PNG, JPEG or WebP picture.",
+		"avatar-too-large": "This picture is larger than 2 MB.",
+		"avatar-upload-not-found": "The upload didn't finish. Try again."
+	},
+	"upload": {
+		"failed": "The picture couldn't be uploaded. Try again."
+	},
+	"request": {
+		"invalid": "Check the highlighted fields.",
+		"rate-limited": "Too many attempts. Wait a minute and try again.",
+		"cross-origin": "This request did not come from the site. Reload the page and try again."
+	},
+	"network": {
+		"unreachable": "The server cannot be reached. Check your connection.",
+		"timeout": "The server took too long to answer. Try again."
+	},
+	"internal": "Something went wrong on our side. Try again in a moment.",
+	"unknown": "Something went wrong. Try again."
+}

@@ -1,6 +1,7 @@
 export { Avatar, type AvatarProps, type AvatarSize } from "./avatar/avatar";
 export { Button, type ButtonProps } from "./button/button";
 export type { ButtonSize, ButtonVariant } from "./button/button-styles";
+export { Card, CardDescription, CardTitle } from "./card/card";
 export {
 	Dialog,
 	DialogClose,

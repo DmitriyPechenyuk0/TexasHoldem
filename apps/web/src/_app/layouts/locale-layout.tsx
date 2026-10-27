@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
+import { Suspense } from "react";
 import { routing } from "@/shared/i18n";
 import { themeScript } from "@/shared/lib";
 import { Toaster, TooltipProvider } from "@/shared/ui";
 import { QueryProvider } from "../api/query-provider";
 import { fontVariables } from "../styles/fonts";
+import { SiteHeader, SiteHeaderBar } from "./site-header";
 import "../styles/globals.css";
 
 /** The root layout: every page lives under `/[locale]`. */
@@ -26,6 +28,9 @@ export async function LocaleLayout({ children }: LayoutProps<"/[locale]">) {
 				<NextIntlClientProvider>
 					<QueryProvider>
 						<TooltipProvider>
+							<Suspense fallback={<SiteHeaderBar />}>
+								<SiteHeader />
+							</Suspense>
 							{children}
 							<Toaster />
 						</TooltipProvider>

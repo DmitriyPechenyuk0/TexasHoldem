@@ -30,5 +30,14 @@
 			"dark": "Тёмная",
 			"system": "Как в системе"
 		}
+	},
+	"header": {
+		"signIn": "Войти",
+		"account": "Аккаунт {username}",
+		"chooseUsername": "Выбрать имя"
+	},
+	"unverifiedBanner": {
+		"label": "Подтверждение почты",
+		"text": "Подтвердите {email}, чтобы сесть за стол."
 	}
 }

@@ -11,7 +11,7 @@ src/
   shared/                 cross-cutting building blocks, layered like a context
     domain/               DomainError, Result, shared kernel types (e.g. UserId)
     application/          ports used by every context (Clock)
-    infrastructure/       config, adapters (SystemClock), later database and Redis clients
+    infrastructure/       config, database, Redis, logging, mail, adapters (SystemClock)
     presentation/         HTTP mapping of domain errors
     shared.module.ts
   modules/<context>/
@@ -36,7 +36,7 @@ A layer folder exists only once it has content. `modules/system` is the referenc
 
 - Domain code imports nothing from NestJS, I/O libraries or Node built-ins, and never reads the clock, randomness or config: they come in as arguments.
 - Command and event handlers reach adapters only through ports and import no I/O library (Drizzle, Redis, socket.io, S3, mail).
-- Query handlers may skip the domain and read tables directly through `shared/infrastructure/database` (ADR-003). That is the one place where application code touches infrastructure.
+- Query handlers may skip the domain and read tables directly through `shared/infrastructure/database` and their own context's `infrastructure/persistence` schema (ADR-003). That is the one place where application code touches infrastructure.
 - A context never imports another context's internals, only its `index.ts`: the application-level API and integration events it chooses to expose (Context Map).
 - `shared` imports no module, nothing imports `main.ts` or `app.module.ts` except tests, there are no cycles, and production code imports no tests or dev dependencies.
 
@@ -176,9 +176,28 @@ CI applies the migrations and fails when a schema change has no migration.
 
 - The shared Redis client comes through `@InjectRedis() private readonly redis: Redis`. Pub/sub subscribers and blocking commands need a dedicated connection: `RedisConnections.open("<purpose>")`, which the app closes on shutdown.
 - Clients connect in the background and reconnect on their own, so a Redis outage neither blocks startup nor crashes the process. Meanwhile commands wait in a bounded queue and fail after 2 s (`REDIS_COMMAND_TIMEOUT_MS`), so a caller never hangs; a connection for blocking commands will need a longer timeout.
-- `GET /health` is liveness and never touches a dependency. `GET /health/ready` asks every `HealthIndicator` (2 s each) and answers 503 when one is down.
+- `GET /api/health` is liveness and never touches a dependency. `GET /api/health/ready` asks every `HealthIndicator` (2 s each) and answers 503 when one is down.
 - A new dependency gets a `HealthIndicator` adapter next to its client, listed under `HEALTH_INDICATORS` in `SharedModule`.
 - SIGTERM and SIGINT stop the HTTP server and run the `onApplicationShutdown` hooks, which close the database pool and Redis. A process that has not exited after 10 s is stopped.
+
+## Email
+
+Handlers send email through the `Mailer` port in `shared/application`. The email names a template and its values; the recipient's locale picks the language:
+
+```ts
+this.mailer.send({
+	to: user.email,
+	locale: user.locale, // "ru", "ru-RU", …; unknown or missing → English
+	template: "verify-email",
+	params: { username: user.username, url, expiresInMinutes: 24 * 60 },
+});
+```
+
+- `send` renders the email and returns at once. `SmtpMailer` (nodemailer) delivers it in the background, so a slow or failing mail server never fails or delays the request. A transient failure is retried after 1 s, 5 s and 25 s; a permanent rejection (5xx reply, invalid address) is not. Each failed attempt is logged with the template and the SMTP code, never the recipient's address.
+- On shutdown, attempts in flight finish and pending retries are dropped, with an error line each.
+- Templates live in `shared/infrastructure/mail/templates`: one file per template with its copy in every locale (a missing translation fails to compile), and one layout that renders it as HTML and plain text. Copy is plain text, and the layout escapes every value it puts into the HTML. The layout uses the web app's colours, follows the reader's dark mode where the client supports it, and keeps every style inline, so clients that drop `<style>` still show the light version. `preview` is the line inbox lists show next to the subject. A new template is a new member of the `EmailContent` union plus its file.
+- Locally, Mailpit catches every email (http://localhost:8025); the e2e tests read it through its API (`test/support/mailpit.ts`). In production, STARTTLS is required.
+- There is no mail `HealthIndicator`: delivery is retried in the background, so a mail outage must not take the api out of the load balancer.
 
 ## Logging
 
@@ -190,10 +209,55 @@ CI applies the migrations and fails when a schema change has no migration.
 - Lines go to stdout through a buffer, so logging never blocks the event loop; what is left in it is written synchronously when the process exits.
 - Health checks are not logged. `LOG_LEVEL` sets the level: by default `debug` with readable lines in development, `info` with JSON lines elsewhere.
 
+## Identity and sessions
+
+Identity is a generic context run by Better Auth (ADR-005 and its addendum), in `modules/identity`:
+
+- Better Auth serves its own endpoints under `/api/auth/*`: sign-up, sign-in with email, username or an OAuth provider, sign-out, email verification and resending its link, password reset, linking providers. It owns the `identity_*` tables (`infrastructure/persistence/schema.ts`, hand-written to match what it expects).
+- `AuthMiddleware` mounts it. It runs after the request logger and the same-origin check, and adds what Better Auth lacks: JSON bodies only (415 otherwise; it would also parse HTML form posts), our contracts for the bodies we accept (`@holdem/shared/contracts/identity`, unknown keys dropped), the client address from Express's `req.ip` (so TRUST_PROXY decides, not a client-sent `X-Forwarded-For`) and problem details for its errors: `USERNAME_IS_ALREADY_TAKEN` becomes `auth.username-is-already-taken`.
+- No session before the email is verified; the link in the email signs the user in. A taken email answers exactly like a new sign-up. Links in emails start at `API_ORIGIN`, never at the request's Host.
+- Callback URLs must lead to `WEB_ORIGIN`. A relative one is resolved against it, and a request that sends a link without one gets `WEB_ORIGIN/`, so a link always returns to the web app: on success, or with `?error=TOKEN_EXPIRED` or `?error=INVALID_TOKEN`.
+- The link is a JWT signed with `AUTH_SECRET` that lasts 24 h; nothing is stored. Opened again after verifying, it only redirects and creates no session.
+- The link goes out on sign-up, on a sign-in with the right password while unverified (refused with `auth.email-not-verified`), and on `POST /api/auth/send-verification-email`. The last one answers `{ status: true }` for any address. See "Rate limits" for how many emails an address gets.
+- Password reset: `POST /api/auth/request-password-reset` with the web page to return to (`redirectTo`) emails a link that works once, for an hour. It answers the same for any address and takes at least 500 ms (`MINIMUM_RESPONSE_MS`), since only a known address gets a token written. The link passes through the api to `redirectTo?token=…`, or `?error=INVALID_TOKEN` once expired or used. The page then posts `{ token, newPassword }` to `/api/auth/reset-password`. Success signs every session out and kills every other reset link of the account. An unverified email counts as verified from then on (`UserVerified`), since the link reached its inbox. Reset emails are throttled like verification emails, each kind on its own.
+- Changing the password: `POST /api/auth/change-password` with `{ currentPassword, newPassword }`, signed in, for an account that has one (`auth.invalid-password`, `auth.credential-account-not-found`). The contract always ends every other session; this browser gets a new one.
+- A new password (sign-up, reset, change) that appears in a known breach is refused with 400 `auth.password-compromised`. `PwnedPasswords` asks Have I Been Pwned's range API with k-anonymity: only the first 5 hex characters of the password's SHA-1 leave the api, and padding hides how many suffixes matched. It is checked before the email is looked up, so a sign-up still answers the same for a taken address. When the service has not answered within 3 s the password is accepted, with a warning. The e2e tests replace the port with `FakePasswordBreaches`.
+- The owner is told by email when the ways into the account change: `password-changed` after a reset or a change, `sign-in-method-added` when a provider is linked. A stranger who did it with a stolen session is noticed. These emails are not throttled, since only a signed-in owner or a reset link triggers them.
+- Endpoints the web app does not use are disabled (`disabledPaths`, 404): `/update-user` (Profile owns display data), `/get-access-token`, `/refresh-token` and `/account-info` (provider tokens never reach the browser), and `/verify-password` (from a stolen session, a password-guessing oracle without the limit of `/change-password`).
+- OAuth with Google, GitHub and Discord (`socialProviders`): a provider exists only when both its keys are set, and `GET /api/oauth-providers` lists those, for the web app's buttons. Only the redirect flow is accepted: the body contract drops `idToken`, `scopes` and `additionalData`. `POST /api/auth/sign-in/social` answers the provider's page; the provider sends the browser back to `/api/auth/callback/<provider>`, which redirects to `callbackURL`, `newUserCallbackURL` for a new account, or `errorCallbackURL?error=<code>`. Without a readable state (it holds those URLs) a failure lands on `WEB_ORIGIN/sign-in?error=…` (`onAPIError`). The locale of a new account's emails travels in the state's server context, which the client cannot change.
+  - A new account takes the provider's handle (GitHub login, Discord username) as its username when it is valid and free; Google has none. Otherwise the account starts with a null username: it has a session but no profile, and `RequirePlayer` refuses it until `PUT /api/me/username` (once; `identity.username-taken`, `identity.username-already-chosen`). `name` holds the provider's name until then, for the emails' greeting, and the provider's picture is not kept.
+  - An email that matches an existing account is never linked silently (`disableImplicitLinking`): the sign-in fails with `account_not_linked`, since whoever holds that address at the provider would otherwise get in. The owner signs in and links the provider: `POST /api/auth/link-social` adds it on the way back, whatever its email. `GET /api/auth/list-accounts` lists the ways to sign in (`credential` is the password) and `POST /api/auth/unlink-account` removes one, never the last (`auth.failed-to-unlink-last-account`). Linking and unlinking both need a sign-in younger than an hour (`FRESH_SESSION_AGE`; `auth.session-not-fresh` otherwise), so a stolen session cannot add the thief's provider and keep the account after the owner changes the password. A provider account another user has is refused with `account_already_linked_to_different_user`.
+  - The e2e tests replace the providers in process (`test/support/fake-oauth.ts`): their token and profile endpoints answer from `fetch`.
+- Rate limits, all in Redis through the `RateLimiter` port (`shared/application`, fixed windows, one Lua round trip per hit), so they hold across instances. A refusal is 429 `request.rate-limited` with `Retry-After`.
+  - Better Auth's limiter, per client address and path (`AUTH_RATE_LIMITS`): 20 sign-ins a minute (loose, for users behind one NAT), 3 sign-ups, 3 resends and 3 reset requests, 20 password changes (guesses at the current password from a stolen session), 100 for anything else.
+  - The HTTP mount, per client address and identifier: 5 sign-ins a minute (`SIGN_IN_RULE`); and per identifier from every address together, 30 in 15 minutes (`SIGN_IN_ACCOUNT_RULE`), against guessing from many addresses at once. Anyone can spend the latter, so it is loose: the owner is held up for at most a window, and can still sign in with a provider.
+  - `EmailThrottle`, per recipient and kind of email: one a minute and three an hour. Its requests still answer `200` as if the email went out, since a refusal would tell which addresses have an account. Every counted email reaches the owner, so whoever spends an address's quota hands its owner working links. It runs in the background with the send, so the answer takes the same time either way.
+  - Socket handshakes and avatar uploads have limits of their own (see "HTTP and sockets" and "Profile and avatars").
+  - Keys hold digests, never addresses or usernames. With Redis unavailable each instance counts in its own memory (`MemoryRateLimiter`, at most 100 000 counters), with one warning per outage: refusing every request would turn a Redis outage into a sign-in outage, and allowing every one would lift the limits on guessing passwords and sending emails. Tests give each app its own key prefix (`createTestApp({ rateLimitNamespace })`).
+- Protect a route with `@UseGuards(AuthGuard)` and read the user with `@CurrentUser() viewer: Viewer` (`shared/presentation/auth.guard.ts`). Both rely on the `ViewerResolver` port in `shared/application`, which identity implements, so other contexts never import identity.
+- Everything that touches play adds `RequirePlayer` (`@UseGuards(AuthGuard, RequirePlayer)`; a gateway handler needs only `RequirePlayer`, since sockets are authenticated on connect and on every command). Email and password sessions always pass, but an OAuth sign-in gets a session before it may play: the guard refuses 403 `auth.username-required` until the account has chosen its username, then `auth.email-not-verified` while the provider's email is not verified.
+- Identity publishes `UserRegistered { userId, username, locale }` when an account has its username, at creation or when an OAuth account chooses it, and `UserVerified { userId }` when its email is verified: by the link, by a password reset, or when an OAuth provider vouches for it. `UserVerified` never comes before `UserRegistered`: an account without a username gets both when it chooses one. Other contexts import them from `modules/identity/index.ts`.
+- The session cookie is `holdem.session_token`: HttpOnly, SameSite=Lax. In production it is `__Secure-holdem.session_token` and Secure, set for the one origin that serves both the web app and the api behind the reverse proxy.
+
+## Profile and avatars
+
+How players appear to others lives in `modules/profile`: the nickname (any script, 2–24 characters, not unique, unlike the username), the avatar and the language. A profile is created on identity's `UserRegistered`; `GET/PUT /api/profile…` is the player's own, `GET /api/profiles/:username` the public part.
+
+- Avatars go to S3-compatible storage through the `ObjectStorage` port (`shared/application`; `S3ObjectStorage` in `shared/infrastructure/storage`). The browser uploads straight to storage, never through the api:
+  1. `POST /api/profile/avatar/upload` with the content type answers a presigned POST for `uploads/<userId>/<uuid>`. Storage itself refuses more than 2 MB, another content type or another key. 10 requests an hour per player.
+  2. The browser posts the file to storage.
+  3. `PUT /api/profile/avatar` with the key checks the file, not what the browser said about it: its size, its first bytes (PNG, JPEG or WebP), and that it decodes within 40 megapixels (a decompression bomb fits in 2 MB). `AvatarImages` (sharp) decodes two pictures at a time per instance (`MAX_CONCURRENT_ENCODES`), the others wait, and re-encodes each as a 256×256 WebP, which drops its metadata (where a photo was taken) and anything hidden after the image. It is stored once under `avatars/<userId>/<uuid>.webp`, cached for good (`immutable`), and the replaced avatar is deleted. The upload is deleted whatever happens. `DELETE /api/profile/avatar` goes back to none.
+- Only `avatars/*` is public (`infra/s3/avatars-policy.json`); pending uploads are private and expire after a day (`avatars-lifecycle.json`). The bucket allows uploads from `WEB_ORIGIN` (CORS); `infra/s3/init.sh` sets all three, locally and in CI. Responses carry `avatarUrl`, built from `S3_PUBLIC_URL`, ready for a CDN. A player without one gets an identicon the web app draws from the username; provider pictures are not used, so no third party learns who looks at a profile.
+
 ## HTTP and sockets
 
-- `configureApp` (shared by `main.ts` and the e2e tests) sets the security headers (helmet), CORS for `WEB_ORIGIN` with credentials, `trust proxy` and the socket.io adapter.
+- Every REST route lives under `/api` (`API_PREFIX` from `@holdem/shared`), so production can serve the web app and the api from one origin behind a reverse proxy (`/api/*` and `/socket.io/*` → api). Requests outside it get a 404 problem too.
+- `configureApp` (shared by `main.ts` and the e2e tests) sets the global prefix, the security headers (helmet), CORS for `WEB_ORIGIN` with credentials (used in development, where web and api are two origins), `trust proxy`, a 16 KiB limit on JSON bodies and the socket.io adapter.
+- A request that changes state (anything but GET, HEAD and OPTIONS) from a browser page on another origin than `WEB_ORIGIN` is refused with 403 `request.cross-origin`, before any route sees it: cookies ride along regardless of CORS (login CSRF). Requests without `Origin` are not from a browser and pass. AppModule applies it, and the auth mount after it, because middleware of global modules runs first and the order must be: logger, origin check, auth.
 - socket.io refuses a connection whose `Origin` is not `WEB_ORIGIN`: CORS alone would let a page on another origin open a socket with the visitor's cookies (cross-site WebSocket hijacking). Clients without an `Origin` are not browsers and are let through. A message larger than `MAX_MESSAGE_BYTES` (64 KiB) closes the connection.
+- Each client address may hold 20 open connections per instance (`MAX_CONNECTIONS_PER_ADDRESS`, room for a household behind one router) and open 60 a minute across instances (`HANDSHAKE_RULE`), since every handshake looks its session up. The address follows `TRUST_PROXY`, like Express's.
+- Sockets carry the session of their handshake cookie. `authenticateSockets` (`shared/presentation/realtime/socket-session.ts`) runs when a client joins a namespace; the composition root hands it to `SocketIoAdapter`, so the adapter knows no identity code. It resolves the viewer through `ViewerResolver` into `socket.data.viewer`. Without a session the viewer is null, and only `PUBLIC_NAMESPACES` (the root, for `ping`) let it in; elsewhere the client gets `connect_error` with a 401 problem. A failed lookup refuses with a 500 problem.
+- A socket outlives its session unless something checks: `@RealtimeGateway` re-reads the session before every command (`SocketSessionGuard`), and every signed-in socket is re-checked each minute while idle (`SESSION_RECHECK_MS`), since it still receives what its viewer may see. When the session is gone (signed out, expired, revoked by a password reset), the socket gets `session-expired` and is disconnected. The re-read also refreshes the viewer, so `RequirePlayer` in a gateway sees the email as it is now. `@CurrentUser()` works in gateway handlers too.
 
 ## Imports
 

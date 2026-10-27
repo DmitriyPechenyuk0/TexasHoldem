@@ -2,7 +2,7 @@
 
 No-Limit Texas Hold'em in the browser: sit down at a cash table with friends, share a private table by link, or just watch. Chips are virtual and free, so anyone can play at any time.
 
-The project is in early development. Done: the foundation (monorepo, API and web skeletons, quality gates) and the poker engine, which plays a whole hand by the rules from the blinds to the showdown, with side pots, a provably fair shuffle and what each player may see ([packages/engine](packages/engine/README.md)). Next: sign-in and player profiles, then the realtime table.
+The project is in early development. Done: the foundation (monorepo, API and web skeletons, quality gates) and the poker engine, which plays a whole hand by the rules from the blinds to the showdown, with side pots, a provably fair shuffle and what each player may see ([packages/engine](packages/engine/README.md)); and accounts: sign-up with a verified email or with Google, GitHub and Discord, password reset, and player profiles with a nickname and an avatar. Next: the realtime table.
 
 **Planned for the first release:** cash tables with a 20-second turn timer and a time bank, private tables by link or code with an optional password, spectators, provably fair shuffles, sign-in with email or Google, GitHub and Discord, player profiles, friends and table chat, in English and Russian.
 
@@ -21,7 +21,7 @@ The project is in early development. Done: the foundation (monorepo, API and web
 
 ```
 apps/
-  api/          NestJS server: REST + socket.io on http://localhost:4000
+  api/          NestJS server: REST under /api + socket.io on http://localhost:4000
   web/          Next.js app on http://localhost:3000
 packages/
   engine/       @holdem/engine: the rules of the game, no I/O
@@ -60,7 +60,7 @@ Then open http://localhost:3000. The home page shows the server time when the we
 | Service | Address |
 | --- | --- |
 | Web app | http://localhost:3000 (UI component preview: http://localhost:3000/en/ui) |
-| API | http://localhost:4000 (health: `/health`, readiness: `/health/ready`) |
+| API | http://localhost:4000/api (health: `/api/health`, readiness: `/api/health/ready`) |
 | Mailpit inbox | http://localhost:8025 |
 | S3 console | http://localhost:9001 (user `holdem`, password `holdem-dev-secret`) |
 | PostgreSQL | `127.0.0.1:5433`, user, password and database `holdem` |
@@ -69,6 +69,18 @@ Then open http://localhost:3000. The home page shows the server time when the we
 Every service port binds to `127.0.0.1` only. If one is taken, override it in a root `.env` file (e.g. `POSTGRES_PORT=5434`, see `docker-compose.yml`) and update the matching URL in `apps/api/.env`.
 
 `pnpm infra:down` stops the services and keeps their data; `pnpm infra:reset` wipes the data and starts them again.
+
+### Signing in with Google, GitHub or Discord
+
+Optional: without keys a provider's button simply does not show. Create a development app at each provider you want, then put its client id and secret into `apps/api/.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and so on) and restart the api. The callback URL is always `http://localhost:4000/api/auth/callback/<provider>`.
+
+| Provider | Where | Settings |
+| --- | --- | --- |
+| Google | [Google Cloud console](https://console.cloud.google.com/apis/credentials) → Create credentials → OAuth client ID → Web application | Authorized redirect URI `http://localhost:4000/api/auth/callback/google`. On the consent screen choose External and add yourself as a test user. |
+| GitHub | [Developer settings](https://github.com/settings/developers) → OAuth Apps → New OAuth App | Homepage URL `http://localhost:3000`, authorization callback URL `http://localhost:4000/api/auth/callback/github`. |
+| Discord | [Developer portal](https://discord.com/developers/applications) → New Application → OAuth2 | Redirect `http://localhost:4000/api/auth/callback/discord`. |
+
+In production the callback is `https://<your domain>/api/auth/callback/<provider>`, on the same origin as the web app.
 
 ## Scripts
 

@@ -13,6 +13,12 @@ overrides:
   # @nestjs/platform-express 12.2.0 pins multer 2.4.0: GHSA-q7qp-rjg7-q26m (DoS), fixed in 2.5.0.
   multer@2.4.0: 2.5.0
 
+# Peer ranges that lag behind a version we run on purpose. CI fails on any other unmet peer.
+peerDependencyRules:
+  allowedVersions:
+    # tsconfck (via steiger) declares an optional TypeScript ^5 peer; we stay on TypeScript 6.
+    tsconfck>typescript: '6'
+
 # Known advisories with no fix to take, checked and accepted. `pnpm audit` skips them.
 auditConfig:
   ignoreGhsas:

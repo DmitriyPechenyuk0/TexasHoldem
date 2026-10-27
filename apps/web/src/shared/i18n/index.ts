@@ -1,3 +1,4 @@
+export { useErrorMessage } from "./error-message";
 export {
 	getPathname,
 	Link,

@@ -2,7 +2,14 @@ import type { Server } from "socket.io";
 import type { Socket } from "socket.io-client";
 import { z } from "zod";
 import type { Ack } from "../contracts/common/ack.js";
-import { defineEvent, defineNamespace, NAMESPACES } from "./define.js";
+import type { UserId } from "../contracts/common/ids.js";
+import {
+	defineEvent,
+	defineNamespace,
+	NAMESPACES,
+	SessionExpiredEvent,
+	type SocketData,
+} from "./define.js";
 import {
 	PingAck,
 	PingEvent,
@@ -30,6 +37,13 @@ describe("defineEvent and defineNamespace", () => {
 		expect(table.path).toBe("/table");
 		expect(table.clientToServer.ping).toBe(PingEvent);
 		expect(table.serverToClient["seat-taken"]).toBe(SeatTaken);
+	});
+
+	it("let every namespace's server say the session expired", () => {
+		expect(systemNamespace.serverToClient["session-expired"]).toBe(
+			SessionExpiredEvent,
+		);
+		expect(SessionExpiredEvent.ack).toBeUndefined();
 	});
 
 	it("name the realtime namespaces", () => {
@@ -73,6 +87,35 @@ describe("socket.io typing", () => {
 			// @ts-expect-error a command needs its ack callback.
 			socket.emit("ping", { sentAt: 1 });
 		};
+		expect(client).toBeTypeOf("function");
+	});
+
+	it("types socket.data on the server and session-expired on the client", () => {
+		const server = (
+			io: Server<
+				SystemClientToServerEvents,
+				SystemServerToClientEvents,
+				object,
+				SocketData
+			>,
+		) => {
+			io.on("connection", (socket) => {
+				expectTypeOf(socket.data.viewer?.userId).toEqualTypeOf<
+					UserId | undefined
+				>();
+				socket.emit("session-expired", {});
+				// @ts-expect-error the server keeps the viewer, nothing else.
+				socket.data.viewer = { userId: "u" };
+			});
+		};
+		const client = (
+			socket: Socket<SystemServerToClientEvents, SystemClientToServerEvents>,
+		) => {
+			socket.on("session-expired", (payload) => {
+				expectTypeOf(payload).toEqualTypeOf<Record<string, never>>();
+			});
+		};
+		expect(server).toBeTypeOf("function");
 		expect(client).toBeTypeOf("function");
 	});
 

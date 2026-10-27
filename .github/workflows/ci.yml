@@ -46,6 +46,8 @@ jobs:
       - uses: ./.github/actions/setup
       # Known advisories that have no fix are listed, with the reason, under auditConfig in pnpm-workspace.yaml.
       - run: pnpm audit --audit-level moderate
+      # An update outside a plugin's peer range installs and lints fine, then breaks silently.
+      - run: pnpm peers check
 
   typecheck:
     name: Typecheck
@@ -70,20 +72,24 @@ jobs:
       # The same compose file as local dev, so image tags and the holdem_test init never drift.
       # Containers boot while dependencies install.
       # Docker Hub sometimes answers 502, so pulling is retried before giving up.
-      - name: Start Postgres and Redis
+      - name: Start Postgres, Redis, Mailpit and S3
         run: |
           for attempt in 1 2 3; do
-            docker compose pull --quiet postgres redis && break
+            docker compose --profile init pull --quiet postgres redis mailpit s3 s3-init && break
             echo "pull failed (attempt $attempt), retrying"
             sleep $((attempt * 10))
           done
-          docker compose up -d postgres redis
+          docker compose up -d postgres redis mailpit s3
 
       - uses: ./.github/actions/setup
       - run: pnpm build:packages
 
-      - name: Wait for Postgres and Redis
-        run: docker compose up -d --wait postgres redis
+      - name: Wait for Postgres, Redis, Mailpit and S3
+        run: docker compose up -d --wait postgres redis mailpit s3
+
+      # The avatars bucket with its policy, CORS and lifecycle, as `pnpm infra:up` makes it.
+      - name: Create the S3 bucket
+        run: docker compose run --rm s3-init
 
       # A schema change committed without its migration makes `generate` write a new one.
       - name: Check that migrations match the schema
@@ -116,6 +122,7 @@ jobs:
       # The web app validates its configuration on import; the values from apps/web/.env.example.
       NEXT_PUBLIC_API_URL: http://localhost:4000
       API_URL: http://localhost:4000
+      STORAGE_ORIGINS: http://127.0.0.1:9000
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup

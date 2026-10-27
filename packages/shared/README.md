@@ -40,7 +40,9 @@ export const systemNamespace = defineNamespace(NAMESPACES.system, {
 export type SystemClientToServerEvents = ClientToServerEvents<typeof systemNamespace>;
 ```
 
-- **Namespaces** are `/table`, `/lobby` and `/social`, plus the root `/` for connection-level events such as `ping` (`NAMESPACES`).
+- **Namespaces** are `/table`, `/lobby` and `/social`, plus the root `/` for connection-level events such as `ping` (`NAMESPACES`). Only the root is open without a session; the others refuse the connection with a 401 problem in `connect_error.data`.
+- **`session-expired`** (`SessionExpiredEvent`) is on every namespace's server-to-client side, added by `defineNamespace`. The server sends it when the socket's session is gone (signed out, expired, revoked by a password reset), then disconnects. The client signs in again and reconnects.
+- **`SocketData`** types what the api keeps on a socket (`socket.data.viewer`: the signed-in `Viewer`, or null on the root without a session): `Server<ClientToServer, ServerToClient, object, SocketData>`.
 - **Commands** (client → server) take an ack schema and are answered with `Ack<Data>`. Emit them with `emitWithAck`; the compiler requires the ack. **Events** without an ack are fire-and-forget.
 - **Event names are kebab-case and stable.** A name is part of the contract: a breaking change to its payload or ack gets a new name (`take-seat-v2`) while the old one is still served, and the old one is removed only when no client sends it.
 - **Realtime schemas never coerce or transform.** JSON keeps types over a socket, so the sender's type and the parsed type are the same.
@@ -50,11 +52,13 @@ export type SystemClientToServerEvents = ClientToServerEvents<typeof systemNames
 
 - **A schema and its type share one name**: `export const ServerTimeResponse = z.object(…)` and `export type ServerTimeResponse = z.infer<typeof ServerTimeResponse>`.
 - **Names say the role**: `XxxRequest` for bodies, `XxxQuery` for query strings, `XxxResponse` for responses, `XxxEvent` for socket messages. Shared building blocks (`Chips`, `TableId`) need no suffix.
-- **Document the endpoint** on the response schema: `/** GET /system/time: … */`.
+- **Document the endpoint** on the response schema: `/** GET /api/system/time: … */`.
 - **The inferred type is what the receiver gets after parsing.** When a schema coerces or defaults (`PageQuery.limit` arrives as text), the sender builds `z.input<typeof Schema>`.
 - **Ids are branded UUIDs** (`UserId`, `TableId`, `HandId`), so the compiler rejects one where another is expected. Every id the api generates is a UUID, including Better Auth user ids.
 - **Error responses are `Problem`** (RFC 9457, `application/problem+json`). Clients switch on `code` and translate it as the message key, filling in `params`; `title` and `detail` are English fallbacks. Invalid requests list their fields in `errors`.
 - **Socket commands reply with an `Ack`**: `{ ok: true, data }` (`AckSuccess`) or `{ ok: false, error: Problem }` (`AckFailure`). Build its schema with `ackOf(DataSchema)`.
+- **Every route lives under `API_PREFIX` (`/api`).** Schemas document paths with it: `GET /api/system/time`. The web client adds the prefix itself, so callers pass `/system/time`.
+- **Better Auth's endpoints** (`/api/auth/*`, the `identity` context) answer with Better Auth's own bodies on success. The requests the api accepts there are contracts here (`SignUpRequest`, `SignInEmailRequest`, `SignInUsernameRequest`, `SendVerificationEmailRequest`, `RequestPasswordResetRequest`, `ResetPasswordRequest`); their errors are `Problem`s like everywhere else.
 - **No domain logic.** Schemas describe the shape and the basic ranges of data. Rules such as "a raise must be at least the last raise" belong to `@holdem/engine` and the api.
 - **No runtime dependency besides zod, and nothing Node-only**: the package runs in the browser. The build has no Node types, so `process`, `Buffer` or `node:*` imports fail it, and a test checks `dependencies`.
 - **Every contract is tested**: coverage must stay at 95% or more, so a contract that no test imports fails `pnpm test:coverage`.

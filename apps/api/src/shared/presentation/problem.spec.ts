@@ -1,6 +1,7 @@
 import {
 	BadRequestException,
 	ForbiddenException,
+	HttpException,
 	NotFoundException,
 	PayloadTooLargeException,
 	ServiceUnavailableException,
@@ -101,6 +102,19 @@ describe("problemFor", () => {
 			unexpected: true,
 		});
 	});
+
+	it.each([
+		[418, "http.418", "I'm a Teapot"],
+		[501, "internal", "Not Implemented"],
+		[599, "internal", "Error"],
+	])(
+		"gives an HTTP error of status %i without its own code the code %s",
+		(status, code, title) => {
+			expect(
+				problemFor(new HttpException("odd", status)).problem,
+			).toMatchObject({ status, code, title });
+		},
+	);
 
 	it("keeps the message of a deliberate server error out of the body", () => {
 		const { problem } = problemFor(
