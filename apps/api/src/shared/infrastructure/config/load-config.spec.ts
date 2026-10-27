@@ -4,13 +4,17 @@ import {
 	parseConfig,
 	parseDatabaseConfig,
 } from "./load-config.js";
-import { DEVELOPMENT_AUTH_SECRET } from "./env.schema.js";
+import {
+	DEVELOPMENT_AUTH_SECRET,
+	DEVELOPMENT_S3_SECRET_ACCESS_KEY,
+} from "./env.schema.js";
 
-/** `.env.example` as production would run it: with a secret of its own. */
+/** `.env.example` as production would run it: with secrets of its own. */
 const productionEnv = () => ({
 	...exampleEnv(),
 	NODE_ENV: "production",
 	AUTH_SECRET: "a-real-secret-generated-for-production-0123",
+	S3_SECRET_ACCESS_KEY: "a-real-storage-secret",
 });
 
 const problemsOf = (
@@ -186,12 +190,57 @@ describe("trust proxy", () => {
 	});
 });
 
-describe("AUTH_SECRET", () => {
-	it("refuses the public development value in production, and only there", () => {
+describe("production", () => {
+	it("refuses the public development secrets, and only there", () => {
 		expect(exampleEnv().AUTH_SECRET).toBe(DEVELOPMENT_AUTH_SECRET);
+		expect(exampleEnv().S3_SECRET_ACCESS_KEY).toBe(
+			DEVELOPMENT_S3_SECRET_ACCESS_KEY,
+		);
 		expect(problemsOf({ ...exampleEnv(), NODE_ENV: "production" })).toEqual([
 			expect.stringMatching(/^AUTH_SECRET: is the public development value/),
+			expect.stringMatching(
+				/^S3_SECRET_ACCESS_KEY: is the public development value/,
+			),
 		]);
 		expect(() => parseConfig(productionEnv())).not.toThrow();
+	});
+
+	it("refuses TRUST_PROXY=true, which lets clients choose their address", () => {
+		expect(problemsOf({ ...productionEnv(), TRUST_PROXY: "true" })).toEqual([
+			expect.stringMatching(/^TRUST_PROXY: true trusts an X-Forwarded-For/),
+		]);
+		expect(
+			parseConfig({ ...exampleEnv(), TRUST_PROXY: "true" }).trustProxy,
+		).toBe(true);
+		expect(
+			parseConfig({ ...productionEnv(), TRUST_PROXY: "1" }).trustProxy,
+		).toBe(1);
+	});
+});
+
+describe("S3_PUBLIC_URL", () => {
+	it.each([
+		[
+			"the bucket at a path-style endpoint by default",
+			{},
+			"http://127.0.0.1:9000/avatars",
+		],
+		[
+			"the bucket's virtual host when path style is off",
+			{
+				S3_ENDPOINT: "https://s3.eu-central-1.amazonaws.com",
+				S3_FORCE_PATH_STYLE: "false",
+			},
+			"https://avatars.s3.eu-central-1.amazonaws.com",
+		],
+		[
+			"the value given, without a trailing slash",
+			{ S3_PUBLIC_URL: "https://cdn.example.test/avatars/" },
+			"https://cdn.example.test/avatars",
+		],
+	])("is %s", (_case, env, expected) => {
+		expect(parseConfig({ ...exampleEnv(), ...env }).s3.publicUrl).toBe(
+			expected,
+		);
 	});
 });

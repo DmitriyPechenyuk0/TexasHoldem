@@ -34,9 +34,9 @@ import {
 	browser,
 	problemOf,
 	signUpAndVerify,
-	verificationLinkFor,
 	WEB_ORIGIN,
 } from "./support/identity.js";
+import { countEmails, waitForLink } from "./support/mailpit.js";
 import {
 	createTestDatabase,
 	type TestDatabase,
@@ -222,32 +222,33 @@ describe("OAuth sign-in and account linking (e2e)", () => {
 			},
 		);
 
-		it("gets a verification email when the provider has not verified the address", async () => {
+		it("refuses an address the provider has not verified, and creates nothing", async () => {
 			const client = browser(app);
 			const user = providerUser({
 				handle: `unverified_${lastProviderId}`,
 				emailVerified: false,
 			});
 
-			await signInWith(client, "github", user);
+			const callback = await signInWith(client, "discord", user);
 
-			const me = await meOf(client);
-			expect(me.emailVerified).toBe(false);
-			expect(eventsOf(me.id)).toEqual([
-				new UserRegistered(me.id, me.username!, "en"),
-			]);
-			const refused = await client.get("/api/probe/players-only").expect(403);
-			expect(problemOf(refused).code).toBe("auth.email-not-verified");
-			await verificationLinkFor(user.email);
+			// Anyone may give a provider someone else's address: an account made from it would be
+			// theirs once they verified it or reset the password, with this provider still linked.
+			expect(callback.headers.location).toMatch(
+				new RegExp(`^${SIGN_IN}\\?error=email_not_verified&`),
+			);
+			await client.get("/api/me").expect(401);
+			expect(
+				await database.db
+					.select({ id: users.id })
+					.from(users)
+					.where(eq(users.email, user.email)),
+			).toEqual([]);
+			expect(await countEmails(user.email)).toBe(0);
 
-			// Verified at the provider later: the next sign-in brings it over and announces it.
+			// Verified at the provider later: the next sign-in creates the account.
 			const again = browser(app);
-			await signInWith(again, "github", { ...user, emailVerified: true });
+			await signInWith(again, "discord", { ...user, emailVerified: true });
 			expect((await meOf(again)).emailVerified).toBe(true);
-			expect(eventsOf(me.id)).toEqual([
-				new UserRegistered(me.id, me.username!, "en"),
-				new UserVerified(me.id),
-			]);
 		});
 	});
 
@@ -352,9 +353,9 @@ describe("OAuth sign-in and account linking (e2e)", () => {
 	});
 
 	describe("linking from settings", () => {
-		it("adds a provider, with another email, to the signed-in account", async () => {
+		it("adds a provider, with another email, to the signed-in account, and tells the owner", async () => {
 			const client = browser(app);
-			await signUpAndVerify(client);
+			const account = await signUpAndVerify(client);
 			const { id } = await meOf(client);
 			const atGitHub = providerUser({ handle: "linked_handle" });
 
@@ -370,6 +371,31 @@ describe("OAuth sign-in and account linking (e2e)", () => {
 				(await signInWith(elsewhere, "github", atGitHub)).headers.location,
 			).toBe(HOME);
 			expect(await meOf(elsewhere)).toMatchObject({ id });
+			// The owner hears of it, in case it was not them.
+			expect(
+				(await waitForLink(account.email, /\S+\/en\/settings\?tab=account/))
+					.href,
+			).toBe(`${SETTINGS}?tab=account`);
+		});
+
+		it("asks for a recent sign-in, so a stolen session cannot add a way in", async () => {
+			const client = browser(app);
+			await signUpAndVerify(client);
+			const { id } = await meOf(client);
+			await database.db
+				.update(sessions)
+				.set({ createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) })
+				.where(eq(sessions.userId, id));
+
+			const refused = await client
+				.post("/api/auth/link-social", {
+					provider: "github",
+					callbackURL: "/en/settings",
+				})
+				.expect(403);
+
+			expect(problemOf(refused).code).toBe("auth.session-not-fresh");
+			expect(await linkedProviders(client)).toEqual(["credential"]);
 		});
 
 		it("refuses a provider account that already belongs to someone else", async () => {

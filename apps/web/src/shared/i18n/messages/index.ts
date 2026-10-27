@@ -3,11 +3,13 @@ import enAuth from "./en/auth.json";
 import enCommon from "./en/common.json";
 import enErrors from "./en/errors.json";
 import enHome from "./en/home.json";
+import enProfile from "./en/profile.json";
 import enSettings from "./en/settings.json";
 import ruAuth from "./ru/auth.json";
 import ruCommon from "./ru/common.json";
 import ruErrors from "./ru/errors.json";
 import ruHome from "./ru/home.json";
+import ruProfile from "./ru/profile.json";
 import ruSettings from "./ru/settings.json";
 
 // One JSON file per namespace and locale. English is the source catalog: its generated
@@ -17,6 +19,7 @@ const en = {
 	common: enCommon,
 	errors: enErrors,
 	home: enHome,
+	profile: enProfile,
 	settings: enSettings,
 };
 
@@ -35,6 +38,7 @@ const catalogs = {
 		common: ruCommon,
 		errors: ruErrors,
 		home: ruHome,
+		profile: ruProfile,
 		settings: ruSettings,
 	},
 } satisfies Record<Locale, Catalog<Messages>>;

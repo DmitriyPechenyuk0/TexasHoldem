@@ -8,7 +8,11 @@ import { PASSWORD_RESET_EXPIRES_IN } from "@/modules/identity/infrastructure/bet
 import { emailThrottleKeys } from "@/modules/identity/infrastructure/email-throttle.js";
 import { users } from "@/modules/identity/infrastructure/persistence/schema.js";
 import { RateLimiter } from "@/shared/application/rate-limiter.js";
-import { createTestApp } from "./support/create-test-app.js";
+import { captureLogs } from "./support/capture-logs.js";
+import {
+	createTestApp,
+	FakePasswordBreaches,
+} from "./support/create-test-app.js";
 import {
 	type Account,
 	type Browser,
@@ -39,11 +43,13 @@ const resetLinkFor = (email: string): Promise<URL> =>
 describe("Password reset (e2e)", () => {
 	let database: TestDatabase;
 	let app: INestApplication<App>;
+	const breaches = new FakePasswordBreaches();
 
 	beforeAll(async () => {
 		database = await createTestDatabase();
 		app = await createTestApp({
 			config: { database: { url: database.url }, trustProxy: "loopback" },
+			passwordBreaches: breaches,
 		});
 	});
 
@@ -105,6 +111,39 @@ describe("Password reset (e2e)", () => {
 			"auth.invalid-email-or-password",
 		);
 		await signIn(account, NEW_PASSWORD).expect(200);
+		// The owner hears of it, in case it was not them.
+		await waitForLink(account.email, /\S+\/en\/settings\?tab=account/);
+	});
+
+	it("keeps the link's token, which is in its path, out of the logs", async () => {
+		const account = await signUpAndVerify(browser(app));
+		await requestReset(browser(app), account.email).expect(200);
+		const link = await resetLinkFor(account.email);
+		const token = link.pathname.split("/").at(-1)!;
+		const { lines } = captureLogs();
+
+		await followLink(link);
+
+		expect(JSON.stringify(lines)).not.toContain(token);
+		expect(lines).toContainEqual(
+			expect.objectContaining({
+				msg: "request completed",
+				req: expect.objectContaining({
+					path: "/api/auth/reset-password/[redacted]",
+				}),
+			}),
+		);
+	});
+
+	it("refuses a new password from a known data breach, and keeps the link usable", async () => {
+		const account = await signUpAndVerify(browser(app));
+		const token = await tokenFor(account);
+		breaches.breached.add("leaked passphrase");
+
+		const refused = await resetPassword(token, "leaked passphrase").expect(400);
+
+		expect(problemOf(refused).code).toBe("auth.password-compromised");
+		await resetPassword(token).expect(200);
 	});
 
 	it("refuses a used link with a stable code", async () => {

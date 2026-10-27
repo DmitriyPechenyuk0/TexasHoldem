@@ -55,6 +55,8 @@ const eslintConfig = defineConfig([
 		files: [
 			"src/shared/config/public-env.ts",
 			"src/shared/config/server-env.ts",
+			// Loaded by Next.js before the app: it hands the build's environment to the CSP headers.
+			"next.config.ts",
 		],
 		rules: { "no-restricted-properties": "off" },
 	},

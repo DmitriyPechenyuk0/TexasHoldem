@@ -46,6 +46,7 @@ export function browser(app: INestApplication<App>) {
 		post: (path: string, body?: object) =>
 			authed(agent.post(path)).send(body ?? {}),
 		put: (path: string, body: object) => authed(agent.put(path)).send(body),
+		delete: (path: string) => authed(agent.delete(path)),
 	};
 }
 export type Browser = ReturnType<typeof browser>;

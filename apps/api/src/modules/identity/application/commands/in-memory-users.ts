@@ -23,9 +23,7 @@ export class InMemoryUsers extends UserRepository {
 
 	async setLocale(userId: UserId, locale: Locale): Promise<void> {
 		const user = this.rows.get(userId);
-		if (user) {
-			user.locale = locale;
-		}
+		this.rows.set(userId, { ...user!, locale });
 	}
 
 	async chooseUsername(

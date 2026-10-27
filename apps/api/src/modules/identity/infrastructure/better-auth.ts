@@ -1,5 +1,6 @@
 import { Locale, UserId } from "@holdem/shared";
 import {
+	type OAuthProvider,
 	SESSION_COOKIE_PREFIX,
 	Username,
 } from "@holdem/shared/contracts/identity";
@@ -13,6 +14,7 @@ import {
 	addOAuthServerContext,
 	createAuthMiddleware,
 	getOAuthState,
+	getSessionFromCtx,
 } from "better-auth/api";
 import { username } from "better-auth/plugins/username";
 import type { Mailer } from "@/shared/application/mailer.js";
@@ -25,6 +27,7 @@ import {
 } from "../application/auth-http-handler.js";
 import { UserRegistered } from "../application/events/user-registered.event.js";
 import { UserVerified } from "../application/events/user-verified.event.js";
+import type { PasswordBreaches } from "../application/password-breaches.js";
 import { enabledOAuthProviders } from "./configured-oauth-providers.js";
 import type { EmailKind, EmailThrottle } from "./email-throttle.js";
 import {
@@ -38,6 +41,8 @@ const HOUR = 60 * 60;
 const DAY = 24 * HOUR;
 export const EMAIL_VERIFICATION_EXPIRES_IN = DAY;
 export const PASSWORD_RESET_EXPIRES_IN = HOUR;
+/** How recent a sign-in must be to link or unlink a provider: a stolen session alone is not enough. */
+export const FRESH_SESSION_AGE = HOUR;
 
 /** Better Auth's limits per client address and path, a minute each. */
 export const AUTH_RATE_LIMITS = {
@@ -58,8 +63,22 @@ const REDIRECT_FIELDS = [
 const isOAuthCallback = (path: string | undefined): boolean =>
 	path?.startsWith("/callback/") ?? false;
 
-/** Longest provider name kept as `name` until the username is chosen; emails greet by it. */
+/** Longest provider name kept as `name` until the username is chosen. Emails never show it. */
 const MAX_PROVIDER_NAME = 64;
+
+/** How emails name a provider. */
+const PROVIDER_NAMES: Readonly<Record<OAuthProvider, string>> = {
+	google: "Google",
+	github: "GitHub",
+	discord: "Discord",
+};
+
+/** Where each endpoint that sets a password carries the new one. */
+const NEW_PASSWORD_FIELD: Readonly<Record<string, string>> = {
+	"/sign-up/email": "password",
+	"/reset-password": "newPassword",
+	"/change-password": "newPassword",
+};
 
 /** The only sign-up fields Better Auth may see; `name` is filled from `username`. */
 const SIGN_UP_FIELDS = new Set([
@@ -94,6 +113,7 @@ export interface BetterAuthDependencies {
 	readonly eventBus: EventBus;
 	readonly emailThrottle: EmailThrottle;
 	readonly rateLimiter: RateLimiter;
+	readonly passwordBreaches: PasswordBreaches;
 }
 
 /** Settings from ADR-005 and its addendum; every value that differs from Better Auth's default is deliberate. */
@@ -104,6 +124,7 @@ export function createBetterAuth({
 	eventBus,
 	emailThrottle,
 	rateLimiter,
+	passwordBreaches,
 }: BetterAuthDependencies) {
 	const logger = new Logger("BetterAuth");
 	const oauth = config.auth.oauth;
@@ -136,11 +157,17 @@ export function createBetterAuth({
 		return taken ? {} : { username };
 	};
 
+	/** The username an email greets by; `name` may still hold the provider's, which anyone sets. */
+	const usernameOf = (user: object): string | null => {
+		const { username } = user as { username?: unknown };
+		return typeof username === "string" ? username : null;
+	};
+
 	// Started without awaiting, the throttle included: the answer takes the same time whether or
 	// not an email goes out, so it does not tell which addresses have an account.
 	const sendLink = (
 		template: EmailKind,
-		user: { readonly email: string; readonly name: string },
+		user: { readonly email: string },
 		url: string,
 		expiresIn: number,
 	): void => {
@@ -150,15 +177,61 @@ export function createBetterAuth({
 					to: user.email,
 					locale: (user as { locale?: string }).locale,
 					template,
-					// `name` mirrors the username.
 					params: {
-						username: user.name,
+						username: usernameOf(user),
 						url,
 						expiresInMinutes: expiresIn / 60,
 					},
 				});
 			}
 		});
+	};
+
+	/**
+	 * Tells the owner that the ways into the account changed, so a stranger who did it with a stolen
+	 * session is noticed. Not throttled: only a signed-in owner, or a reset link, triggers it.
+	 */
+	const notifyOwner = async (
+		userId: string,
+		notice:
+			| { readonly template: "password-changed" }
+			| {
+					readonly template: "sign-in-method-added";
+					readonly provider: string;
+			  },
+	): Promise<void> => {
+		const [owner] = await db
+			.select({
+				email: users.email,
+				username: users.username,
+				locale: users.locale,
+			})
+			.from(users)
+			.where(eq(users.id, userId));
+		if (!owner) {
+			return;
+		}
+		const locale = Locale.catch("en").parse(owner.locale);
+		const url = `${config.webOrigin}/${locale}/settings?tab=account`;
+		mailer.send(
+			notice.template === "password-changed"
+				? {
+						to: owner.email,
+						locale,
+						template: notice.template,
+						params: { username: owner.username, url },
+					}
+				: {
+						to: owner.email,
+						locale,
+						template: notice.template,
+						params: {
+							username: owner.username,
+							provider: notice.provider,
+							url,
+						},
+					},
+		);
 	};
 
 	return betterAuth({
@@ -196,6 +269,7 @@ export function createBetterAuth({
 			// Whoever held the old password, or a stolen session, is signed out everywhere.
 			revokeSessionsOnPasswordReset: true,
 			onPasswordReset: async ({ user }) => {
+				await notifyOwner(user.id, { template: "password-changed" });
 				// Every other reset link of the account dies with this one. Among the endpoints we
 				// enable, only reset tokens store the bare user id (two-factor would too).
 				await db.delete(verifications).where(eq(verifications.value, user.id));
@@ -236,7 +310,12 @@ export function createBetterAuth({
 				},
 			},
 		},
-		session: { expiresIn: 30 * DAY, updateAge: DAY },
+		// Linking and unlinking providers need a sign-in younger than `freshAge`.
+		session: {
+			expiresIn: 30 * DAY,
+			updateAge: DAY,
+			freshAge: FRESH_SESSION_AGE,
+		},
 		// Only providers with keys exist; their callback is `${API_ORIGIN}/api/auth/callback/<id>`.
 		socialProviders: {
 			...(oauth.google && {
@@ -288,6 +367,8 @@ export function createBetterAuth({
 				"/sign-up/email": AUTH_RATE_LIMITS.signUp,
 				"/send-verification-email": AUTH_RATE_LIMITS.email,
 				"/request-password-reset": AUTH_RATE_LIMITS.email,
+				// Guesses at the current password, from a stolen session.
+				"/change-password": AUTH_RATE_LIMITS.signIn,
 			},
 			customStorage: {
 				consume: async (key, { window, max }) => {
@@ -308,6 +389,9 @@ export function createBetterAuth({
 			"/get-access-token",
 			"/refresh-token",
 			"/account-info",
+			// Answers whether a password is the current one: from a stolen session, a guessing oracle
+			// that sends no email and skips the tight limit of `/change-password`. The web app needs none.
+			"/verify-password",
 		],
 		advanced: {
 			cookiePrefix: SESSION_COOKIE_PREFIX,
@@ -357,6 +441,36 @@ export function createBetterAuth({
 				) {
 					body.callbackURL = `${config.webOrigin}/`;
 				}
+				if (context.path === "/link-social") {
+					// Better Auth asks only for a session here, while unlinking needs a fresh one.
+					// Otherwise a stolen session could add the thief's provider and keep the account
+					// even after the owner changes the password.
+					const session = await getSessionFromCtx(context);
+					const signedInAt = session && new Date(session.session.createdAt);
+					if (
+						signedInAt &&
+						Date.now() - signedInAt.getTime() >= FRESH_SESSION_AGE * 1000
+					) {
+						throw new APIError("FORBIDDEN", {
+							code: "SESSION_NOT_FRESH",
+							message: "Sign in again to change the ways to sign in.",
+						});
+					}
+					return;
+				}
+				const passwordField = NEW_PASSWORD_FIELD[context.path];
+				const newPassword = passwordField && body[passwordField];
+				// Before Better Auth looks the email up, so a sign-up answers the same for a taken one.
+				if (
+					typeof newPassword === "string" &&
+					(await passwordBreaches.isBreached(newPassword))
+				) {
+					throw new APIError("BAD_REQUEST", {
+						code: "PASSWORD_COMPROMISED",
+						message:
+							"This password appeared in a data breach. Choose another one.",
+					});
+				}
 				if (context.path === "/sign-in/social") {
 					// Kept in the state on the server, unlike `additionalData`, which the contract
 					// drops: the client cannot forge it on the way back.
@@ -381,6 +495,15 @@ export function createBetterAuth({
 					before: async (user, context) => {
 						if (!isOAuthCallback(context?.path)) {
 							return;
+						}
+						// Anyone can give a provider someone else's address without verifying it. An
+						// account made from it would become that person's once they reset the password
+						// or follow a verification link, with the stranger's provider still linked.
+						if (!user.emailVerified) {
+							throw new APIError("FORBIDDEN", {
+								code: "email_not_verified",
+								message: "The provider has not verified this email address.",
+							});
 						}
 						const created = user as typeof user & { username?: string };
 						const locale = Locale.safeParse(
@@ -416,18 +539,39 @@ export function createBetterAuth({
 								Locale.catch("en").parse(created.locale),
 							),
 						);
-						// An OAuth provider that vouches for the email skips the link.
+						// An OAuth sign-up always has a verified email; an email one gets it by the link.
 						if (created.emailVerified) {
 							eventBus.publish(new UserVerified(userId));
 						}
 					},
 				},
-				update: {
-					after: async (user, context) => {
-						// The only user update during an OAuth callback: the provider now vouches for
-						// an email it did not vouch for when the account was created.
-						if (isOAuthCallback(context?.path) && user.emailVerified) {
-							announceVerified(user);
+			},
+			account: {
+				create: {
+					after: async (account, context) => {
+						// A provider added to an existing account; a sign-up links its first one.
+						if (
+							isOAuthCallback(context?.path) &&
+							(await getOAuthState())?.link &&
+							account.providerId in PROVIDER_NAMES
+						) {
+							await notifyOwner(account.userId, {
+								template: "sign-in-method-added",
+								provider: PROVIDER_NAMES[account.providerId as OAuthProvider],
+							});
+						}
+					},
+				},
+			},
+			session: {
+				create: {
+					after: async (session, context) => {
+						// The contract makes a password change always end every session and start this
+						// one; a reset tells the owner from `onPasswordReset`.
+						if (context?.path === "/change-password") {
+							await notifyOwner(session.userId, {
+								template: "password-changed",
+							});
 						}
 					},
 				},

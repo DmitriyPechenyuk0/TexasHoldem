@@ -1,4 +1,5 @@
 import { useTranslations } from "next-intl";
+import { ApiError } from "@/shared/api";
 
 /**
  * Turns a thrown error into text for the user: an `ApiError`, `NetworkError` or
@@ -14,9 +15,11 @@ export function useErrorMessage(): (error: unknown) => string {
 			typeof error.code === "string"
 				? error.code
 				: undefined;
+		// The problem's params fill the message in, e.g. `{ min: 2 }`.
+		const params = error instanceof ApiError ? error.problem.params : undefined;
 		// Codes are dotted paths into the catalog, e.g. `auth.invalid-token`.
 		return code !== undefined && t.has(code as never)
-			? t(code as never)
+			? t(code as never, params as never)
 			: t("unknown");
 	};
 }

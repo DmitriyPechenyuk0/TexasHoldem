@@ -30,7 +30,7 @@ export interface SignInMethodsProps {
 
 /**
  * The account's ways to sign in: the password, if it has one, and each provider, to link or
- * unlink. The last way cannot go, and unlinking needs a recent sign-in.
+ * unlink. The last way cannot go, and both need a recent sign-in.
  */
 export function SignInMethods({ providers, error }: SignInMethodsProps) {
 	const t = useTranslations("settings.methods");
@@ -38,7 +38,10 @@ export function SignInMethods({ providers, error }: SignInMethodsProps) {
 	const locale = useLocale() as Locale;
 	const queryClient = useQueryClient();
 	const accounts = useQuery(linkedAccountsQuery());
-	const settings = getPathname({ href: ROUTES.settings, locale });
+	const settings = getPathname({
+		href: { pathname: ROUTES.settings, query: { tab: "account" } },
+		locale,
+	});
 	const link = useMutation({
 		mutationFn: (provider: OAuthProvider) =>
 			startOAuthLink(http, {

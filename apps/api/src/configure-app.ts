@@ -4,7 +4,9 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Express } from "express";
 import helmet from "helmet";
 import { Logger } from "nestjs-pino";
+import proxyAddr from "proxy-addr";
 import type { AppConfig } from "@/shared/infrastructure/config/index.js";
+import { RateLimiter } from "@/shared/application/rate-limiter.js";
 import { SocketIoAdapter } from "@/shared/infrastructure/realtime/socket-io.adapter.js";
 import { ViewerResolver } from "@/shared/application/viewer.js";
 import { authenticateSockets } from "@/shared/presentation/realtime/socket-session.js";
@@ -50,9 +52,16 @@ export function configureApp(app: INestApplication, config: AppConfig): void {
 	(app as NestExpressApplication).useBodyParser("json", {
 		limit: JSON_BODY_LIMIT,
 	});
+	// Sockets bypass Express, so their client address follows the same `trust proxy` by hand.
+	const trust = express.get("trust proxy fn") as Parameters<
+		typeof proxyAddr
+	>[1];
 	app.useWebSocketAdapter(
-		new SocketIoAdapter(app, config, [
-			authenticateSockets(app.get(ViewerResolver)),
-		]),
+		new SocketIoAdapter(app, {
+			config,
+			limiter: app.get(RateLimiter),
+			clientAddressOf: (request) => proxyAddr(request, trust),
+			connectionMiddleware: [authenticateSockets(app.get(ViewerResolver))],
+		}),
 	);
 }

@@ -2,7 +2,7 @@
 
 No-Limit Texas Hold'em in the browser: sit down at a cash table with friends, share a private table by link, or just watch. Chips are virtual and free, so anyone can play at any time.
 
-The project is in early development. Done: the foundation (monorepo, API and web skeletons, quality gates) and the poker engine, which plays a whole hand by the rules from the blinds to the showdown, with side pots, a provably fair shuffle and what each player may see ([packages/engine](packages/engine/README.md)). Next: sign-in and player profiles, then the realtime table.
+The project is in early development. Done: the foundation (monorepo, API and web skeletons, quality gates) and the poker engine, which plays a whole hand by the rules from the blinds to the showdown, with side pots, a provably fair shuffle and what each player may see ([packages/engine](packages/engine/README.md)); and accounts: sign-up with a verified email or with Google, GitHub and Discord, password reset, and player profiles with a nickname and an avatar. Next: the realtime table.
 
 **Planned for the first release:** cash tables with a 20-second turn timer and a time bank, private tables by link or code with an optional password, spectators, provably fair shuffles, sign-in with email or Google, GitHub and Discord, player profiles, friends and table chat, in English and Russian.
 

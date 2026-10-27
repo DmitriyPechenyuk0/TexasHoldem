@@ -15,7 +15,11 @@ import request from "supertest";
 import type { App } from "supertest/types.js";
 import { z } from "zod";
 import { DomainError } from "@/shared/domain/domain-error.js";
-import { MAX_MESSAGE_BYTES } from "@/shared/infrastructure/realtime/socket-io.adapter.js";
+import {
+	HANDSHAKE_RULE,
+	MAX_CONNECTIONS_PER_ADDRESS,
+	MAX_MESSAGE_BYTES,
+} from "@/shared/infrastructure/realtime/socket-io.adapter.js";
 import { RealtimeGateway } from "@/shared/presentation/realtime/realtime-gateway.decorator.js";
 import { ValidPayload } from "@/shared/presentation/request-validation.js";
 import { captureLogs } from "./support/capture-logs.js";
@@ -275,5 +279,69 @@ describe("Realtime (e2e)", () => {
 		const oversized = { sentAt: 0, padding: "x".repeat(MAX_MESSAGE_BYTES) };
 		socket.emit("ping", oversized, () => undefined);
 		expect(await disconnected).toBe("transport close");
+	});
+});
+
+describe("Realtime connection limits (e2e)", () => {
+	let app: INestApplication<App>;
+	let baseUrl: string;
+	const sockets: Socket[] = [];
+
+	/** A connection from `address`, as a proxy in front of the api would report it. */
+	const attempt = (address: string): Promise<Socket | null> =>
+		new Promise((resolve) => {
+			const socket = io(baseUrl, {
+				transports: ["websocket"],
+				extraHeaders: { "x-forwarded-for": address },
+				forceNew: true,
+				reconnection: false,
+			});
+			sockets.push(socket);
+			socket.once("connect", () => resolve(socket));
+			socket.once("connect_error", () => resolve(null));
+		});
+
+	beforeAll(async () => {
+		app = await createTestApp({ config: { trustProxy: "loopback" } });
+		await app.listen(0, "127.0.0.1");
+		baseUrl = await app.getUrl();
+	});
+
+	afterAll(async () => {
+		for (const socket of sockets) {
+			socket.disconnect();
+		}
+		await app.close();
+	});
+
+	it("keeps 20 connections open per client address, and frees a slot when one closes", async () => {
+		const open: (Socket | null)[] = [];
+		for (let index = 0; index < MAX_CONNECTIONS_PER_ADDRESS; index++) {
+			open.push(await attempt("198.51.100.1"));
+		}
+
+		expect(open.every((socket) => socket?.connected)).toBe(true);
+		expect(await attempt("198.51.100.1")).toBeNull();
+		// Another address behind the same proxy has its own room.
+		expect(await attempt("198.51.100.2")).not.toBeNull();
+
+		open[0]!.disconnect();
+		await vi.waitFor(async () => {
+			const next = await attempt("198.51.100.1");
+			next?.disconnect();
+			expect(next).not.toBeNull();
+		});
+	});
+
+	it("refuses more than 60 new connections a minute from one address", async () => {
+		const results: boolean[] = [];
+		for (let index = 0; index <= HANDSHAKE_RULE.max; index++) {
+			const socket = await attempt("198.51.100.3");
+			results.push(socket !== null);
+			socket?.disconnect();
+		}
+
+		expect(results.filter(Boolean)).toHaveLength(HANDSHAKE_RULE.max);
+		expect(results.at(-1)).toBe(false);
 	});
 });

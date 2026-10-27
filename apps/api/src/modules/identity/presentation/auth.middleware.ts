@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { STATUS_CODES } from "node:http";
 import { PROBLEM_CONTENT_TYPE } from "@holdem/shared";
 import {
+	ChangePasswordRequest,
 	LinkSocialRequest,
 	RequestPasswordResetRequest,
 	ResetPasswordRequest,
@@ -28,6 +29,7 @@ import {
 	type ProblemContext,
 	problemFor,
 } from "@/shared/presentation/problem.js";
+import { rateLimited } from "@/shared/presentation/rate-limited.js";
 import { ZodValidationPipe } from "@/shared/presentation/request-validation.js";
 import {
 	AUTH_BASE_PATH,
@@ -47,10 +49,20 @@ const BODY_CONTRACTS: Readonly<Record<string, z.ZodType>> = {
 	[`${AUTH_BASE_PATH}/send-verification-email`]: SendVerificationEmailRequest,
 	[`${AUTH_BASE_PATH}/request-password-reset`]: RequestPasswordResetRequest,
 	[`${AUTH_BASE_PATH}/reset-password`]: ResetPasswordRequest,
+	[`${AUTH_BASE_PATH}/change-password`]: ChangePasswordRequest,
 };
 
 /** Sign-ins per client address and identifier; Better Auth's own limit is per address only. */
 export const SIGN_IN_RULE: RateLimitRule = { max: 5, windowSeconds: 60 };
+
+/**
+ * Sign-ins per identifier from every address together, against guessing from many at once. Loose,
+ * since anyone can spend it: the owner is held up for at most a window, and still has OAuth.
+ */
+export const SIGN_IN_ACCOUNT_RULE: RateLimitRule = {
+	max: 30,
+	windowSeconds: 15 * 60,
+};
 
 /** The identifier a sign-in names, by path; the username plugin matches it in any case. */
 const SIGN_IN_IDENTIFIER: Readonly<
@@ -60,21 +72,15 @@ const SIGN_IN_IDENTIFIER: Readonly<
 	[`${AUTH_BASE_PATH}/sign-in/username`]: (body) => body.username!,
 };
 
+const digest = (value: string): string =>
+	createHash("sha256").update(value).digest("hex");
+
 /** A digest, so Redis holds neither addresses nor usernames. */
 export const signInLimitKey = (ip: string, identifier: string): string =>
-	`identity:sign-in:${createHash("sha256").update(`${ip}|${identifier.toLowerCase()}`).digest("hex")}`;
+	`identity:sign-in:${digest(`${ip}|${identifier.toLowerCase()}`)}`;
 
-const tooManyRequests = (
-	response: ExpressResponse,
-	retryAfterSeconds: number,
-): HttpProblem => {
-	response.setHeader("Retry-After", String(retryAfterSeconds));
-	return new HttpProblem(
-		429,
-		"request.rate-limited",
-		"Too many attempts. Try again later.",
-	);
-};
+export const signInAccountLimitKey = (identifier: string): string =>
+	`identity:sign-in-account:${digest(identifier.toLowerCase())}`;
 
 const hasBody = (request: ExpressRequest): boolean =>
 	Number(request.headers["content-length"] ?? 0) > 0 ||
@@ -164,15 +170,15 @@ export class AuthMiddleware implements NestMiddleware {
 		const identifierOf =
 			request.method === "POST" ? SIGN_IN_IDENTIFIER[path] : undefined;
 		if (identifierOf) {
-			const decision = await this.limiter.consume(
-				signInLimitKey(
-					request.ip ?? "unknown",
-					identifierOf(request.body as Record<string, string>),
-				),
-				SIGN_IN_RULE,
-			);
-			if (!decision.allowed) {
-				throw tooManyRequests(response, decision.retryAfterSeconds);
+			const identifier = identifierOf(request.body as Record<string, string>);
+			for (const [key, rule] of [
+				[signInLimitKey(request.ip ?? "unknown", identifier), SIGN_IN_RULE],
+				[signInAccountLimitKey(identifier), SIGN_IN_ACCOUNT_RULE],
+			] as const) {
+				const decision = await this.limiter.consume(key, rule);
+				if (!decision.allowed) {
+					throw rateLimited(response, decision.retryAfterSeconds);
+				}
 			}
 		}
 

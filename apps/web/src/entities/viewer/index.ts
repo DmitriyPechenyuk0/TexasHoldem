@@ -4,6 +4,7 @@ export {
 	type Viewer,
 	viewerQuery,
 } from "./api/viewer";
+export { type PasswordError, passwordError } from "./model/password-error";
 export { useViewer } from "./model/use-viewer";
 export {
 	chooseUsernameRedirect,

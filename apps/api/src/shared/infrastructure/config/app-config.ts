@@ -36,6 +36,8 @@ export abstract class AppConfig {
 		readonly secretAccessKey: string;
 		readonly bucket: string;
 		readonly forcePathStyle: boolean;
+		/** Where browsers read the bucket's public objects, without a trailing slash. */
+		readonly publicUrl: string;
 	};
 	abstract readonly auth: {
 		readonly secret: string;

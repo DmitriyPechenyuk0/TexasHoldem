@@ -1,12 +1,57 @@
 {
-	"metaTitle": "Account · Texas Hold'em",
-	"title": "Account",
+	"metaTitle": "Settings · Texas Hold'em",
+	"title": "Settings",
+	"tabs": {
+		"profile": "Profile",
+		"account": "Account",
+		"language": "Language"
+	},
 	"username": "Username",
 	"email": "Email",
 	"status": "Email status",
 	"verified": "Confirmed",
 	"unverified": "Not confirmed",
 	"verifyHint": "Confirm your email to take a seat at a table.",
+	"profile": {
+		"missing": "Your profile is being set up. Reload the page in a moment.",
+		"viewPublic": "See your public profile",
+		"avatar": {
+			"upload": "Upload a picture",
+			"remove": "Remove",
+			"hint": "PNG, JPEG or WebP, up to 2 MB. It fills a circle, so keep your face in the middle.",
+			"progress": "Uploading the picture",
+			"saved": "Picture updated.",
+			"errors": {
+				"type": "Choose a PNG, JPEG or WebP picture.",
+				"size": "This picture is larger than 2 MB."
+			}
+		},
+		"nickname": {
+			"label": "Nickname",
+			"hint": "What players see at the table. {min, number} to {max, number} characters, it doesn't have to be unique.",
+			"save": "Save",
+			"saved": "Nickname saved."
+		}
+	},
+	"password": {
+		"title": "Password",
+		"none": "Your account has no password: you sign in with a provider.",
+		"currentLabel": "Current password",
+		"newLabel": "New password",
+		"newHint": "10 to 128 characters. A few words make a good one.",
+		"confirmationLabel": "Repeat the new password",
+		"action": "Change the password",
+		"done": "Password changed. Every other session has been signed out.",
+		"errors": {
+			"missing": "Enter your current password.",
+			"tooShort": "Use at least 10 characters.",
+			"tooLong": "Use at most 128 characters.",
+			"mismatch": "The passwords don't match."
+		}
+	},
+	"language": {
+		"description": "The language of the site and of the emails we send you."
+	},
 	"methods": {
 		"title": "Ways to sign in",
 		"password": "Email and password",

@@ -1,5 +1,6 @@
 import { API_PREFIX } from "../common/index.js";
 import {
+	ChangePasswordRequest,
 	ChooseUsernameRequest,
 	LinkedAccountsResponse,
 	LinkSocialRequest,
@@ -197,5 +198,25 @@ describe("identity contracts", () => {
 			"holdem.session_token",
 			"__Secure-holdem.session_token",
 		]);
+	});
+
+	it("ChangePasswordRequest always ends the other sessions", () => {
+		expect(
+			ChangePasswordRequest.parse({
+				currentPassword: "old",
+				newPassword: signUp.password,
+				revokeOtherSessions: false,
+			}),
+		).toEqual({
+			currentPassword: "old",
+			newPassword: signUp.password,
+			revokeOtherSessions: true,
+		});
+		expect(
+			ChangePasswordRequest.safeParse({
+				currentPassword: "old",
+				newPassword: "short",
+			}).success,
+		).toBe(false);
 	});
 });

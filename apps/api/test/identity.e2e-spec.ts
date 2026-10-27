@@ -25,7 +25,10 @@ import type { AppConfig } from "@/shared/infrastructure/config/index.js";
 import { REDIS, type Redis } from "@/shared/infrastructure/redis/index.js";
 import { AuthGuard, CurrentUser } from "@/shared/presentation/auth.guard.js";
 import { RequirePlayer } from "@/shared/presentation/require-player.guard.js";
-import { createTestApp } from "./support/create-test-app.js";
+import {
+	createTestApp,
+	FakePasswordBreaches,
+} from "./support/create-test-app.js";
 import { exampleConfig } from "./support/example-config.js";
 import {
 	type Browser,
@@ -57,12 +60,14 @@ class VerifiedOnlyController {
 describe("Identity (e2e)", () => {
 	let database: TestDatabase;
 	let app: INestApplication<App>;
+	const breaches = new FakePasswordBreaches();
 
 	beforeAll(async () => {
 		database = await createTestDatabase();
 		app = await createTestApp({
 			config: { database: { url: database.url }, trustProxy: "loopback" },
 			controllers: [VerifiedOnlyController],
+			passwordBreaches: breaches,
 		});
 	});
 
@@ -180,6 +185,23 @@ describe("Identity (e2e)", () => {
 	});
 
 	describe("sign-up rules", () => {
+		it("refuses a password from a known data breach, whether or not the email is taken", async () => {
+			const taken = await signUpAndVerify(browser(app));
+			breaches.breached.add("breached passphrase");
+
+			for (const email of [newAccount().email, taken.email]) {
+				const response = await browser(app)
+					.post("/api/auth/sign-up/email", {
+						...newAccount(),
+						email,
+						password: "breached passphrase",
+					})
+					.expect(400);
+
+				expect(problemOf(response).code).toBe("auth.password-compromised");
+			}
+		});
+
 		it("refuses a taken username, in any case, with a stable code", async () => {
 			const taken = await signUpAndVerify(browser(app));
 
@@ -564,7 +586,7 @@ describe("Identity (e2e)", () => {
 			await client.get("/api/probe/verified-only").expect(200);
 		});
 
-		it("refuse a session whose email is not verified, as an OAuth provider may hand out", async () => {
+		it("refuse a session whose email is not verified, should one ever exist", async () => {
 			const client = browser(app);
 			const account = await signUpAndVerify(client);
 			await database.db
@@ -652,13 +674,18 @@ describe("Identity (e2e)", () => {
 
 		it("serves no endpoint that is disabled", async () => {
 			const client = browser(app);
-			await signUpAndVerify(client);
+			const account = await signUpAndVerify(client);
 
 			const response = await client
 				.post("/api/auth/update-user", { image: "javascript:alert(1)" })
 				.expect(404);
 
 			expect(problemOf(response).code).toBe("http.not-found");
+			// The right password, so a 404 means the endpoint is gone rather than refusing it.
+			const verify = await client
+				.post("/api/auth/verify-password", { password: account.password })
+				.expect(404);
+			expect(problemOf(verify).code).toBe("http.not-found");
 		});
 	});
 

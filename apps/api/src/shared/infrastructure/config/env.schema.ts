@@ -18,16 +18,35 @@ const origin = (example: string) =>
 export const DEVELOPMENT_AUTH_SECRET =
 	"local-development-only-secret-0123456789";
 
+/** The local storage's secret key in .env.example and docker-compose.yml; production refuses it. */
+export const DEVELOPMENT_S3_SECRET_ACCESS_KEY = "holdem-dev-secret";
+
 /** Problems that only matter in production, checked alongside the schema like ENV_PAIRS. */
 export function productionProblems(
 	env: Readonly<Record<string, string>>,
 ): string[] {
-	return env.NODE_ENV === "production" &&
-		env.AUTH_SECRET === DEVELOPMENT_AUTH_SECRET
-		? [
-				"AUTH_SECRET: is the public development value from .env.example; generate one with `openssl rand -base64 32`",
-			]
-		: [];
+	if (env.NODE_ENV !== "production") {
+		return [];
+	}
+	return [
+		...(env.AUTH_SECRET === DEVELOPMENT_AUTH_SECRET
+			? [
+					"AUTH_SECRET: is the public development value from .env.example; generate one with `openssl rand -base64 32`",
+				]
+			: []),
+		...(env.S3_SECRET_ACCESS_KEY === DEVELOPMENT_S3_SECRET_ACCESS_KEY
+			? [
+					"S3_SECRET_ACCESS_KEY: is the public development value from .env.example; use the storage's own credentials",
+				]
+			: []),
+		// Express then takes the client address from the leftmost X-Forwarded-For entry, which the
+		// client writes itself, and every limit per address is gone.
+		...(env.TRUST_PROXY === "true"
+			? [
+					"TRUST_PROXY: true trusts an X-Forwarded-For that any client can forge; give the number of proxies in front of the api, or their addresses",
+				]
+			: []),
+	];
 }
 
 /**
@@ -54,6 +73,20 @@ export const ENV_PAIRS = [
 	["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"],
 	["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET"],
 ] as const;
+
+/** The bucket's address at the endpoint: `endpoint/bucket`, or `bucket.host` for virtual hosts. */
+const bucketUrl = (
+	endpoint: string,
+	bucket: string,
+	pathStyle: boolean,
+): string => {
+	const url = new URL(endpoint);
+	if (pathStyle) {
+		return `${url.origin}${url.pathname.replace(/\/+$/, "")}/${bucket}`;
+	}
+	url.hostname = `${bucket}.${url.hostname}`;
+	return url.origin;
+};
 
 const oauthClient = (
 	clientId: string | undefined,
@@ -90,6 +123,7 @@ export const envSchema = z
 		S3_SECRET_ACCESS_KEY: z.string(),
 		S3_BUCKET: z.string(),
 		S3_FORCE_PATH_STYLE: z.stringbool().default(false),
+		S3_PUBLIC_URL: httpUrl.optional(),
 
 		AUTH_SECRET: z
 			.string()
@@ -134,6 +168,10 @@ export const envSchema = z
 			secretAccessKey: env.S3_SECRET_ACCESS_KEY,
 			bucket: env.S3_BUCKET,
 			forcePathStyle: env.S3_FORCE_PATH_STYLE,
+			publicUrl: (
+				env.S3_PUBLIC_URL ??
+				bucketUrl(env.S3_ENDPOINT, env.S3_BUCKET, env.S3_FORCE_PATH_STYLE)
+			).replace(/\/+$/, ""),
 		},
 		auth: {
 			secret: env.AUTH_SECRET,

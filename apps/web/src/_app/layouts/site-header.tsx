@@ -1,6 +1,8 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { MY_PROFILE_QUERY_KEY } from "@/entities/user";
+import { getMyProfile } from "@/entities/user/index.server";
 import { VIEWER_QUERY_KEY } from "@/entities/viewer";
 import { getViewer } from "@/entities/viewer/index.server";
 import { getQueryClient } from "@/shared/api";
@@ -29,13 +31,17 @@ export function SiteHeaderBar({ children }: { readonly children?: ReactNode }) {
 }
 
 /**
- * The header with the viewer, read on the server so a reload shows the signed-in state at once.
- * The viewer goes into the query cache, where `useViewer()` finds it on every page.
+ * The header with the viewer and their profile, read on the server so a reload shows the
+ * signed-in state at once. Both go into the query cache, where `useViewer()` and `useMyProfile()`
+ * find them on every page.
  */
 export async function SiteHeader() {
 	const queryClient = getQueryClient();
 	try {
-		queryClient.setQueryData(VIEWER_QUERY_KEY, await getViewer());
+		// Side by side: the header is the first thing the page waits for.
+		const [viewer, profile] = await Promise.all([getViewer(), getMyProfile()]);
+		queryClient.setQueryData(VIEWER_QUERY_KEY, viewer);
+		queryClient.setQueryData(MY_PROFILE_QUERY_KEY, profile);
 	} catch {
 		// The api did not answer: the client asks again.
 	}

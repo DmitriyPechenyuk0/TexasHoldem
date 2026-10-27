@@ -4,7 +4,10 @@ import request from "supertest";
 import type { App } from "supertest/types.js";
 import { AUTH_RATE_LIMITS } from "@/modules/identity/infrastructure/better-auth.js";
 import { emailThrottleKeys } from "@/modules/identity/infrastructure/email-throttle.js";
-import { SIGN_IN_RULE } from "@/modules/identity/presentation/auth.middleware.js";
+import {
+	SIGN_IN_ACCOUNT_RULE,
+	SIGN_IN_RULE,
+} from "@/modules/identity/presentation/auth.middleware.js";
 import { RateLimiter } from "@/shared/application/rate-limiter.js";
 import { REDIS, type Redis } from "@/shared/infrastructure/redis/index.js";
 import { captureLogs } from "./support/capture-logs.js";
@@ -82,6 +85,22 @@ describe("Rate limits across two api instances (e2e)", () => {
 		await signIn("victim_two").expect(401);
 	});
 
+	it("allows 30 sign-ins per identifier in 15 minutes from every address together", async () => {
+		const signIn = () =>
+			roundRobin(nextAddress())("/api/auth/sign-in/username", {
+				username: "spread_victim",
+				password: "a guess",
+			});
+
+		for (let attempt = 0; attempt < SIGN_IN_ACCOUNT_RULE.max; attempt++) {
+			await signIn().expect(401);
+		}
+		const refused = await signIn().expect(429);
+
+		expect(problemOf(refused).code).toBe("request.rate-limited");
+		expect(Number(refused.headers["retry-after"])).toBeGreaterThan(14 * 60);
+	});
+
 	it("allows 3 sign-ups a minute per address, then 429 with Retry-After", async () => {
 		const ip = nextAddress();
 		const post = roundRobin(ip);
@@ -150,7 +169,7 @@ describe("Rate limits while Redis is away (e2e)", () => {
 		await database?.drop();
 	});
 
-	it("lets requests through and says so once, instead of failing every sign-in", async () => {
+	it("counts in memory and says so once, instead of failing every sign-in", async () => {
 		const account = newAccount();
 		await request(app.getHttpServer())
 			.post("/api/auth/sign-up/email")
@@ -173,7 +192,9 @@ describe("Rate limits while Redis is away (e2e)", () => {
 		// Unverified, so refused, but by the rules rather than by the outage.
 		expect(statuses).toEqual([403, 403]);
 		const warnings = lines.filter((line) =>
-			String(line.msg).startsWith("Rate limits are off until Redis answers"),
+			String(line.msg).startsWith(
+				"Rate limits count per instance until Redis answers",
+			),
 		);
 		expect(warnings).toHaveLength(1);
 	}, 20_000);

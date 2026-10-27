@@ -1,11 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import type { App } from "supertest/types.js";
-import {
-	type Email,
-	type EmailTemplate,
-	Mailer,
-} from "@/shared/application/mailer.js";
+import { type Email, Mailer } from "@/shared/application/mailer.js";
 import { captureLogs, type LogLine } from "./support/capture-logs.js";
 import { createTestApp } from "./support/create-test-app.js";
 import { exampleConfig } from "./support/example-config.js";
@@ -16,7 +12,7 @@ const link = (token: string) =>
 	`http://localhost:4000/api/auth/verify-email?token=${token}&callbackURL=%2F`;
 
 /** An email to an address no other test uses, since every test shares Mailpit's inbox. */
-function emailTo(template: EmailTemplate, locale: string) {
+function emailTo(template: "verify-email" | "reset-password", locale: string) {
 	const url = link(randomUUID());
 	const email: Email = {
 		template,
