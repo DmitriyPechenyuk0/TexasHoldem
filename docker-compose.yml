@@ -51,7 +51,7 @@ services:
       retries: 10
 
   s3:
-    image: rustfs/rustfs:1.0.3
+    image: rustfs/rustfs:1.0.4
     environment:
       RUSTFS_ADDRESS: 0.0.0.0:9000
       RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
