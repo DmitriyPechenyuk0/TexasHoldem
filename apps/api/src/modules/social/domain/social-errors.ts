@@ -85,3 +85,23 @@ export class TooManyRequestsError extends DomainError {
 		super(`At most ${max} requests wait for an answer`, { params: { max } });
 	}
 }
+
+/** The table is closed, unknown, or one the player may not join, so they cannot invite to it. */
+export class TableNotFoundError extends DomainError {
+	readonly kind = "not-found";
+	readonly code = "social.table-not-found";
+
+	constructor() {
+		super("No such table to invite to");
+	}
+}
+
+/** No such invite waits for an answer: it never did, ran out, or was answered. */
+export class TableInviteNotFoundError extends DomainError {
+	readonly kind = "not-found";
+	readonly code = "social.invite-not-found";
+
+	constructor() {
+		super("No such table invite");
+	}
+}

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TableId, UserId } from "../contracts/common/ids.js";
-import { PlayerCard } from "../contracts/social/social.js";
+import { PlayerCard, TableInvite } from "../contracts/social/social.js";
 import {
 	type ClientToServerEvents,
 	defineEvent,
@@ -55,6 +55,12 @@ export const FriendAddedEvent = defineEvent(
 	z.object({ friend: PlayerCard }),
 );
 
+/** A friend invites the player to a table; answer through `/api/table-invites`. */
+export const TableInviteReceivedEvent = defineEvent(
+	"table-invite-received",
+	TableInvite,
+);
+
 /**
  * `/social`: a signed-in player is online while any of their sockets is connected here, on any
  * instance. It brings their friends' presence and friend requests as they happen.
@@ -65,6 +71,7 @@ export const socialNamespace = defineNamespace(NAMESPACES.social, {
 		PresenceChangedEvent,
 		FriendRequestReceivedEvent,
 		FriendAddedEvent,
+		TableInviteReceivedEvent,
 	],
 });
 

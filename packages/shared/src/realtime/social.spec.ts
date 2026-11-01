@@ -12,6 +12,7 @@ describe("social realtime contracts", () => {
 			"presence-changed",
 			"friend-request-received",
 			"friend-added",
+			"table-invite-received",
 			"session-expired",
 		]);
 	});

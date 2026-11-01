@@ -16,6 +16,9 @@ export interface Friendships {
 }
 
 export abstract class FriendshipRepository {
+	/** Whether the two are friends now, without locking anyone. */
+	abstract areFriends(a: string, b: string): Promise<boolean>;
+
 	/**
 	 * Runs `work` in one transaction, with the players given locked: changes that involve any of
 	 * them wait until it ends. Their counts hold for its length, so two requests at once cannot

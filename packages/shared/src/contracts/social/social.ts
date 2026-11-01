@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { UserId } from "../common/ids.js";
+import { TableId, UserId } from "../common/ids.js";
 import { Username } from "../identity/credentials.js";
+import { LobbyTable } from "../lobby/lobby.js";
 
 /** How many friends a player may have, and how many of their requests may wait for an answer. */
 export const FRIEND_LIMITS = { friends: 200, pendingRequests: 20 } as const;
@@ -77,3 +78,51 @@ export const PlayerSearchResponse = z
 	.array(PlayerCard.extend({ relation: Relation }))
 	.readonly();
 export type PlayerSearchResponse = z.infer<typeof PlayerSearchResponse>;
+
+/** How long a table invite waits for an answer, in seconds. */
+export const TABLE_INVITE_TTL_SECONDS = 10 * 60;
+
+/**
+ * `POST /api/table-invites`, by a verified player: brings a friend to a table the player may join.
+ * A stranger is `social.not-friends`; a table closed, unknown or out of the player's reach,
+ * `social.table-not-found`. One invite per friend and table a minute (429).
+ */
+export const InviteFriendRequest = z.object({
+	friendId: UserId,
+	tableId: TableId,
+});
+export type InviteFriendRequest = z.infer<typeof InviteFriendRequest>;
+
+/** An open table, as an invite shows it. */
+export const InvitedTable = LobbyTable.extend({
+	visibility: z.enum(["public", "private"]),
+});
+export type InvitedTable = z.infer<typeof InvitedTable>;
+
+/** An invite waiting for the player's answer; a newer one from the same friend to the same table replaces it. */
+export const TableInvite = z.object({
+	from: PlayerCard,
+	table: InvitedTable,
+	expiresAt: z.iso.datetime(),
+});
+export type TableInvite = z.infer<typeof TableInvite>;
+
+/** `GET /api/table-invites`: the invites waiting for the player, newest first. */
+export const TableInvitesResponse = z.array(TableInvite).readonly();
+export type TableInvitesResponse = z.infer<typeof TableInvitesResponse>;
+
+/**
+ * `POST /api/table-invites/accept` and `/decline`. One that ran out or was answered is
+ * `social.invite-not-found`. Declining tells nobody.
+ */
+export const AnswerTableInviteRequest = z.object({
+	inviterId: UserId,
+	tableId: TableId,
+});
+export type AnswerTableInviteRequest = z.infer<typeof AnswerTableInviteRequest>;
+
+/** The table to go to: a private one lets the player in without its password. */
+export const AcceptTableInviteResponse = z.object({ tableId: TableId });
+export type AcceptTableInviteResponse = z.infer<
+	typeof AcceptTableInviteResponse
+>;
