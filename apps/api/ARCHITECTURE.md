@@ -431,6 +431,9 @@ Each table's chat (`modules/chat`, POK-104) lives on its own namespace, `/chat` 
   - Saying the same thing again, in any case, within 30 s of one's last message at the table is `chat.repeated`.
   - A player may send 5 messages per 10 s, across tables and instances (`RateLimiter`, `chat.too-fast`, 429).
   - Messages carry `id`, `userId` and `tableId`, for reports later.
+- **Mute list** (POK-107). `chat_mutes` in Postgres records whom each player muted, so the list is the same on every device.
+  - Routes: `GET /api/chat/mutes` (cards, latest first), `PUT` and `DELETE /api/chat/mutes/:userId`. Both changes are idempotent; muting oneself is `chat.mute-self`, and an unknown player is `chat.player-not-found`.
+  - The `join` ack carries the muted ids too. The client hides those players' messages: the server sends everyone the same messages and filters nothing per recipient.
 - **The profanity filter** (`shared/domain/profanity.ts`) is a curated list of Russian and English roots, kept in the repo; the libraries tried missed common disguises or masked plain words.
   - Each word is read twice: with look-alike letters, digits and symbols taken as Cyrillic, and taken as Latin. This catches mixed scripts (`xуй`) and leetspeak (`sh1t`).
   - Separators inside a word (`х.у.й`) and repeated letters (`fuuuck`) are dropped.

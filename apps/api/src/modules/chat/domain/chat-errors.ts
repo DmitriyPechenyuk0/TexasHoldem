@@ -20,3 +20,21 @@ export class RepeatedMessageError extends DomainError {
 		super("The same message was just sent");
 	}
 }
+
+export class MuteSelfError extends DomainError {
+	readonly kind = "rule-violation";
+	readonly code = "chat.mute-self";
+
+	constructor() {
+		super("A player cannot mute themselves");
+	}
+}
+
+export class MutedPlayerNotFoundError extends DomainError {
+	readonly kind = "not-found";
+	readonly code = "chat.player-not-found";
+
+	constructor() {
+		super("No such player");
+	}
+}
