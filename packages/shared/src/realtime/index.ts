@@ -68,3 +68,14 @@ export {
 	UnwatchLobbyEvent,
 	WatchLobbyEvent,
 } from "./lobby.js";
+export {
+	FriendAddedEvent,
+	FriendPresence,
+	FriendRequestReceivedEvent,
+	FriendsPresenceEvent,
+	Presence,
+	PresenceChangedEvent,
+	type SocialClientToServerEvents,
+	socialNamespace,
+	type SocialServerToClientEvents,
+} from "./social.js";
