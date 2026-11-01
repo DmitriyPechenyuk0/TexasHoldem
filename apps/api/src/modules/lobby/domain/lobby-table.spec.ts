@@ -30,6 +30,8 @@ describe("createLobbyTable", () => {
 					status: "open",
 					inviteCode: null,
 					passwordHash: null,
+					players: [],
+					handsPlayed: 0,
 				},
 				preset: {
 					id: "micro",

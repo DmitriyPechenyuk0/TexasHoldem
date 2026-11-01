@@ -1,0 +1,81 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "5378399c-e05d-4a20-b164-2b03bca2ab26",
+  "prevIds": [
+    "34d7f377-e9f4-455c-adc2-6e4e5304a9e6"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "lobby_tables",
+        "players"
+      ],
+      "writes": [
+        "s|col|public.lobby_tables.players",
+        "n|col|public.lobby_tables.players",
+        "e|col|public.lobby_tables.players"
+      ],
+      "reads": [
+        "n|tbl|public.lobby_tables",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "lobby_tables",
+        "hands_played"
+      ],
+      "writes": [
+        "s|col|public.lobby_tables.hands_played",
+        "n|col|public.lobby_tables.hands_played",
+        "e|col|public.lobby_tables.hands_played"
+      ],
+      "reads": [
+        "n|tbl|public.lobby_tables",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "lobby_tables",
+        "name": "players",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'[]'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "lobby_tables",
+        "name": "hands_played",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

@@ -59,3 +59,12 @@ export {
 	TurnTimerEvent,
 	Viewer,
 } from "./table.js";
+export {
+	type LobbyClientToServerEvents,
+	lobbyNamespace,
+	type LobbyServerToClientEvents,
+	LobbyTableRemovedEvent,
+	LobbyTableUpsertedEvent,
+	UnwatchLobbyEvent,
+	WatchLobbyEvent,
+} from "./lobby.js";

@@ -1,4 +1,4 @@
-import type { LobbyTable } from "./lobby-table.js";
+import type { LobbyTable, TableSummary } from "./lobby-table.js";
 
 /** What became of a new table: stored, refused for its creator's limit, or its invite code taken. */
 export type AddOutcome = "added" | "over-limit" | "code-taken";
@@ -20,4 +20,10 @@ export abstract class LobbyTableRepository {
 
 	/** Gives the table a new invite code; false when another table has it (codes are unique). */
 	abstract setInviteCode(tableId: string, code: string): Promise<boolean>;
+
+	/**
+	 * Applies the table's summary: who sits there, its status, and the hands that ended. Answers
+	 * the table as it is now; null for a table the lobby does not list. A closed table stays closed.
+	 */
+	abstract applySummary(summary: TableSummary): Promise<LobbyTable | null>;
 }

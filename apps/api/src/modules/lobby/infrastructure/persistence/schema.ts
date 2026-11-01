@@ -1,4 +1,11 @@
-import { index, integer, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+	index,
+	integer,
+	jsonb,
+	text,
+	timestamp,
+	uuid,
+} from "drizzle-orm/pg-core";
 import { contextTable } from "@/shared/infrastructure/database/index.js";
 
 const table = contextTable("lobby");
@@ -24,6 +31,12 @@ export const lobbyTables = table(
 		inviteCode: text().unique(),
 		/** A private table's password, hashed (scrypt); never the password. */
 		passwordHash: text(),
+		/** Who sits where, from the table's summaries (`table.summary-changed`). */
+		players: jsonb()
+			.$type<{ seat: number; userId: string }[]>()
+			.notNull()
+			.default([]),
+		handsPlayed: integer().notNull().default(0),
 	},
 	(columns) => [index().on(columns.creatorId, columns.status)],
 );
