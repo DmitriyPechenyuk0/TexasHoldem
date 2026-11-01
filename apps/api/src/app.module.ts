@@ -10,6 +10,7 @@ import { IdentityModule } from "@/modules/identity/identity.module.js";
 import { LobbyModule } from "@/modules/lobby/lobby.module.js";
 import { AuthMiddleware } from "@/modules/identity/presentation/auth.middleware.js";
 import { ProfileModule } from "@/modules/profile/profile.module.js";
+import { SocialModule } from "@/modules/social/social.module.js";
 import { SystemModule } from "@/modules/system/system.module.js";
 import { TableModule } from "@/modules/table/table.module.js";
 import {
@@ -58,6 +59,7 @@ export class AppModule implements NestModule {
 				SystemModule,
 				TableModule.forRoot(config),
 				LobbyModule,
+				SocialModule,
 			],
 		};
 	}

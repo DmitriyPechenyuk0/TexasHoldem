@@ -1,4 +1,6 @@
 import {
+	FriendRequestSentV1,
+	FriendshipCreatedV1,
 	IntegrationEventEnvelope,
 	UserRegisteredV1,
 	UserVerifiedV1,
@@ -38,5 +40,16 @@ describe("integration events", () => {
 				.success,
 		).toBe(false);
 		expect(UserVerifiedV1.safeParse({ userId: "nope" }).success).toBe(false);
+	});
+
+	it("describe the social context's events", () => {
+		const otherId = "5d1f8a0e-2b9c-4e7a-8f3d-6c4b2a1e9f07";
+		expect(
+			FriendRequestSentV1.parse({ fromId: userId, toId: otherId }),
+		).toEqual({ fromId: userId, toId: otherId });
+		expect(
+			FriendshipCreatedV1.safeParse({ requesterId: userId, accepterId: "x" })
+				.success,
+		).toBe(false);
 	});
 });

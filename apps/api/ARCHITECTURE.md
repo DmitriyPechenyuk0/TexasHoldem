@@ -381,6 +381,25 @@ The lobby owns which tables there are and what they were created with; the table
   - A closed table refuses joins (`table.closed`), no longer counts against its creator's limit, and its runtime is dropped at the registry's next sweep instead of after 10 idle minutes.
 - `POST /api/dev/tables` stays for trying tables out without the lobby, outside production only.
 
+## Social
+
+Who plays with whom (`modules/social`). Players are shown by their cards (username, nickname, avatar). The profile context answers the shared-kernel queries in `shared/application/player-directory.ts`: `GetPlayerCardsQuery`, `FindPlayerQuery` and `SearchPlayersQuery`. So social keeps only user ids, and never a copy of profiles.
+
+- **Friend requests and friendships** (POK-103). The rules are pure functions over a `Standing`, which is where two players stand as seen from one of them (`domain/friendship.ts`). The rules are:
+  - no requests to oneself, to a friend, or twice;
+  - asking someone who already asked you befriends you both;
+  - at most 200 friends each, and at most 20 of one player's requests waiting for an answer (`FRIEND_LIMITS` in `@holdem/shared/contracts/social`).
+- `FriendshipRepository.locked(userIds, work)` runs the decision and its writes in one transaction, under Postgres advisory locks on both players, taken in id order. Two requests at once cannot slip under a limit, and two players asking each other at once become friends once. A friendship is two rows in `social_friendships`, one from each side. A waiting request is a row in `social_friend_requests`, and the row is deleted once the request is answered or cancelled.
+- Routes (all need a session; changes and search need `RequirePlayer`):
+  - `GET /api/friends`;
+  - `DELETE /api/friends/:userId`;
+  - `GET /api/friend-requests/incoming|outgoing`;
+  - `POST /api/friend-requests { username }`, which answers `requested` or `befriended`, at most 30 an hour per player;
+  - `POST /api/friend-requests/:userId/accept|decline`;
+  - `DELETE /api/friend-requests/:userId`, which cancels the request;
+  - `GET /api/players/search?q=`: usernames starting with `q`, 10 at most, without the searcher, each with its `relation`; at most 60 a minute per player. `profile_profiles.username` has a `text_pattern_ops` index for it.
+- Declining and removing tell nobody. A new request publishes the integration event `FriendRequestSent` (`social.friend-request-sent`), and a new friendship publishes `FriendshipCreated` (`social.friendship-created`). Both are published once the transaction has committed, for realtime notifications.
+
 ## HTTP and sockets
 
 - Every REST route lives under `/api` (`API_PREFIX` from `@holdem/shared`), so production can serve the web app and the api from one origin behind a reverse proxy (`/api/*` and `/socket.io/*` → api). Requests outside it get a 404 problem too.
