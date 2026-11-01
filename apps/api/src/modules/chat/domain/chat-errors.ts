@@ -10,3 +10,13 @@ export class InvalidMessageLengthError extends DomainError {
 		});
 	}
 }
+
+/** The same message again, too soon after the last. */
+export class RepeatedMessageError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "chat.repeated";
+
+	constructor() {
+		super("The same message was just sent");
+	}
+}

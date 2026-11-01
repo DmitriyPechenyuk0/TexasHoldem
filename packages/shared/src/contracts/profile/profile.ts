@@ -4,7 +4,8 @@ import { Locale } from "../common/locale.js";
 
 /**
  * Length of a nickname, in characters, once trimmed. The api enforces it with stable codes
- * (`profile.nickname-too-short`, `profile.nickname-too-long`, `profile.nickname-invalid-characters`);
+ * (`profile.nickname-too-short`, `profile.nickname-too-long`, `profile.nickname-invalid-characters`,
+ * `profile.nickname-profane`);
  * forms can use it for hints.
  */
 export const NICKNAME_LENGTH = { min: 2, max: 24 } as const;

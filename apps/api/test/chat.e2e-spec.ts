@@ -9,6 +9,8 @@ import { eq } from "drizzle-orm";
 import type { Socket } from "socket.io-client";
 import request from "supertest";
 import type { App } from "supertest/types.js";
+import { randomUUID } from "node:crypto";
+import { ChatHistory } from "@/modules/chat/application/chat-history.js";
 import { users } from "@/modules/identity/infrastructure/persistence/schema.js";
 import { PotsAwarded } from "@/modules/table/index.js";
 import { IntegrationEventBus } from "@/shared/application/integration-events.js";
@@ -138,18 +140,21 @@ describe("Chat (e2e)", () => {
 	it("keeps only the last fifty messages", async () => {
 		const dave = await user();
 		const tableId = await table(dave, "public");
-		const daves = await chatOn(0, dave);
-		await daves.join(tableId);
-
+		const history = apps[0]!.get(ChatHistory);
 		for (let index = 1; index <= 55; index++) {
-			const sent = await daves.send(tableId, `message ${index}`);
-			expect(sent.ok).toBe(true);
-			// The socket rate limit allows ten commands a second.
-			if (index % 9 === 0)
-				await new Promise((resolve) => setTimeout(resolve, 1_000));
+			await history.append({
+				kind: "player",
+				id: randomUUID(),
+				tableId,
+				userId: dave.userId,
+				nickname: "Dave",
+				text: `message ${index}`,
+				at: new Date().toISOString(),
+			});
 		}
 
-		const joined = await daves.join(tableId);
+		const joined = await (await chatOn(1, dave)).join(tableId);
+
 		const texts =
 			joined.ok &&
 			joined.data.messages.map((message) =>
@@ -160,7 +165,39 @@ describe("Chat (e2e)", () => {
 			"message 6",
 			"message 55",
 		]);
-	}, 20_000);
+	});
+
+	it("masks profanity, refuses a repeat, and throttles a burst", async () => {
+		const heidi = await user();
+		const tableId = await table(heidi, "public");
+		const heidis = await chatOn(0, heidi);
+		await heidis.join(tableId);
+
+		expect(await heidis.send(tableId, "ну ты и сyка")).toMatchObject({
+			ok: true,
+			data: { text: "ну ты и ****" },
+		});
+		expect(await heidis.send(tableId, "НУ ТЫ И СYКА")).toMatchObject({
+			ok: false,
+			error: { status: 409, code: "chat.repeated" },
+		});
+		const burst = [];
+		for (let index = 0; index < 5; index++) {
+			burst.push(await heidis.send(tableId, `line ${index}`));
+		}
+
+		expect(burst.map((answer) => answer.ok)).toEqual([
+			true,
+			true,
+			true,
+			false,
+			false,
+		]);
+		expect(burst.at(-1)).toMatchObject({
+			ok: false,
+			error: { status: 429, code: "chat.too-fast" },
+		});
+	});
 
 	it("announces who won each pot, as the dealer", async () => {
 		const erin = await user();

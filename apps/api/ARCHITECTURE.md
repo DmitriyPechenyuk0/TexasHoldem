@@ -425,6 +425,18 @@ Each table's chat (`modules/chat`, POK-104) lives on its own namespace, `/chat` 
 
 - `join { tableId }` takes access to the table, as joining the table does (`CanJoinTableQuery`, otherwise `chat.access-denied`). It joins the room `table:<id>` of `/chat` first, then answers the last messages, oldest first, so none falls in between.
 - `send { tableId, text }` needs a socket that joined that chat (`chat.not-joined`) and a verified player (`RequirePlayer`, `auth.email-not-verified`). Players and spectators can both send, since the web app follows a table and its chat together. The text is trimmed and holds 1–200 characters (`chat.invalid-length`).
+- **Moderation** (POK-106).
+  - A message is cleaned, then measured: control and format characters are dropped (the zero-width joiner stays, for emoji sequences), and spaces are collapsed.
+  - Profanity is masked with one asterisk per character (`maskProfanity`), not refused.
+  - Saying the same thing again, in any case, within 30 s of one's last message at the table is `chat.repeated`.
+  - A player may send 5 messages per 10 s, across tables and instances (`RateLimiter`, `chat.too-fast`, 429).
+  - Messages carry `id`, `userId` and `tableId`, for reports later.
+- **The profanity filter** (`shared/domain/profanity.ts`) is a curated list of Russian and English roots, kept in the repo; the libraries tried missed common disguises or masked plain words.
+  - Each word is read twice: with look-alike letters, digits and symbols taken as Cyrillic, and taken as Latin. This catches mixed scripts (`xуй`) and leetspeak (`sh1t`).
+  - Separators inside a word (`х.у.й`) and repeated letters (`fuuuck`) are dropped.
+  - Single letters typed apart (`f u c k`) are read together.
+  - Anchors and exceptions keep plain words alone (`хлебать`, `застрахуй`, `Scunthorpe`, `cocktail`).
+  - Nicknames use the same filter, refused with `profile.nickname-profane`.
 - A message `{ kind: "player", id, tableId, userId, nickname, text, at }` goes to the room through the Redis adapter, so it reaches every instance. The ack answers the same message.
 - **The dealer** speaks from the table's integration event `PotsAwarded` (`table.pots-awarded`), which the table holder publishes for each hand with the winners of each pot by user. The dealer's messages are `{ kind: "dealer", key: "pot-won", params: { userId, nickname, amount, category? } }`, and the client words them in its language.
 - **History.** `RedisChatHistory` keeps the last 50 messages per table in a capped list, under keys prefixed by the database's name. It is not kept in Postgres: chat is for the table's lifetime. Each message pushes the list's expiry back to 24 h. Once the table's summary says it closed, the chat goes an hour later.

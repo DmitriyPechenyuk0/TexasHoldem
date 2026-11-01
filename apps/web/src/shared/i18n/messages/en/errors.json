@@ -34,6 +34,7 @@
 		"nickname-too-short": "Use at least {min} characters.",
 		"nickname-too-long": "Use at most {max} characters.",
 		"nickname-invalid-characters": "Use letters, digits, spaces and _ . - ' only.",
+		"nickname-profane": "Pick a nickname without swear words.",
 		"avatar-invalid-image": "This file isn't a PNG, JPEG or WebP picture.",
 		"avatar-too-large": "This picture is larger than 2 MB.",
 		"avatar-upload-not-found": "The upload didn't finish. Try again."
