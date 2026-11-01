@@ -374,6 +374,28 @@ describe("TableRuntime", () => {
 			expect(autoActions()).toEqual([[1, "check"]]);
 		});
 
+		it("sets itself again from the streams when it fires a moment before the turn is due", async () => {
+			vi.useFakeTimers();
+			const { runtime, published, setNow } = setUp();
+			await runtime.execute(open);
+			await runtime.execute(takeSeat(0));
+			await runtime.execute(takeSeat(1));
+			await runtime.dealNextHand();
+			const autoFolds = () =>
+				published.flatMap(({ events }) =>
+					events.hand.filter((e) => e.type === "PlayerActed" && e.auto),
+				);
+
+			setNow(TURN_AND_BANK_MS - 1);
+			await vi.advanceTimersByTimeAsync(TURN_AND_BANK_MS);
+			expect(autoFolds()).toEqual([]);
+			setNow(TURN_AND_BANK_MS);
+			await vi.advanceTimersByTimeAsync(1);
+
+			expect(autoFolds()).toHaveLength(1);
+			await runtime.dispose();
+		});
+
 		it("times out each turn once, whatever happens to the old timers", async () => {
 			const { runtime, published, autoActions } = await dealtHeadsUp();
 			await runtime.execute({ type: "Act", userId: "u0", action: "call" });
@@ -461,6 +483,19 @@ describe("TableRuntime", () => {
 	});
 
 	describe("with a lease", () => {
+		it("takes nothing up once it holds a state, and stops only once", async () => {
+			const { store } = setUp();
+			const onLost = vi.fn();
+			const runtime = leased(store, 1, onLost);
+			await runtime.execute(open);
+
+			runtime.resume(await loadGame(new InMemoryEventStore(), "t-1"));
+			expect((await runtime.view()).state.table.status).toBe("open");
+			runtime.abandon();
+			runtime.abandon();
+			expect(onLost).toHaveBeenCalledTimes(1);
+		});
+
 		it("stores its epoch with every append", async () => {
 			const { store } = setUp();
 			const runtime = leased(store, 3);

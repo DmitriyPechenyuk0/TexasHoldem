@@ -275,7 +275,6 @@ export class TableRuntimeRegistry
 			case "view":
 				return this.viewOf(await runtime.view(), request.userId) as Reply;
 		}
-		throw new Error("Unknown table request");
 	}
 
 	private viewOf(loaded: LoadedGame, userId: string): TableView {
@@ -291,7 +290,10 @@ export class TableRuntimeRegistry
 		);
 	}
 
-	/** The table's runtime here, taking its lease if nobody holds it; null if another instance does. */
+	/**
+	 * The table's runtime here, taking its lease if nobody holds it; null if another instance does.
+	 * `take` is only called for a table not running here.
+	 */
 	private async local(tableId: string): Promise<TableRuntime | null> {
 		const running = this.running.get(tableId) ?? (await this.take(tableId));
 		return running?.runtime ?? null;
@@ -299,10 +301,6 @@ export class TableRuntimeRegistry
 
 	/** Takes the table's lease and starts its runtime; null when another instance holds it. */
 	private take(tableId: string, takeover = false): Promise<Running | null> {
-		const running = this.running.get(tableId);
-		if (running) {
-			return Promise.resolve(running);
-		}
 		let starting = this.starting.get(tableId);
 		if (!starting) {
 			starting = this.start(tableId, takeover).finally(() =>

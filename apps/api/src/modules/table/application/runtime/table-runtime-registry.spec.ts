@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import type { EventBus } from "@nestjs/cqrs";
 import { InMemoryEventStore } from "../../../../../test/support/in-memory-event-store.js";
 import { tableConfig } from "../../../../../test/support/table.js";
@@ -10,6 +11,7 @@ import {
 import { Clock } from "@/shared/application/clock.js";
 import { TableChanged } from "../events/table-changed.event.js";
 import type { TableStreamEvent } from "../game-streams.js";
+import type { TableLeases } from "../table-leases.js";
 import { TableRuntimeRegistry } from "./table-runtime-registry.js";
 
 class FakeClock extends Clock {
@@ -84,6 +86,7 @@ describe("TableRuntimeRegistry", () => {
 		await Promise.all(registries.map((r) => r.onApplicationShutdown()));
 		registries.length = 0;
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	it("runs a table where its first command came, holding its lease, and publishes its changes there", async () => {
@@ -205,6 +208,70 @@ describe("TableRuntimeRegistry", () => {
 			({ event }) => event.type,
 		);
 		expect(types).toContain("HandScheduled");
+	});
+
+	it("keeps its tables running while Redis does not answer, warning once", async () => {
+		const warn = vi
+			.spyOn(Logger.prototype, "warn")
+			.mockImplementation(() => {});
+		const { leases, instance } = cluster();
+		const a = track(instance("a"));
+		await open(a.registry, "t-1");
+		const leasesOfA = (a.registry as unknown as { leases: TableLeases }).leases;
+		vi.spyOn(leasesOfA, "renew").mockRejectedValue(new Error("Redis is down"));
+
+		await a.registry.renewLeases();
+		await a.registry.renewLeases();
+
+		expect(a.registry.size).toBe(1);
+		expect(warn).toHaveBeenCalledTimes(1);
+		expect(leases.current("t-1")).toMatchObject({ instanceId: "a" });
+	});
+
+	it("logs a table it could not take over, and goes on with the others", async () => {
+		const error = vi
+			.spyOn(Logger.prototype, "error")
+			.mockImplementation(() => {});
+		const { store, leases, instance } = cluster();
+		const a = track(instance("a"));
+		await open(a.registry, "t-1");
+		await open(a.registry, "t-2");
+		leases.expire("t-1");
+		leases.expire("t-2");
+		const b = track(instance("b"));
+		vi.spyOn(store, "readStream").mockRejectedValueOnce(
+			new Error("store down"),
+		);
+
+		await b.registry.adoptOrphans();
+
+		expect(error).toHaveBeenCalledWith(
+			expect.objectContaining({ msg: "table not taken over" }),
+		);
+		expect(b.registry.size).toBe(1);
+	});
+
+	it("refuses another instance's request for a table it does not run", async () => {
+		const { bus, instance } = cluster();
+		track(instance("a"));
+		const b = track(instance("b"));
+		await open(b.registry, "t-1");
+
+		await expect(
+			bus.handlers.get("a")!({ kind: "view", tableId: "t-1", userId: "u0" }),
+		).rejects.toMatchObject({ code: "table.moved" });
+	});
+
+	it("tries once more when a table is let go just as it is reached", async () => {
+		const { instance } = cluster();
+		const a = track(instance("a"));
+		const leasesOfA = (a.registry as unknown as { leases: TableLeases }).leases;
+		// The first try finds the lease taken, then nobody holding it.
+		vi.spyOn(leasesOfA, "acquire").mockResolvedValueOnce(null);
+
+		await open(a.registry, "t-1");
+
+		expect(a.registry.size).toBe(1);
 	});
 
 	it("drops runtimes idle for long enough and releases their leases", async () => {
