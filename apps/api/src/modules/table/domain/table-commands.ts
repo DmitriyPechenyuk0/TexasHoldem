@@ -41,6 +41,14 @@ export type HandPlayCommand =
 			readonly handId: string;
 			readonly deck: readonly Card[];
 			readonly buttonDraw: number;
+			/** The hex SHA-256 of the server seed the deck comes from, published before the deal. */
+			readonly commitment: string;
+	  }
+	/** After the hand: publishes its server seed (hex), which must match the commitment (ADR-008). */
+	| {
+			readonly type: "RevealDeck";
+			readonly handId: string;
+			readonly serverSeed: string;
 	  }
 	| {
 			readonly type: "Act";

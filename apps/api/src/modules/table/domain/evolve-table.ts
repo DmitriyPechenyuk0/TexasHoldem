@@ -45,6 +45,7 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 				spectators: [],
 				hand: null,
 				positions: null,
+				deck: null,
 				turn: null,
 			};
 		case "SeatTaken": {
@@ -95,6 +96,19 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 				hand: { handId, seats },
 				positions: { buttonSeat, smallBlindSeat, bigBlindSeat },
 			};
+		}
+		case "DeckCommitted": {
+			const { handId, commitment } = event;
+			return {
+				...opened(state, event),
+				deck: { handId, commitment, serverSeed: null },
+			};
+		}
+		case "DeckRevealed": {
+			const table = opened(state, event);
+			return table.deck?.handId === event.handId
+				? { ...table, deck: { ...table.deck, serverSeed: event.serverSeed } }
+				: table;
 		}
 		case "TurnStarted": {
 			const { handId, seat, startedAt } = event;

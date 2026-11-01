@@ -240,6 +240,35 @@ export class TimeoutNotDueError extends DomainError {
 	}
 }
 
+export class HandNotFoundError extends DomainError {
+	readonly kind = "not-found";
+	readonly code = "table.hand-not-found";
+
+	constructor() {
+		super("No such hand");
+	}
+}
+
+/** The hand is still being played: its server seed is secret until it ends. */
+export class DeckNotRevealedError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.deck-not-revealed";
+
+	constructor() {
+		super("The deck is revealed once the hand has ended");
+	}
+}
+
+/** A revealed server seed that does not hash to the commitment: never expected, and never shown. */
+export class DeckMismatchError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.deck-mismatch";
+
+	constructor() {
+		super("The server seed does not match the deck commitment");
+	}
+}
+
 /** The hand refused the command (`@holdem/engine`): its `hand.*` code and params pass through. */
 export class HandRuleError extends DomainError {
 	readonly kind = "rule-violation";
@@ -279,4 +308,7 @@ export type TableError =
 	| NoHandError
 	| NotInHandError
 	| HandRuleError
-	| TimeoutNotDueError;
+	| TimeoutNotDueError
+	| DeckMismatchError
+	| HandNotFoundError
+	| DeckNotRevealedError;

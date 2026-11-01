@@ -1,1 +1,5 @@
-export { CreateDevTableRequest, CreateDevTableResponse } from "./table.js";
+export {
+	CreateDevTableRequest,
+	CreateDevTableResponse,
+	HandFairnessResponse,
+} from "./table.js";

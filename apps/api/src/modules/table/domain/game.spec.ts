@@ -1,4 +1,9 @@
-import { fullDeck, type HandEvent } from "@holdem/engine";
+import {
+	commitServerSeed,
+	fullDeck,
+	type HandEvent,
+	hexToBytes,
+} from "@holdem/engine";
 import {
 	seatTaken,
 	statusChanged,
@@ -28,10 +33,17 @@ const gameOf = (history: readonly TableEvent[]): GameState => ({
 
 const isClock = ({ type }: TableEvent) =>
 	type === "TurnStarted" || type === "TimeBankUsed";
+const isDeck = ({ type }: TableEvent) =>
+	type === "DeckCommitted" || type === "DeckRevealed";
+
+/** The server seed every hand here is dealt from, and its commitment. */
+const SEED = "07".repeat(32);
+const COMMITMENT = commitServerSeed(hexToBytes(SEED));
 
 /**
  * Runs a command that must be accepted at `now`: answers its events and the state after them.
- * The turn clock's events are set apart in `clock`, so tests of other rules can ignore them.
+ * The turn clock's events are set apart in `clock`, and the deck's in `deck`, so tests of other
+ * rules can ignore them.
  */
 function run(state: GameState, command: GameCommand, now = 0) {
 	const decision = decideGame(command, state, now);
@@ -41,8 +53,12 @@ function run(state: GameState, command: GameCommand, now = 0) {
 	expect(JSON.parse(JSON.stringify(decision.value))).toEqual(decision.value);
 	const { table, hand } = decision.value;
 	return {
-		events: { table: table.filter((event) => !isClock(event)), hand },
+		events: {
+			table: table.filter((event) => !isClock(event) && !isDeck(event)),
+			hand,
+		},
 		clock: table.filter(isClock),
+		deck: table.filter(isDeck),
 		state: evolveGame(state, decision.value),
 	};
 }
@@ -55,7 +71,11 @@ const refusal = (state: GameState, command: GameCommand, now = 0) => {
 };
 
 const start = (state: GameState, handId = "hand-1", buttonDraw = 0, now = 0) =>
-	run(state, { type: "StartHand", handId, deck, buttonDraw }, now);
+	run(
+		state,
+		{ type: "StartHand", handId, deck, buttonDraw, commitment: COMMITMENT },
+		now,
+	);
 
 const table = (state: GameState) => state.table as OpenedTable;
 const typesOf = (events: GameEvents) => ({
@@ -77,6 +97,7 @@ describe("decideGame", () => {
 				handId: "hand-1",
 				deck,
 				buttonDraw: 0,
+				commitment: COMMITMENT,
 			};
 			expect(refusal(initialGameState, command)).toEqual({
 				code: "table.not-open",
@@ -133,7 +154,13 @@ describe("decideGame", () => {
 
 		it("refuses a deck the hand cannot use", () => {
 			const decision = decideGame(
-				{ type: "StartHand", handId: "hand-1", deck: [], buttonDraw: 0 },
+				{
+					type: "StartHand",
+					handId: "hand-1",
+					deck: [],
+					buttonDraw: 0,
+					commitment: COMMITMENT,
+				},
 				gameOf(tableWith(0, 1)),
 				0,
 			);
@@ -561,6 +588,45 @@ describe("the turn clock", () => {
 		expect(ended.clock).toEqual([]);
 		expect(table(ended.state).turn).toBeNull();
 		expect(turnDueAt(ended.state.table)).toBeNull();
+	});
+});
+
+describe("the deck's fairness", () => {
+	it("publishes the commitment before the deal, and keeps it for the snapshot", () => {
+		const { deck: events, state } = start(gameOf(tableWith(0, 1)));
+		expect(events).toEqual([
+			{ type: "DeckCommitted", v: 1, handId: "hand-1", commitment: COMMITMENT },
+		]);
+		expect(table(state).deck).toEqual({
+			handId: "hand-1",
+			commitment: COMMITMENT,
+			serverSeed: null,
+		});
+	});
+
+	it("reveals the server seed once the hand has ended, if it matches the commitment", () => {
+		let { state } = start(gameOf(tableWith(0, 1)));
+		const reveal = (serverSeed: string, handId = "hand-1") =>
+			({ type: "RevealDeck", handId, serverSeed }) as const;
+		expect(refusal(state, reveal(SEED))?.code).toBe("table.no-hand");
+
+		state = run(state, {
+			type: "Act",
+			userId: userAt(state, toAct(state)),
+			action: "fold",
+		}).state;
+		expect(refusal(state, reveal(SEED, "hand-0"))?.code).toBe("table.no-hand");
+		expect(refusal(state, reveal("08".repeat(32)))?.code).toBe(
+			"table.deck-mismatch",
+		);
+		expect(refusal(state, reveal("not hex"))?.code).toBe("table.deck-mismatch");
+
+		const revealed = run(state, reveal(SEED));
+		expect(revealed.deck).toEqual([
+			{ type: "DeckRevealed", v: 1, handId: "hand-1", serverSeed: SEED },
+		]);
+		expect(table(revealed.state).deck?.serverSeed).toBe(SEED);
+		expect(refusal(revealed.state, reveal(SEED))?.code).toBe("table.no-hand");
 	});
 });
 

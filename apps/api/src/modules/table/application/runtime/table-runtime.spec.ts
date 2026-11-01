@@ -1,7 +1,11 @@
+import { bytesToHex } from "@holdem/engine";
 import { Logger } from "@nestjs/common";
 import { InMemoryEventStore } from "../../../../../test/support/in-memory-event-store.js";
 import { seatTaken, tableConfig } from "../../../../../test/support/table.js";
-import { FixedDeckProvider } from "../../../../../test/support/table-ports.js";
+import {
+	FIXED_SEED,
+	FixedDeckProvider,
+} from "../../../../../test/support/table-ports.js";
 import { ConcurrencyError } from "@/shared/application/event-store.js";
 import type { TableCommandInput } from "../commands/execute-table-command/execute-table-command.command.js";
 import type { TableChanged } from "../events/table-changed.event.js";
@@ -141,8 +145,11 @@ describe("TableRuntime", () => {
 		await runtime.execute({ type: "Act", userId: "u0", action: "fold" });
 		const settled = published.at(-1)!;
 		await runtime.execute({ type: "SitOut", userId: "u1" });
-		expect(published.at(-1)?.versions).toEqual({
-			tableVersion: settled.versions.tableVersion + 1,
+		// The deck was revealed in between, right after the hand ended.
+		const [revealed, satOut] = published.slice(-2);
+		expect(revealed?.events.table.map((e) => e.type)).toEqual(["DeckRevealed"]);
+		expect(satOut?.versions).toEqual({
+			tableVersion: settled.versions.tableVersion + 2,
 			hand: settled.versions.hand,
 		});
 		expect(settled.versions.hand).toEqual({
@@ -153,6 +160,48 @@ describe("TableRuntime", () => {
 		const view = await runtime.view();
 		expect(view.handId).toBe(handId);
 		expect(view.state.hand.status).toBe("ended");
+	});
+
+	it("reveals each hand's deck once it has ended, before the next is dealt", async () => {
+		const { decks, published, runtime } = setUp();
+		await runtime.execute(open);
+		await runtime.execute(takeSeat(0));
+		await runtime.execute(takeSeat(1));
+		const dealt = await runtime.dealNextHand();
+		expect(dealt?.table[0]).toMatchObject({ type: "DeckCommitted" });
+		expect(decks.revealed).toEqual([]);
+
+		await runtime.execute({ type: "Act", userId: "u0", action: "fold" });
+		await runtime.view();
+
+		expect(decks.revealed).toEqual(decks.dealt);
+		expect(published.at(-1)?.events.table).toEqual([
+			{
+				type: "DeckRevealed",
+				v: 1,
+				handId: decks.dealt[0],
+				serverSeed: bytesToHex(FIXED_SEED),
+			},
+		]);
+	});
+
+	it("logs a reveal that failed, and goes on", async () => {
+		const error = vi
+			.spyOn(Logger.prototype, "error")
+			.mockImplementation(() => {});
+		const { decks, runtime } = setUp();
+		await runtime.execute(open);
+		await runtime.execute(takeSeat(0));
+		await runtime.execute(takeSeat(1));
+		await runtime.dealNextHand();
+		vi.spyOn(decks, "reveal").mockResolvedValueOnce("08".repeat(32));
+
+		await runtime.execute({ type: "Act", userId: "u0", action: "fold" });
+		await runtime.view();
+
+		expect(error).toHaveBeenCalledWith(
+			expect.objectContaining({ msg: "deck not revealed", tableId: "t-1" }),
+		);
 	});
 
 	it("throws the rule a command breaks, and goes on with the next", async () => {
@@ -275,7 +324,9 @@ describe("TableRuntime", () => {
 			await vi.advanceTimersByTimeAsync(1);
 
 			expect(autoActions()).toEqual([[0, "fold"]]);
-			const timedOut = published.at(-1)!.events.table;
+			const timedOut = published.find(({ events }) =>
+				events.hand.some((e) => e.type === "PlayerActed"),
+			)!.events.table;
 			expect(timedOut[0]).toEqual({
 				type: "TimeBankUsed",
 				v: 1,

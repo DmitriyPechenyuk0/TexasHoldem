@@ -55,6 +55,20 @@ export type TableEvent =
 			/** The seats dealt in, in seat order. */
 			readonly seats: HandPositions["dealtIn"];
 	  }
+	/** Comes before the hand's deal: the hex SHA-256 of the server seed its deck comes from. */
+	| {
+			readonly type: "DeckCommitted";
+			readonly v: 1;
+			readonly handId: string;
+			readonly commitment: string;
+	  }
+	/** After the hand ended: its server seed, which anyone can check the deal against. */
+	| {
+			readonly type: "DeckRevealed";
+			readonly v: 1;
+			readonly handId: string;
+			readonly serverSeed: string;
+	  }
 	/** A player is to act: their turn time runs from `startedAt` (epoch ms), then their time bank. */
 	| {
 			readonly type: "TurnStarted";
