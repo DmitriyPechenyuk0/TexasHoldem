@@ -172,6 +172,36 @@ export const lobbyTables = table("tables", {
 
 CI applies the migrations and fails when a schema change has no migration.
 
+## Event store
+
+Event-sourced aggregates (the table, and the hands it runs) are stored as streams of events (ADR-002), through the `EventStore` port in `shared/application`:
+
+- `append(streamId, expectedVersion, events, metadata?)` stores all the events or none, after the stream's last one, and answers the new version. The stream must be at `expectedVersion` (0 for a new one); otherwise it throws `ConcurrencyError` (409 `event-store.version-conflict`), and the command is read, decided and appended again.
+- `readStream(streamId, fromVersion?)` answers a stream's events in order. `readAll(fromPosition, limit)` pages through every stream of the store by `globalPosition`, for projections.
+- Each event carries `metadata` (`correlationId`, `causationId`, `userId`) and `occurredAt`, the time it was stored.
+- Command handlers use the helpers in `shared/application/event-sourcing.ts` with a `Decider` (`shared/domain/decider.ts`; the table's is `tableDecider`):
+
+```ts
+const loaded = await loadDecider(this.events, tableDecider, `table-${tableId}`);
+const decision = tableDecider.decide(command, loaded.state);
+if (!decision.ok) throw decision.error;
+await saveDecider(
+	this.events,
+	tableDecider,
+	`table-${tableId}`,
+	loaded,
+	decision.value,
+	metadata,
+);
+```
+
+- Stored events are never changed. A new shape of an event bumps its `v`, and an upcaster turns the old one into the new one as it is read: `Upcasters` maps a type and the version it upgrades from to a function, and they are chained until the current version.
+- `PostgresEventStore` keeps a context's streams in its own table, which its schema declares with `eventsTable("<context>")` (the table context: `table_events`). An append is one statement: it inserts nothing unless the stream is at the expected version, and `UNIQUE(stream_id, version)` turns away the loser of two appends that race for the same one. Type and version have columns of their own; the rest of the event is the `payload` (jsonb).
+- One append of 1,000 events and reading them back takes about 25 ms locally. Appends one at a time are bound by the disk flushing each commit (about 1.2 ms here, so some 550 commands a second per stream), which is far more than a table needs.
+- `globalPosition` is taken when a row is inserted, so an append that commits later can still land behind a position a projection has already read. Projections that must see every event wait for a short lag or rebuild from the start; the lobby gets integration events instead (POK-74).
+- Hand events carry the deck: the stored events are as secret as the seed until the hand ends (packages/engine/README.md, "Security and storage"). The store never logs payloads or metadata, and clients only ever get redacted views.
+- Handler tests use `InMemoryEventStore` (`test/support`). `test/support/event-store-contract.ts` runs the same rules against it and against Postgres, so the fake cannot drift.
+
 ## Redis, health and shutdown
 
 - The shared Redis client comes through `@InjectRedis() private readonly redis: Redis`. Pub/sub subscribers and blocking commands need a dedicated connection: `RedisConnections.open("<purpose>")`, which the app closes on shutdown.
@@ -257,6 +287,7 @@ The table is an event-sourced decider in `modules/table/domain` (ADR-002): `deci
 - A player sits down waiting for the big blind (`waiting-for-big-blind`), and is dealt in once it reaches the seat. Sitting back in after sitting out waits for it again, so sitting out dodges no blind; a player who sat out during a hand they are still in is `active` again.
 - Leaving during a hand the player is dealt into marks the seat `leaving` until the hand ends; otherwise the seat is freed at once. Rebuys (an empty stack, a full buy-in) and top-ups (up to the maximum buy-in) wait until the player's hand ends.
 - At most 50 users watch a table (`MAX_SPECTATORS`); a spectator who sits down stops watching. `CloseTable` lets everyone leave first and is refused during a hand.
+- `tableDecider` bundles `decideTable`, `evolveTable` and the initial state for the event-sourcing helpers; the streams live in `table_events` (see "Event store").
 - The running hand (`state.hand`) is recorded by hand orchestration (POK-76). Until then the decider tests set it through `given(history, { hand, stacks })` in `test/support/table.ts`.
 
 ## HTTP and sockets
