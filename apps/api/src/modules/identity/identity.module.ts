@@ -1,5 +1,5 @@
 import { Global, Module } from "@nestjs/common";
-import { EventBus } from "@nestjs/cqrs";
+import { IntegrationEventBus } from "@/shared/application/integration-events.js";
 import { Mailer } from "@/shared/application/mailer.js";
 import { RateLimiter } from "@/shared/application/rate-limiter.js";
 import { ViewerResolver } from "@/shared/application/viewer.js";
@@ -40,7 +40,7 @@ import { MeController } from "./presentation/me.controller.js";
 				AppConfig,
 				DATABASE,
 				Mailer,
-				EventBus,
+				IntegrationEventBus,
 				EmailThrottle,
 				RateLimiter,
 				PasswordBreaches,
@@ -49,7 +49,7 @@ import { MeController } from "./presentation/me.controller.js";
 				config: AppConfig,
 				db: Database,
 				mailer: Mailer,
-				eventBus: EventBus,
+				events: IntegrationEventBus,
 				emailThrottle: EmailThrottle,
 				rateLimiter: RateLimiter,
 				passwordBreaches: PasswordBreaches,
@@ -58,7 +58,7 @@ import { MeController } from "./presentation/me.controller.js";
 					config,
 					db,
 					mailer,
-					eventBus,
+					events,
 					emailThrottle,
 					rateLimiter,
 					passwordBreaches,

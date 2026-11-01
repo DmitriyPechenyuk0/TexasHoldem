@@ -46,7 +46,7 @@ A layer folder exists only once it has content. `modules/system` is the referenc
 
 - A **handler is the use case**. There are no `*UseCase` or application service classes, and controllers or gateways never call domain code or repositories directly: they only send messages to `CommandBus` / `QueryBus`.
 - Messages extend the typed bases from `@nestjs/cqrs`, so the bus infers the result: `class GetLobbyQuery extends Query<LobbyView>`, `class TakeSeatCommand extends Command<void>`.
-- Command handlers stay thin: load → decide → append → publish.
+- Command handlers stay thin: load → decide → append → publish (integration events through `IntegrationEventBus`, see "Integration events").
 - Each operation has its own folder with the message, the handler and the handler's test:
 
 ```
@@ -202,6 +202,16 @@ await saveDecider(
 - `globalPosition` is taken when a row is inserted, so an append that commits later can still land behind a position a projection has already read. Projections that must see every event wait for a short lag or rebuild from the start; the lobby gets integration events instead (POK-74).
 - Hand events carry the deck: the stored events are as secret as the seed until the hand ends (packages/engine/README.md, "Security and storage"). The store never logs payloads or metadata, and clients only ever get redacted views.
 - Handler tests use `InMemoryEventStore` (`test/support`). `test/support/event-store-contract.ts` runs the same rules against it and against Postgres, so the fake cannot drift.
+
+## Integration events
+
+Contexts tell each other what happened through integration events (Context Map); `TableChanged`, which carries the deck, is an in-process event of the table context and never one of these.
+
+- An integration event is a class of plain data marked `@IntegrationEvent({ name, version, schema, broadcast })` (`shared/application/integration-events.ts`). `name` is `<context>.<event>` (`identity.user-registered`), and `schema` is that version's zod schema in `@holdem/shared/events`. A change to the data is a new version with a new schema.
+- Subscribers are `@EventsHandler`s. Contexts publish through the `IntegrationEventBus` port, never through `EventBus`.
+- `RedisIntegrationEventBus` publishes on this instance's `EventBus`. A `broadcast` event also goes out on the Redis channel `integration-events`, and every other instance checks it against its schema and publishes it on its own `EventBus`. A sender ignores its own broadcasts. Broadcast is for subscribers that keep something per instance (a read model in memory, the sockets it serves); the rest are handled once, where the event was published.
+- Publishing waits for the transaction to commit. Inside `inTransaction(db, work)` (`shared/infrastructure/database`), events go out once it has committed, in order, and a rollback drops them. Outside one, write first, then publish. Either way an event never tells of a change that did not happen. Transactions do not nest: work uses the `tx` it is given.
+- Delivery is at most once. An instance that stops between the commit and the publish, or that is not subscribed when a broadcast goes out (Redis unreachable, restarting), misses the event; while Redis fails, events stay on their instance and a warning is logged once. An instance that does not know an event's name or version (during a rolling deploy) drops it with a warning. A transactional outbox would make delivery at least once (POK-130).
 
 ## Redis, health and shutdown
 

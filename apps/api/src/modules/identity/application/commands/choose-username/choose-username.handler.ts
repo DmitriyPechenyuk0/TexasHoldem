@@ -1,5 +1,6 @@
 import { Locale } from "@holdem/shared";
-import { CommandHandler, EventBus, type ICommandHandler } from "@nestjs/cqrs";
+import { CommandHandler, type ICommandHandler } from "@nestjs/cqrs";
+import { IntegrationEventBus } from "@/shared/application/integration-events.js";
 import { UserNotFoundError } from "../../../domain/user-not-found.error.js";
 import { UsernameAlreadyChosenError } from "../../../domain/username-already-chosen.error.js";
 import { UsernameTakenError } from "../../../domain/username-taken.error.js";
@@ -22,7 +23,7 @@ const FAILURES = {
 export class ChooseUsernameHandler implements ICommandHandler<ChooseUsernameCommand> {
 	constructor(
 		private readonly users: UserRepository,
-		private readonly eventBus: EventBus,
+		private readonly events: IntegrationEventBus,
 	) {}
 
 	async execute({ userId, username }: ChooseUsernameCommand): Promise<void> {
@@ -31,7 +32,7 @@ export class ChooseUsernameHandler implements ICommandHandler<ChooseUsernameComm
 		if (outcome.kind !== "chosen") {
 			throw new FAILURES[outcome.kind]();
 		}
-		this.eventBus.publish(
+		this.events.publish(
 			new UserRegistered(
 				userId,
 				stored,
@@ -39,7 +40,7 @@ export class ChooseUsernameHandler implements ICommandHandler<ChooseUsernameComm
 			),
 		);
 		if (outcome.emailVerified) {
-			this.eventBus.publish(new UserVerified(userId));
+			this.events.publish(new UserVerified(userId));
 		}
 	}
 }
