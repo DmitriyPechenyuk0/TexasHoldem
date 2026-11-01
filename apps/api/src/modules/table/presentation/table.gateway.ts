@@ -35,6 +35,7 @@ import {
 import type { Subscription } from "rxjs";
 import type { DefaultEventsMap, Namespace, Socket } from "socket.io";
 import type { z } from "zod";
+import { CanJoinTableQuery } from "@/shared/application/table-access.js";
 import type { Viewer } from "@/shared/application/viewer.js";
 import { DomainError } from "@/shared/domain/domain-error.js";
 import { CurrentUser } from "@/shared/presentation/auth.guard.js";
@@ -50,6 +51,7 @@ import {
 } from "../application/commands/execute-table-command/execute-table-command.command.js";
 import { TableChanged } from "../application/events/table-changed.event.js";
 import { GetTableViewQuery } from "../application/queries/get-table-view/get-table-view.query.js";
+import { TableAccessDeniedError } from "../application/table-access-denied.error.js";
 import { eventsBatchFor, turnTimerOf } from "../application/table-views.js";
 
 type TableNamespace = Namespace<
@@ -164,6 +166,7 @@ export class TableGateway
 		@CurrentUser() viewer: Viewer,
 	): Promise<Ack<TableView>> {
 		const following = this.followed(socket).has(tableId);
+		await this.ensureAccess(tableId, viewer);
 		// The room first: a batch sent before the snapshot is older than it, and the client drops it.
 		await socket.join(tableRoom(tableId));
 		try {
@@ -203,11 +206,12 @@ export class TableGateway
 
 	@SubscribeMessage(TakeSeatEvent.name)
 	@UseGuards(RequirePlayer)
-	takeSeat(
+	async takeSeat(
 		@ValidPayload(TakeSeatEvent.payload)
 		{ tableId, seat, buyIn }: Payload<typeof TakeSeatEvent>,
 		@CurrentUser() viewer: Viewer,
 	): Promise<Ack<TableCommandAck>> {
+		await this.ensureAccess(tableId, viewer);
 		return this.send(tableId, viewer, {
 			type: "TakeSeat",
 			userId: viewer.userId,
@@ -366,6 +370,17 @@ export class TableGateway
 			new ExecuteTableCommand(tableId, command, { userId: viewer.userId }),
 		);
 		return accepted;
+	}
+
+	/** A private table takes its creator and whoever redeemed its invite (the lobby decides). */
+	private async ensureAccess(tableId: string, viewer: Viewer): Promise<void> {
+		if (
+			!(await this.queryBus.execute(
+				new CanJoinTableQuery(tableId, viewer.userId),
+			))
+		) {
+			throw new TableAccessDeniedError();
+		}
 	}
 
 	private view(tableId: string, viewer: Viewer): Promise<TableView> {

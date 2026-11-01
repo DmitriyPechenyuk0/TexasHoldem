@@ -356,6 +356,31 @@ The application side (`modules/table/application`):
 - `GET /api/hands/:handId/fairness` (`HandsController`, no session needed) answers `HandFairnessResponse`: the commitment, the revealed seed and the dealt cards (the deck's first cards, burns included, in order), all `verifyDeck` needs. While the hand runs it answers 409 `table.deck-not-revealed`; for an unknown hand 404 `table.hand-not-found`. Snapshots carry the current or last hand's commitment (`fairness`).
 - `test/table-hands.e2e-spec.ts` plays 100 random hands at a six-seat table through the command bus, with players sitting out, leaving, busting and rebuying, and checks every chip after each hand; `HOLDEM_TABLE_SEED` replays a run.
 
+## Lobby
+
+The lobby owns which tables there are and what they were created with; the table context runs them (Context Map, customer–supplier). `modules/lobby`:
+
+- Stake presets (`domain/stake-presets.ts`): micro 1/2, low 5/10, mid 25/50 and high 100/200, each with a buy-in of 40–100 big blinds. `GET /api/lobby/presets` lists them, from the smallest.
+- `POST /api/lobby/tables` (`AuthGuard`, `RequirePlayer`) takes `CreateTableRequest` (`@holdem/shared/contracts/lobby`): a name (1–40 characters once trimmed), a preset, 2–9 seats, a visibility and an optional turn time (5–120 s, 20 by default). It answers `{ tableId }`, and the table can be joined at once on `/table`.
+  - `CreateTableHandler` validates the settings (`lobby.invalid-name`, `lobby.unknown-preset`) and stores the row in `lobby_tables` first. A player keeps at most 3 open tables (`lobby.too-many-tables`). The check and the insert run under a Postgres advisory lock on the creator, so two tables created at once cannot both slip under the limit.
+  - It then opens the table through the table context's public API (`ExecuteTableCommand` with `OpenTable`, from `modules/table/index.ts`), with the preset's stakes, a 30 s time bank and the default absence policy. A table that could not be opened leaves no row behind.
+- **Private tables** (POK-96). A private table gets an invite code: 8 characters from `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (no look-alikes), drawn with `randomInt`, unique in `lobby_tables`. Lowercase is accepted, and the web link is `/{locale}/t/{code}`. It may have a password of 4–64 characters, stored as a scrypt hash (`ScryptPasswordHasher`: N = 2^17, r = 8, p = 1, salted, compared in constant time). A public table refuses one (`lobby.password-needs-private`).
+  - `GET /api/lobby/invites/:code` shows the table an invite leads to and whether it asks for a password. An unknown code is `lobby.invite-not-found`, which says nothing about passwords.
+  - `POST /api/lobby/invites/:code/redeem { password? }` grants the user access (`TableGrants`, `lobby:grant:<tableId>:<userId>` in Redis). A grant lasts a day after it was last used, and every access check extends it. A wrong password is `lobby.wrong-password`; tries are limited to 5 per 15 minutes per user and table (429).
+  - `POST /api/lobby/tables/:tableId/invite`, by the creator only (`lobby.not-creator`), gives the table a new code: the old link stops working, and the grants stay.
+  - **Who may join** is the lobby's call (`CanJoinTableQuery`, in the shared kernel, so the table context asks without depending on the lobby). Anyone may join a public table; a private one takes its creator and whoever redeemed its invite. A table the lobby does not list (a dev table) is open. The `/table` gateway asks before `join` and `take-seat`, and refuses with `table.access-denied`.
+- **The lobby's read model** (POK-97). The table context publishes `TableSummaryChanged` (`table.summary-changed`, not broadcast) after every change to a table's players or status: who sits where, open or closed, and how many hands ended in that change. The table holder publishes it once, after the append.
+  - `TableSummaryChangedHandler` applies it to the table's `lobby_tables` row: `players` (jsonb), `handsPlayed` and `status`. A closed table stays closed, and tables the lobby does not list are ignored. Then it publishes `LobbyTableChanged` in-process.
+  - `GET /api/lobby/tables?presetId&maxSeats&hasFreeSeat` lists the open public tables, fullest first, then newest, at most 100. Private tables are never listed. `GET /api/lobby/my-tables` lists the open tables I created or sit at, private ones included, with the invite code of those I created.
+  - `/lobby` namespace (`LobbyGateway`): `watch` joins the room `lobby` and answers the list (the room first, so nothing is missed in between); `unwatch` leaves. `LobbyTableChanged` goes out as `table-upserted`, at most once per table every 500 ms (the last change always goes out), or `table-removed` at once when a table closes. Private tables never go out.
+  - Changes are emitted on the instance running the table, and the Redis adapter carries them to watchers on every instance, so one throttle per table holds for all.
+- **Closing tables** (POK-98). The read model marks a table empty from when it is created, or from its first summary without players, until someone sits (`emptySince`).
+  - Every minute, each instance's `IdleTablesScheduler` sends `CloseIdleTablesCommand`. It asks the table context to close (`CloseTable`) every table empty for 15 minutes, or 60 minutes for a private one.
+  - The table's summary then closes the lobby row and removes the table from the lobby. A table the table context already closed is marked closed in the lobby; one it would not close is tried again at the next sweep. Closing is idempotent, so all instances sweep.
+  - `POST /api/lobby/tables/:tableId/close` lets the creator close their table once nobody sits at it (`lobby.not-creator`, `lobby.table-not-empty`).
+  - A closed table refuses joins (`table.closed`), no longer counts against its creator's limit, and its runtime is dropped at the registry's next sweep instead of after 10 idle minutes.
+- `POST /api/dev/tables` stays for trying tables out without the lobby, outside production only.
+
 ## HTTP and sockets
 
 - Every REST route lives under `/api` (`API_PREFIX` from `@holdem/shared`), so production can serve the web app and the api from one origin behind a reverse proxy (`/api/*` and `/socket.io/*` → api). Requests outside it get a 404 problem too.
