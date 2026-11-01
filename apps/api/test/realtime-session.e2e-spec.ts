@@ -40,8 +40,8 @@ const ViewerReply = z.object({
 
 const tableProbe = defineNamespace(NAMESPACES.table, {
 	clientToServer: [
-		defineEvent("who-am-i", Empty, ViewerReply),
-		defineEvent("take-seat", Empty, Empty),
+		defineEvent("probe-who-am-i", Empty, ViewerReply),
+		defineEvent("probe-play", Empty, Empty),
 	],
 	serverToClient: [],
 });
@@ -65,14 +65,14 @@ const replyOf = (viewer: Viewer) => ({
 
 @RealtimeGateway(tableProbe)
 class TableProbeGateway {
-	@SubscribeMessage("who-am-i")
+	@SubscribeMessage("probe-who-am-i")
 	whoAmI(@CurrentUser() viewer: Viewer): Ack<z.infer<typeof ViewerReply>> {
 		return { ok: true, data: replyOf(viewer) };
 	}
 
-	@SubscribeMessage("take-seat")
+	@SubscribeMessage("probe-play")
 	@UseGuards(RequirePlayer)
-	takeSeat(): Ack<Record<string, never>> {
+	play(): Ack<Record<string, never>> {
 		return { ok: true, data: {} };
 	}
 }
@@ -189,7 +189,7 @@ describe("Realtime sessions (e2e)", () => {
 		await Promise.all([connected(table), connected(root)]);
 
 		const expected = { ok: true, data: { userId, emailVerified: true } };
-		expect(await table.emitWithAck("who-am-i", {})).toEqual(expected);
+		expect(await table.emitWithAck("probe-who-am-i", {})).toEqual(expected);
 		expect(await root.emitWithAck("viewer", {})).toEqual(expected);
 	});
 
@@ -204,9 +204,9 @@ describe("Realtime sessions (e2e)", () => {
 				.where(eq(users.email, email));
 
 		await setVerified(false);
-		const refused = await socket.emitWithAck("take-seat", {});
+		const refused = await socket.emitWithAck("probe-play", {});
 		await setVerified(true);
-		const allowed = await socket.emitWithAck("take-seat", {});
+		const allowed = await socket.emitWithAck("probe-play", {});
 
 		expect(refused.ok).toBe(false);
 		if (!refused.ok) {
@@ -236,7 +236,7 @@ describe("Realtime sessions (e2e)", () => {
 			.send({})
 			.expect(200);
 		let answered = false;
-		socket.emit("who-am-i", {}, () => {
+		socket.emit("probe-who-am-i", {}, () => {
 			answered = true;
 		});
 

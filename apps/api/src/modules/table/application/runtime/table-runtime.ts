@@ -20,6 +20,7 @@ import {
 	loadGame,
 	saveGame,
 	type TableStreamEvent,
+	versionsOf,
 } from "../game-streams.js";
 import type { TableRuntimeOptions } from "./table-runtime-options.js";
 
@@ -90,6 +91,14 @@ export class TableRuntime {
 		);
 	}
 
+	/** The table as it is once the commands queued before have run; loads it if need be. */
+	view(): Promise<LoadedGame> {
+		return this.enqueue(async () => {
+			this.loaded ??= await loadGame(this.deps.store, this.tableId);
+			return this.loaded;
+		});
+	}
+
 	/** Stops dealing hands and answers once the queued commands have run. */
 	async dispose(): Promise<void> {
 		this.disposed = true;
@@ -143,7 +152,7 @@ export class TableRuntime {
 		this.deps.publish(
 			new TableChanged(
 				this.tableId,
-				saved.tableVersion,
+				versionsOf(saved),
 				decision.value,
 				saved.state,
 			),

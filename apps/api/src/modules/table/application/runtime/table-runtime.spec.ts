@@ -90,16 +90,16 @@ describe("TableRuntime", () => {
 		expect(reads).toHaveBeenCalledTimes(1);
 	});
 
-	it("publishes each change with the table's version and state, in order", async () => {
+	it("publishes each change with the streams' versions and the state, in order", async () => {
 		const { published, runtime } = setUp();
 
 		await runtime.execute(open, { userId: "admin" });
 		await runtime.execute(takeSeat(0));
 
 		expect(
-			published.map(({ tableId, tableVersion, events }) => ({
+			published.map(({ tableId, versions, events }) => ({
 				tableId,
-				tableVersion,
+				tableVersion: versions.tableVersion,
 				events,
 			})),
 		).toEqual([
@@ -121,6 +121,37 @@ describe("TableRuntime", () => {
 			status: "open",
 			players: [{ seat: 0, userId: "u0" }],
 		});
+	});
+
+	it("keeps following the last hand's stream between hands, and shows the table through view()", async () => {
+		vi.useFakeTimers();
+		const { published, runtime } = setUp();
+		await runtime.execute(open);
+		await runtime.execute(takeSeat(0));
+		await runtime.execute(takeSeat(1));
+		expect(published.at(-1)?.versions.hand).toBeNull();
+
+		await runtime.dealNextHand();
+		const dealt = published.at(-1)!;
+		const handId = dealt.versions.hand?.handId;
+		expect(dealt.versions.hand?.version).toBe(dealt.events.hand.length);
+
+		// Heads-up, the button (seat 0) acts first: folding ends the hand.
+		await runtime.execute({ type: "Act", userId: "u0", action: "fold" });
+		const settled = published.at(-1)!;
+		await runtime.execute({ type: "SitOut", userId: "u1" });
+		expect(published.at(-1)?.versions).toEqual({
+			tableVersion: settled.versions.tableVersion + 1,
+			hand: settled.versions.hand,
+		});
+		expect(settled.versions.hand).toEqual({
+			handId,
+			version: dealt.events.hand.length + settled.events.hand.length,
+		});
+
+		const view = await runtime.view();
+		expect(view.handId).toBe(handId);
+		expect(view.state.hand.status).toBe("ended");
 	});
 
 	it("throws the rule a command breaks, and goes on with the next", async () => {

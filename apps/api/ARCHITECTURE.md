@@ -306,8 +306,22 @@ The application side (`modules/table/application`):
 - `TableRuntimeRegistry` creates a table's runtime on its first command, and drops it once idle (nothing queued, no deal due) for 10 minutes; the next command reloads it. On shutdown it lets queued commands finish. Which instance runs a table is POK-79's lease.
 - `ExecuteTableCommand(tableId, command, metadata)` runs any command but `StartHand`, and `StartNextHandCommand(tableId)` deals the next hand (or answers null when the table is not ready): both just queue the work in the table's runtime and answer its events.
 - After each command that leaves the table ready for a hand, the runtime deals one `TABLE_HAND_PAUSE_MS` later (3 s by default, so players see the result), in its own mailbox, with a new hand id and the `DeckProvider`'s deck and button draw.
-- Each change is published in this process as `TableChanged { tableId, tableVersion, events, state }` on the `EventBus`, in the order the table took the commands; the gateway subscribes to it (POK-82). Hand events and `state.hand` carry the deck: only redacted views ever leave the api.
+- Each change is published in this process as `TableChanged { tableId, versions, events, state }` on the `EventBus`, in the order the table took the commands. `versions` is where the streams are after it: the table's, and the current or last hand's (`TableVersions` in `@holdem/shared/realtime`). Between hands the game keeps the last hand, so its stream and its result stay known. Hand events and `state.hand` carry the deck: only redacted views ever leave the api.
+- `GetTableViewQuery(tableId, userId)` reads the table through its runtime, after the commands queued before it, and answers the `TableView` that user may see (`application/table-views.ts`).
 - `POST /api/dev/tables` (`DevTablesController`, contract in `@holdem/shared/contracts/table`) opens a table without the lobby: a 1/2 table for six unless the body says otherwise, answering `{ tableId }`. `TableModule.forRoot(config)` registers it outside production only, so a production build has no such route (404).
+
+### Realtime
+
+`TableGateway` (`presentation/table.gateway.ts`) serves the `/table` namespace of `@holdem/shared/realtime`:
+
+- Every socket joins its user's room, `user:<userId>`, when it connects. `join` adds it to the table's room, `table:<tableId>`, and answers the table as the user sees it. A user without a seat watches as a spectator (`JoinAsSpectator`, at most 50), whatever `as` says. The room is joined before the snapshot is read, so a batch sent in between is older than the snapshot and the client drops it.
+- Commands (`take-seat`, `act`, …) need `RequirePlayer`, become `ExecuteTableCommand`s with the user as metadata, and are answered `{ ok: true, data: {} }` once the table took them, or with the rule they broke. Payloads are validated first (400 `request.invalid`), and nothing invalid reaches the table.
+- Each `TableChanged` goes out as `events` batches, redacted for each audience (`eventsBatchFor`, the engine's `redactEvent`): every seated player, and one who just left, gets their own batch in their user room; the rest of the table's room gets the spectators' batch. No other batch is sent, so nobody receives another player's hole cards before they are shown, nor the deck or a burn card.
+- A client that misses a batch notices it with `followsVersions` and sends `join` again for a snapshot.
+- `leave`, or the user's last socket on the table disconnecting, stops a spectator watching.
+- `SocketRateLimit` (`shared/presentation/realtime`) refuses more than 10 commands a second per socket with 429 `request.rate-limited`, before validation.
+- Rooms go through the socket.io adapter, so with the Redis adapter (POK-78) they reach sockets on every instance. Which instance runs a table is POK-79's lease.
+
 - `RandomDeckProvider` shuffles each hand from a fresh 32-byte server seed (ADR-008). Committing to the seed before the deal and revealing it after is POK-86.
 - `test/table-hands.e2e-spec.ts` plays 100 random hands at a six-seat table through the command bus, with players sitting out, leaving, busting and rebuying, and checks every chip after each hand; `HOLDEM_TABLE_SEED` replays a run.
 
