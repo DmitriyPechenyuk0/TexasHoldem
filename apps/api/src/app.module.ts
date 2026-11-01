@@ -53,7 +53,7 @@ export class AppModule implements NestModule {
 				IdentityModule,
 				ProfileModule,
 				SystemModule,
-				TableModule,
+				TableModule.forRoot(config),
 			],
 		};
 	}
