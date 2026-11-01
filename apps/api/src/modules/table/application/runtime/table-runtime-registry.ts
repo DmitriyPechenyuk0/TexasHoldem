@@ -114,12 +114,16 @@ export class TableRuntimeRegistry
 		return this.running.size;
 	}
 
-	/** Drops the runtimes idle for `idleMs` or longer, releasing their leases; answers how many. */
+	/**
+	 * Drops the runtimes idle for `idleMs` or longer, and closed ones at once, releasing their
+	 * leases; answers how many.
+	 */
 	evictIdle(): number {
 		const now = this.clock.now().getTime();
 		let evicted = 0;
 		for (const [tableId, { runtime, lease }] of this.running) {
-			if (runtime.idle && now - runtime.lastUsedAt >= this.options.idleMs) {
+			const stale = now - runtime.lastUsedAt >= this.options.idleMs;
+			if (runtime.idle && (runtime.closed || stale)) {
 				this.running.delete(tableId);
 				void runtime.dispose().then(() => this.leases.release(lease));
 				evicted += 1;

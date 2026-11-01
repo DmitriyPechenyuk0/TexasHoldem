@@ -88,6 +88,16 @@ export class NotCreatorError extends DomainError {
 	}
 }
 
+/** A table is closed by hand only once nobody sits at it. */
+export class TableNotEmptyError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "lobby.table-not-empty";
+
+	constructor() {
+		super("Players still sit at the table");
+	}
+}
+
 /** A public table has no invite. */
 export class NotPrivateError extends DomainError {
 	readonly kind = "rule-violation";

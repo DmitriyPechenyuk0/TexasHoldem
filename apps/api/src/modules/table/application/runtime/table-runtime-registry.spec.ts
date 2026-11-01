@@ -287,6 +287,15 @@ describe("TableRuntimeRegistry", () => {
 		expect(a.registry.size).toBe(1);
 	});
 
+	it("drops a closed table's runtime at the next sweep", async () => {
+		const { instance } = cluster();
+		const a = track(instance("a"));
+		await open(a.registry, "t-1");
+		await a.registry.execute("t-1", { type: "CloseTable" });
+
+		expect(a.registry.evictIdle()).toBe(1);
+	});
+
 	it("keeps a runtime that has a hand to deal", async () => {
 		vi.useFakeTimers();
 		const { clock, instance } = cluster();

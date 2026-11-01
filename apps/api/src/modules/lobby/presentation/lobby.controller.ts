@@ -35,6 +35,7 @@ import {
 	ValidParam,
 	ValidQuery,
 } from "@/shared/presentation/request-validation.js";
+import { CloseTableCommand } from "../application/commands/close-table/close-table.command.js";
 import { CreateTableCommand } from "../application/commands/create-table/create-table.command.js";
 import { RedeemInviteCommand } from "../application/commands/redeem-invite/redeem-invite.command.js";
 import { RegenerateInviteCommand } from "../application/commands/regenerate-invite/regenerate-invite.command.js";
@@ -111,6 +112,19 @@ export class LobbyController {
 			),
 		);
 		return { tableId: asTableId(tableId), inviteCode };
+	}
+
+	/** The creator closes their table, once nobody sits at it; it leaves the lobby. */
+	@Post("tables/:tableId/close")
+	@HttpCode(204)
+	@UseGuards(AuthGuard)
+	async close(
+		@CurrentUser() viewer: Viewer,
+		@ValidParam("tableId", TableId) tableId: string,
+	): Promise<void> {
+		await this.commandBus.execute(
+			new CloseTableCommand(tableId, viewer.userId),
+		);
 	}
 
 	/** The creator's new invite code for their private table. */

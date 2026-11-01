@@ -178,4 +178,44 @@ describe("Lobby read model (e2e)", () => {
 			]);
 		});
 	});
+
+	it("lets the creator close an empty table: it leaves the lobby, and refuses to be joined", async () => {
+		const creator = await user();
+		const watcher = await user();
+		const lobby = await socketOn<LobbySocket>(1, "/lobby", watcher.cookie);
+		const removed: string[] = [];
+		lobby.on("table-removed", ({ tableId }) => removed.push(tableId));
+		await lobby.emitWithAck("watch", {});
+		const tableId = await createTable(creator, "public");
+		const occupied = await createTable(creator, "public");
+		await sit(0, creator.cookie, occupied);
+		// The creator's third open table: the most they may have.
+		await createTable(creator, "private");
+
+		const stranger = await user();
+		await stranger.post(`/api/lobby/tables/${tableId}/close`, {}).expect(403);
+		await vi.waitFor(async () => {
+			const notEmpty = await creator
+				.post(`/api/lobby/tables/${occupied}/close`, {})
+				.expect(409);
+			expect(notEmpty.body).toMatchObject({ code: "lobby.table-not-empty" });
+		});
+		await creator.post(`/api/lobby/tables/${tableId}/close`, {}).expect(204);
+
+		await vi.waitFor(() => expect(removed).toContain(tableId));
+		const listed = (await creator.get("/api/lobby/tables").expect(200))
+			.body as LobbyTable[];
+		expect(listed.map((table) => table.tableId)).not.toContain(tableId);
+		const socket = await socketOn<TableSocket>(0, "/table", stranger.cookie);
+		const joined = (await socket.emitWithAck("join", {
+			tableId: tableId as TableView["tableId"],
+			as: "player",
+		})) as Ack<TableView>;
+		expect(joined).toMatchObject({
+			ok: false,
+			error: { code: "table.closed" },
+		});
+		// A closed table no longer counts against its creator's limit.
+		await createTable(creator, "public");
+	});
 });

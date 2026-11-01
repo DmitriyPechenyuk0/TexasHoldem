@@ -32,6 +32,7 @@ describe("createLobbyTable", () => {
 					passwordHash: null,
 					players: [],
 					handsPlayed: 0,
+					emptySince: new Date(0),
 				},
 				preset: {
 					id: "micro",
