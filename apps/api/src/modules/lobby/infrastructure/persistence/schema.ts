@@ -37,6 +37,11 @@ export const lobbyTables = table(
 			.notNull()
 			.default([]),
 		handsPlayed: integer().notNull().default(0),
+		/** Since when nobody has sat at the table; null while someone does. */
+		emptySince: timestamp({ withTimezone: true }),
 	},
-	(columns) => [index().on(columns.creatorId, columns.status)],
+	(columns) => [
+		index().on(columns.creatorId, columns.status),
+		index().on(columns.status, columns.emptySince),
+	],
 );

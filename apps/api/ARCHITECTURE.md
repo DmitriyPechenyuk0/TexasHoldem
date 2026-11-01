@@ -374,6 +374,11 @@ The lobby owns which tables there are and what they were created with; the table
   - `GET /api/lobby/tables?presetId&maxSeats&hasFreeSeat` lists the open public tables, fullest first, then newest, at most 100. Private tables are never listed. `GET /api/lobby/my-tables` lists the open tables I created or sit at, private ones included, with the invite code of those I created.
   - `/lobby` namespace (`LobbyGateway`): `watch` joins the room `lobby` and answers the list (the room first, so nothing is missed in between); `unwatch` leaves. `LobbyTableChanged` goes out as `table-upserted`, at most once per table every 500 ms (the last change always goes out), or `table-removed` at once when a table closes. Private tables never go out.
   - Changes are emitted on the instance running the table, and the Redis adapter carries them to watchers on every instance, so one throttle per table holds for all.
+- **Closing tables** (POK-98). The read model marks a table empty from when it is created, or from its first summary without players, until someone sits (`emptySince`).
+  - Every minute, each instance's `IdleTablesScheduler` sends `CloseIdleTablesCommand`. It asks the table context to close (`CloseTable`) every table empty for 15 minutes, or 60 minutes for a private one.
+  - The table's summary then closes the lobby row and removes the table from the lobby. A table the table context already closed is marked closed in the lobby; one it would not close is tried again at the next sweep. Closing is idempotent, so all instances sweep.
+  - `POST /api/lobby/tables/:tableId/close` lets the creator close their table once nobody sits at it (`lobby.not-creator`, `lobby.table-not-empty`).
+  - A closed table refuses joins (`table.closed`), no longer counts against its creator's limit, and its runtime is dropped at the registry's next sweep instead of after 10 idle minutes.
 - `POST /api/dev/tables` stays for trying tables out without the lobby, outside production only.
 
 ## HTTP and sockets

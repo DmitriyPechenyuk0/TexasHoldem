@@ -30,7 +30,20 @@ export interface LobbyTable {
 	/** Who sits where, as the table last told (`table.summary-changed`). */
 	readonly players: readonly SeatedPlayer[];
 	readonly handsPlayed: number;
+	/** Since when nobody has sat at the table; null while someone does. */
+	readonly emptySince: Date | null;
 }
+
+/** How long a table may stay empty before it is closed (POK-98): a private one waits longer. */
+export const EMPTY_TABLE_TTL_MS: Readonly<Record<TableVisibility, number>> = {
+	public: 15 * 60_000,
+	private: 60 * 60_000,
+};
+
+/** When an empty table is closed; null while someone sits at it. */
+export const closesAt = (table: LobbyTable): Date | null =>
+	table.emptySince &&
+	new Date(table.emptySince.getTime() + EMPTY_TABLE_TTL_MS[table.visibility]);
 
 export interface SeatedPlayer {
 	readonly seat: number;
@@ -109,6 +122,7 @@ export function createLobbyTable({
 			passwordHash: null,
 			players: [],
 			handsPlayed: 0,
+			emptySince: table.createdAt,
 		},
 		preset,
 	});

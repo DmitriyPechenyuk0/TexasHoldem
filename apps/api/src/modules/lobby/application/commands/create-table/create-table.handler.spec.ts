@@ -77,6 +77,7 @@ describe("CreateTableHandler", () => {
 				passwordHash: null,
 				players: [],
 				handsPlayed: 0,
+				emptySince: NOW,
 			},
 		]);
 		expect(sent).toEqual([

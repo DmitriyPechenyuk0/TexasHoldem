@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, lt, or, sql } from "drizzle-orm";
 import {
 	type Database,
 	InjectDatabase,
@@ -74,22 +74,53 @@ export class DrizzleLobbyTableRepository extends LobbyTableRepository {
 		return row ? toTable(row) : null;
 	}
 
-	async applySummary({
-		tableId,
-		status,
-		players,
-		handsSettled,
-	}: TableSummary): Promise<LobbyTable | null> {
+	async applySummary(
+		{ tableId, status, players, handsSettled }: TableSummary,
+		at: Date,
+	): Promise<LobbyTable | null> {
 		const [row] = await this.db
 			.update(lobbyTables)
 			.set({
 				players: [...players],
+				emptySince:
+					players.length === 0
+						? sql`coalesce(${lobbyTables.emptySince}, ${at.toISOString()}::timestamptz)`
+						: null,
 				handsPlayed: sql`${lobbyTables.handsPlayed} + ${handsSettled}`,
 				status: sql`case when ${lobbyTables.status} = 'closed' then 'closed' else ${status} end`,
 			})
 			.where(eq(lobbyTables.id, tableId))
 			.returning();
 		return row ? toTable(row) : null;
+	}
+
+	async findEmptySince(
+		before: Readonly<Record<LobbyTable["visibility"], Date>>,
+	): Promise<readonly string[]> {
+		const rows = await this.db
+			.select({ id: lobbyTables.id })
+			.from(lobbyTables)
+			.where(
+				and(
+					eq(lobbyTables.status, "open"),
+					or(
+						...(["public", "private"] as const).map((visibility) =>
+							and(
+								eq(lobbyTables.visibility, visibility),
+								lt(lobbyTables.emptySince, before[visibility]),
+							),
+						),
+					),
+				),
+			);
+		return rows.map(({ id }) => id);
+	}
+
+	async markClosed(tableId: string): Promise<void> {
+		await this.db
+			.update(lobbyTables)
+			.set({ status: "closed" })
+			.where(eq(lobbyTables.id, tableId));
 	}
 
 	async setInviteCode(tableId: string, code: string): Promise<boolean> {

@@ -92,6 +92,11 @@ export class TableRuntime {
 		);
 	}
 
+	/** The table is closed: it takes no more commands, and need not stay in memory. */
+	get closed(): boolean {
+		return this.loaded?.state.table.status === "closed";
+	}
+
 	/** When the table last took or finished a command. */
 	get lastUsedAt(): number {
 		return this.usedAt;

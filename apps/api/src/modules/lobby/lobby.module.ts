@@ -1,4 +1,7 @@
 import { Module } from "@nestjs/common";
+import { CloseIdleTablesHandler } from "./application/commands/close-idle-tables/close-idle-tables.handler.js";
+import { CloseTableHandler } from "./application/commands/close-table/close-table.handler.js";
+import { IdleTablesScheduler } from "./application/idle-tables.scheduler.js";
 import { CreateTableHandler } from "./application/commands/create-table/create-table.handler.js";
 import { RedeemInviteHandler } from "./application/commands/redeem-invite/redeem-invite.handler.js";
 import { RegenerateInviteHandler } from "./application/commands/regenerate-invite/regenerate-invite.handler.js";
@@ -29,6 +32,9 @@ import { LobbyGateway } from "./presentation/lobby.gateway.js";
 		{ provide: PasswordHasher, useClass: ScryptPasswordHasher },
 		{ provide: TableGrants, useClass: RedisTableGrants },
 		CreateTableHandler,
+		CloseTableHandler,
+		CloseIdleTablesHandler,
+		IdleTablesScheduler,
 		RedeemInviteHandler,
 		RegenerateInviteHandler,
 		GetStakePresetsHandler,

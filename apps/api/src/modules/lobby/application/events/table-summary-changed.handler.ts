@@ -1,6 +1,7 @@
 import { EventBus, EventsHandler, type IEventHandler } from "@nestjs/cqrs";
 import { Logger } from "@nestjs/common";
 import { TableSummaryChanged } from "@/modules/table/index.js";
+import { Clock } from "@/shared/application/clock.js";
 import { LobbyTableRepository } from "../../domain/lobby-table.repository.js";
 import { LobbyTableChanged } from "./lobby-table-changed.event.js";
 
@@ -12,11 +13,12 @@ export class TableSummaryChangedHandler implements IEventHandler<TableSummaryCha
 	constructor(
 		private readonly tables: LobbyTableRepository,
 		private readonly eventBus: EventBus,
+		private readonly clock: Clock,
 	) {}
 
 	async handle(summary: TableSummaryChanged): Promise<void> {
 		try {
-			const table = await this.tables.applySummary(summary);
+			const table = await this.tables.applySummary(summary, this.clock.now());
 			if (table) {
 				this.eventBus.publish(new LobbyTableChanged(table));
 			}
