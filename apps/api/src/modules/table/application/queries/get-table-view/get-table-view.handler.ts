@@ -1,5 +1,6 @@
 import type { TableView } from "@holdem/shared/realtime";
 import { type IQueryHandler, QueryHandler } from "@nestjs/cqrs";
+import { Clock } from "@/shared/application/clock.js";
 import { TableNotOpenError } from "../../../domain/table-errors.js";
 import { versionsOf } from "../../game-streams.js";
 import { TableRuntimeRegistry } from "../../runtime/table-runtime-registry.js";
@@ -9,7 +10,10 @@ import { GetTableViewQuery } from "./get-table-view.query.js";
 /** Reads the table from its runtime, after the commands queued before, as events go out. */
 @QueryHandler(GetTableViewQuery)
 export class GetTableViewHandler implements IQueryHandler<GetTableViewQuery> {
-	constructor(private readonly runtimes: TableRuntimeRegistry) {}
+	constructor(
+		private readonly runtimes: TableRuntimeRegistry,
+		private readonly clock: Clock,
+	) {}
 
 	async execute({ tableId, userId }: GetTableViewQuery): Promise<TableView> {
 		const loaded = await this.runtimes.get(tableId).view();
@@ -21,6 +25,7 @@ export class GetTableViewHandler implements IQueryHandler<GetTableViewQuery> {
 			loaded.state,
 			versionsOf(loaded),
 			viewerAt(table, userId),
+			this.clock.now(),
 		);
 	}
 }

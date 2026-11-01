@@ -8,6 +8,7 @@ import { replayTable } from "./evolve-table.js";
 import {
 	decideGame,
 	evolveGame,
+	turnDueAt,
 	type GameEvents,
 	type GameState,
 	handReady,
@@ -25,25 +26,36 @@ const gameOf = (history: readonly TableEvent[]): GameState => ({
 	table: replayTable(history),
 });
 
-/** Runs a command that must be accepted: answers its events and the state after them. */
-function run(state: GameState, command: GameCommand) {
-	const decision = decideGame(command, state);
+const isClock = ({ type }: TableEvent) =>
+	type === "TurnStarted" || type === "TimeBankUsed";
+
+/**
+ * Runs a command that must be accepted at `now`: answers its events and the state after them.
+ * The turn clock's events are set apart in `clock`, so tests of other rules can ignore them.
+ */
+function run(state: GameState, command: GameCommand, now = 0) {
+	const decision = decideGame(command, state, now);
 	if (!decision.ok) {
 		throw new Error(`${command.type} refused: ${decision.error.code}`);
 	}
 	expect(JSON.parse(JSON.stringify(decision.value))).toEqual(decision.value);
-	return { events: decision.value, state: evolveGame(state, decision.value) };
+	const { table, hand } = decision.value;
+	return {
+		events: { table: table.filter((event) => !isClock(event)), hand },
+		clock: table.filter(isClock),
+		state: evolveGame(state, decision.value),
+	};
 }
 
-const refusal = (state: GameState, command: GameCommand) => {
-	const decision = decideGame(command, state);
+const refusal = (state: GameState, command: GameCommand, now = 0) => {
+	const decision = decideGame(command, state, now);
 	return decision.ok
 		? null
 		: { code: decision.error.code, params: decision.error.params };
 };
 
-const start = (state: GameState, handId = "hand-1", buttonDraw = 0) =>
-	run(state, { type: "StartHand", handId, deck, buttonDraw });
+const start = (state: GameState, handId = "hand-1", buttonDraw = 0, now = 0) =>
+	run(state, { type: "StartHand", handId, deck, buttonDraw }, now);
 
 const table = (state: GameState) => state.table as OpenedTable;
 const typesOf = (events: GameEvents) => ({
@@ -123,6 +135,7 @@ describe("decideGame", () => {
 			const decision = decideGame(
 				{ type: "StartHand", handId: "hand-1", deck: [], buttonDraw: 0 },
 				gameOf(tableWith(0, 1)),
+				0,
 			);
 			expect(decision).toMatchObject({
 				ok: false,
@@ -191,17 +204,34 @@ describe("decideGame", () => {
 			).toBe("table.not-in-hand");
 		});
 
-		it("time out only the hand they were set for", () => {
-			const { state } = start(gameOf(tableWith(0, 1, 2)));
+		it("time out only the hand and turn they were set for, once the time is out", () => {
+			const { state } = start(gameOf(tableWith(0, 1, 2)), "hand-1", 0, 1_000);
 			const seat = toAct(state)!;
+			// 20 s a turn, then a 30 s time bank.
+			const dueAt = 1_000 + 20_000 + 30_000;
+			const timeout = (handId: string, at: number, timed = seat) =>
+				refusal(state, { type: "Timeout", handId, seat: timed }, at);
 
-			expect(
-				refusal(state, { type: "Timeout", handId: "hand-0", seat })?.code,
-			).toBe("table.no-hand");
-			const { events } = run(state, {
-				type: "Timeout",
-				handId: "hand-1",
+			expect(timeout("hand-0", dueAt)?.code).toBe("table.no-hand");
+			expect(timeout("hand-1", dueAt, (seat + 1) % 3)?.code).toBe(
+				"table.no-hand",
+			);
+			expect(timeout("hand-1", dueAt - 1)).toEqual({
+				code: "table.timeout-not-due",
+				params: { dueAt },
+			});
+
+			const { events, clock } = run(
+				state,
+				{ type: "Timeout", handId: "hand-1", seat },
+				dueAt,
+			);
+			expect(clock[0]).toEqual({
+				type: "TimeBankUsed",
+				v: 1,
 				seat,
+				usedMs: 30_000,
+				remainingMs: 0,
 			});
 			expect(events.hand).toEqual([
 				{
@@ -417,6 +447,120 @@ describe("decideGame", () => {
 			refusal(closed, { type: "Act", userId: "u0", action: "fold" })?.code,
 		).toBe("table.closed");
 		expect(handReady(closed.table)).toBe(false);
+	});
+});
+
+describe("the turn clock", () => {
+	const act = (
+		state: GameState,
+		action: "call" | "check" | "fold",
+		now: number,
+	) =>
+		run(
+			state,
+			{ type: "Act", userId: userAt(state, toAct(state)), action },
+			now,
+		);
+
+	it("starts when a player is to act, and again for each new turn", () => {
+		const { state, clock } = start(
+			gameOf(tableWith(0, 1, 2)),
+			"hand-1",
+			0,
+			1_000,
+		);
+		const first = toAct(state)!;
+		expect(clock).toEqual([
+			{
+				type: "TurnStarted",
+				v: 1,
+				handId: "hand-1",
+				seat: first,
+				startedAt: 1_000,
+			},
+		]);
+		expect(table(state).turn).toEqual({
+			handId: "hand-1",
+			seat: first,
+			startedAt: 1_000,
+		});
+
+		const next = act(state, "call", 6_000);
+		expect(next.clock).toEqual([
+			{
+				type: "TurnStarted",
+				v: 1,
+				handId: "hand-1",
+				seat: toAct(next.state),
+				startedAt: 6_000,
+			},
+		]);
+	});
+
+	it("takes the overrun of a late action out of the time bank, which never refills", () => {
+		let { state } = start(gameOf(tableWith(0, 1, 2)), "hand-1", 0, 0);
+		const seat = toAct(state)!;
+
+		const late = act(state, "call", 27_500);
+		expect(late.clock[0]).toEqual({
+			type: "TimeBankUsed",
+			v: 1,
+			seat,
+			usedMs: 7_500,
+			remainingMs: 22_500,
+		});
+		state = late.state;
+		const bankOf = (s: GameState) =>
+			table(s).players.find((p) => p.seat === seat)?.timeBankMs;
+		expect(bankOf(state)).toBe(22_500);
+
+		// In time: nothing comes out of the bank.
+		const onTime = act(state, "fold", 30_000);
+		expect(onTime.clock.map((e) => e.type)).not.toContain("TimeBankUsed");
+
+		// The bank stays spent into the next hand.
+		state = onTime.state;
+		while (state.hand.status === "in-progress") {
+			state = act(state, "fold", 31_000).state;
+		}
+		const next = start(state, "hand-2", 0, 40_000).state;
+		expect(bankOf(next)).toBe(22_500);
+		expect(table(next).turn?.startedAt).toBe(40_000);
+	});
+
+	it("restarts for a player who is to act again, so an old timer cannot time the new turn out", () => {
+		// Heads-up the big blind acts last preflop and first on the flop.
+		let { state } = start(gameOf(tableWith(0, 1)), "hand-1", 0, 0);
+		state = act(state, "call", 1_000).state;
+		expect(table(state).turn).toMatchObject({ seat: 1, startedAt: 1_000 });
+
+		const flop = act(state, "check", 2_000);
+		expect(flop.clock).toEqual([
+			{
+				type: "TurnStarted",
+				v: 1,
+				handId: "hand-1",
+				seat: 1,
+				startedAt: 2_000,
+			},
+		]);
+		// The preflop turn's timer would fire at 51 s; the flop turn runs until 52 s.
+		expect(
+			refusal(
+				flop.state,
+				{ type: "Timeout", handId: "hand-1", seat: 1 },
+				51_000,
+			)?.code,
+		).toBe("table.timeout-not-due");
+		expect(turnDueAt(flop.state.table)).toBe(52_000);
+	});
+
+	it("stops when the hand ends", () => {
+		const { state } = start(gameOf(tableWith(0, 1)));
+		const ended = act(state, "fold", 0);
+		expect(ended.clock).toEqual([]);
+		expect(table(ended.state).turn).toBeNull();
+		expect(turnDueAt(ended.state.table)).toBeNull();
 	});
 });
 

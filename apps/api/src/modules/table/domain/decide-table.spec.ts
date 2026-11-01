@@ -49,6 +49,7 @@ describe("decideTable", () => {
 				spectators: [],
 				hand: null,
 				positions: null,
+				turn: null,
 			});
 			expect(state.status !== "unopened" && state.config).not.toBe(config);
 		});
@@ -90,8 +91,20 @@ describe("decideTable", () => {
 				.then([seatTaken(3, 150)]);
 
 			expect(state.status !== "unopened" && state.players).toEqual([
-				{ seat: 0, userId: "u0", stack: 200, status: "waiting-for-big-blind" },
-				{ seat: 3, userId: "u3", stack: 150, status: "waiting-for-big-blind" },
+				{
+					seat: 0,
+					userId: "u0",
+					stack: 200,
+					status: "waiting-for-big-blind",
+					timeBankMs: 30_000,
+				},
+				{
+					seat: 3,
+					userId: "u3",
+					stack: 150,
+					status: "waiting-for-big-blind",
+					timeBankMs: 30_000,
+				},
 			]);
 		});
 
@@ -296,6 +309,7 @@ describe("decideTable", () => {
 				userId: "u0",
 				stack: 400,
 				status: "sitting-out",
+				timeBankMs: 30_000,
 			});
 			given(busted, broke)
 				.when({ type: "Rebuy", userId: "u0", amount: 100 })

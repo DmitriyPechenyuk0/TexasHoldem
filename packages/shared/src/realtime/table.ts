@@ -226,6 +226,8 @@ export const SeatView = z.object({
 	/** The stack the player brought into the current hand, or has between hands. */
 	stack: Chips,
 	status: SeatStatus,
+	/** Time bank left: full when the player sits down, never refilled while they keep the seat. */
+	timeBankMs: z.int().nonnegative(),
 });
 export type SeatView = z.infer<typeof SeatView>;
 
@@ -248,6 +250,17 @@ export const TableEventView = z.discriminatedUnion("type", [
 		smallBlindSeat: SeatIndex,
 		bigBlindSeat: SeatIndex,
 		seats: z.array(SeatIndex).readonly(),
+	}),
+	event("TurnStarted", {
+		handId: z.string(),
+		seat: SeatIndex,
+		/** When the turn began, in epoch milliseconds (server time). */
+		startedAt: z.int().nonnegative(),
+	}),
+	event("TimeBankUsed", {
+		seat: SeatIndex,
+		usedMs: z.int().nonnegative(),
+		remainingMs: z.int().nonnegative(),
 	}),
 	event("HandSettled", {
 		handId: z.string(),
@@ -294,6 +307,8 @@ export type FairnessCommitment = z.infer<typeof FairnessCommitment>;
 export const TableView = z.object({
 	tableId: TableId,
 	versions: TableVersions,
+	/** The server's clock when the view was taken, so the client can correct timers for skew. */
+	serverTime: z.iso.datetime(),
 	status: z.enum(["open", "closed"]),
 	settings: TableSettings,
 	seats: z.array(SeatView).readonly(),

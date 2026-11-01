@@ -218,6 +218,20 @@ describe("table realtime contracts", () => {
 				stacks: [{ seat: 0, stack: 198 }],
 			},
 			{ type: "SeatLeft", v: 1, seat: 0, userId: userId(0) },
+			{
+				type: "TurnStarted",
+				v: 1,
+				handId: "h-1",
+				seat: 1,
+				startedAt: 1_700_000_000_000,
+			},
+			{
+				type: "TimeBankUsed",
+				v: 1,
+				seat: 1,
+				usedMs: 2_500,
+				remainingMs: 27_500,
+			},
 			{ type: "TableClosed", v: 1 },
 		];
 		for (const event of events) {
@@ -232,6 +246,7 @@ describe("table realtime contracts", () => {
 		const view = {
 			tableId: "0b7c6f1e-58a4-4f6b-9a39-5f0f6a8a1c2d",
 			versions: { tableVersion: 12, hand: { handId: "h-1", version: 5 } },
+			serverTime: "2026-11-01T10:00:05.000Z",
 			status: "open",
 			settings: {
 				smallBlind: 1,
@@ -244,7 +259,13 @@ describe("table realtime contracts", () => {
 				visibility: "private",
 			},
 			seats: [
-				{ seat: 3, userId: userId(3), stack: 400, status: "sitting-out" },
+				{
+					seat: 3,
+					userId: userId(3),
+					stack: 400,
+					status: "sitting-out",
+					timeBankMs: 30_000,
+				},
 			],
 			spectatorCount: 2,
 			hand: { status: "idle", viewer: "spectator" },

@@ -228,6 +228,18 @@ export class NotInHandError extends DomainError {
 	}
 }
 
+/** The turn timer fired early, or for a turn that is over: the player still has time. */
+export class TimeoutNotDueError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.timeout-not-due";
+
+	constructor(dueAt: number) {
+		super(`The turn runs until ${new Date(dueAt).toISOString()}`, {
+			params: { dueAt },
+		});
+	}
+}
+
 /** The hand refused the command (`@holdem/engine`): its `hand.*` code and params pass through. */
 export class HandRuleError extends DomainError {
 	readonly kind = "rule-violation";
@@ -266,4 +278,5 @@ export type TableError =
 	| NotEnoughPlayersError
 	| NoHandError
 	| NotInHandError
-	| HandRuleError;
+	| HandRuleError
+	| TimeoutNotDueError;

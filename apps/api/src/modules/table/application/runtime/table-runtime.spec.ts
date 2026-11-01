@@ -10,7 +10,8 @@ import { TableRuntime } from "./table-runtime.js";
 
 const HAND_PAUSE_MS = 3_000;
 
-function setUp() {
+/** `fakeClock`: read the time from vi's fake timers, which turn timers need. */
+function setUp({ fakeClock = false } = {}) {
 	const store = new InMemoryEventStore<TableStreamEvent>();
 	const decks = new FixedDeckProvider();
 	const published: TableChanged[] = [];
@@ -20,7 +21,7 @@ function setUp() {
 		decks,
 		publish: (change) => published.push(change),
 		options: { handPauseMs: HAND_PAUSE_MS, idleMs: 60_000 },
-		now: () => now,
+		now: () => (fakeClock ? Date.now() : now),
 	});
 	return {
 		store,
@@ -243,6 +244,86 @@ describe("TableRuntime", () => {
 		expect(error).toHaveBeenCalledWith(
 			expect.objectContaining({ msg: "next hand not dealt", tableId: "t-1" }),
 		);
+	});
+
+	describe("the turn timer", () => {
+		/** Two players dealt a hand: the button (seat 0) posts the small blind and is to act. */
+		async function dealtHeadsUp() {
+			vi.useFakeTimers();
+			const setup = setUp({ fakeClock: true });
+			await setup.runtime.execute(open);
+			await setup.runtime.execute(takeSeat(0));
+			await setup.runtime.execute(takeSeat(1));
+			await setup.runtime.dealNextHand();
+			const autoActions = () =>
+				setup.published.flatMap(({ events }) =>
+					events.hand.flatMap((e) =>
+						e.type === "PlayerActed" && e.auto ? [[e.seat, e.action]] : [],
+					),
+				);
+			return { ...setup, autoActions };
+		}
+		// 20 s a turn, then a 30 s time bank.
+		const TURN_AND_BANK_MS = 50_000;
+
+		it("folds a player facing a bet once the turn time and the time bank are spent", async () => {
+			const { runtime, published, autoActions } = await dealtHeadsUp();
+			expect(runtime.idle).toBe(false);
+
+			await vi.advanceTimersByTimeAsync(TURN_AND_BANK_MS - 1);
+			expect(autoActions()).toEqual([]);
+			await vi.advanceTimersByTimeAsync(1);
+
+			expect(autoActions()).toEqual([[0, "fold"]]);
+			const timedOut = published.at(-1)!.events.table;
+			expect(timedOut[0]).toEqual({
+				type: "TimeBankUsed",
+				v: 1,
+				seat: 0,
+				usedMs: 30_000,
+				remainingMs: 0,
+			});
+		});
+
+		it("checks for a player who can, after a turn that started late in the hand", async () => {
+			const { runtime, autoActions } = await dealtHeadsUp();
+			await vi.advanceTimersByTimeAsync(5_000);
+			await runtime.execute({ type: "Act", userId: "u0", action: "call" });
+
+			// The button's timer is gone: only the big blind's runs, from the call on.
+			await vi.advanceTimersByTimeAsync(TURN_AND_BANK_MS - 1);
+			expect(autoActions()).toEqual([]);
+			await vi.advanceTimersByTimeAsync(1);
+
+			expect(autoActions()).toEqual([[1, "check"]]);
+		});
+
+		it("times out each turn once, whatever happens to the old timers", async () => {
+			const { runtime, published, autoActions } = await dealtHeadsUp();
+			await runtime.execute({ type: "Act", userId: "u0", action: "call" });
+			await runtime.execute({ type: "Act", userId: "u1", action: "check" });
+
+			// Nobody acts any more: flop, turn and river are checked down by the timer. The first
+			// timeout of each player spends their bank, so later turns last 20 s only.
+			await vi.advanceTimersByTimeAsync(TURN_AND_BANK_MS * 10);
+
+			expect(autoActions().filter(([, action]) => action === "check")).toEqual([
+				[1, "check"],
+				[0, "check"],
+				[1, "check"],
+				[0, "check"],
+				[1, "check"],
+				[0, "check"],
+			]);
+			// The first hand ended with both banks spent (the next hands are dealt after it).
+			const settled = published.find(({ events }) =>
+				events.table.some((e) => e.type === "HandSettled"),
+			)!.state.table;
+			expect(settled).toMatchObject({ hand: null, turn: null });
+			expect(
+				settled.status === "open" && settled.players.map((p) => p.timeBankMs),
+			).toEqual([0, 0]);
+		});
 	});
 
 	it("is idle with nothing queued and no deal due, and knows when it was last used", async () => {

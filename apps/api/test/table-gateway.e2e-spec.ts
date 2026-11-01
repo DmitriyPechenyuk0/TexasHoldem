@@ -64,10 +64,10 @@ describe("Table gateway (e2e)", () => {
 		await database?.drop();
 	});
 
-	const newTable = async (): Promise<string> => {
+	const newTable = async (settings: object = {}): Promise<string> => {
 		const response = await request(app.getHttpServer())
 			.post("/api/dev/tables")
-			.send({})
+			.send(settings)
 			.expect(201);
 		return (response.body as { tableId: string }).tableId;
 	};
@@ -230,6 +230,55 @@ describe("Table gateway (e2e)", () => {
 		]);
 	});
 
+	it("shows everyone the turn clock, and folds a player whose time runs out", async () => {
+		// 5 s a turn, no time bank: the shortest clock a table allows.
+		const tableId = await newTable({ turnSeconds: 5, timeBankSeconds: 0 });
+		const [alice, bob] = await Promise.all([client(tableId), client(tableId)]);
+		const timers: unknown[] = [];
+		bob.socket.on("timer", (payload) => timers.push(payload));
+		await alice.join();
+		await bob.join();
+		for (const [seat, user] of [alice, bob].entries()) {
+			ok(
+				await user.socket.emitWithAck("take-seat", {
+					tableId: tableIdOf(tableId),
+					seat,
+					buyIn: 200,
+				}),
+			);
+		}
+
+		// Heads-up the button is to act first; the button is drawn.
+		await vi.waitFor(() => expect(timers).toHaveLength(1));
+		const [first] = timers as {
+			tableId: string;
+			timer: { seat: number; turnEndsAt: string };
+		}[];
+		expect(first).toMatchObject({ tableId, timer: { timeBankMs: 0 } });
+		const { seat } = first!.timer;
+		const snapshot = await bob.join();
+		expect(snapshot.timer).toEqual(first!.timer);
+		const skewMs = Date.parse(snapshot.serverTime) - Date.now();
+		expect(Math.abs(skewMs)).toBeLessThan(1_000);
+		const turnMs =
+			Date.parse(first!.timer.turnEndsAt) - Date.parse(snapshot.serverTime);
+		expect(turnMs).toBeGreaterThan(3_000);
+		expect(turnMs).toBeLessThanOrEqual(5_000);
+
+		// The player to act does nothing: the table folds for them when the 5 s are out.
+		await vi.waitFor(
+			() =>
+				expect(
+					bob.batches
+						.flatMap((b) => b.hand)
+						.find((e) => e.type === "PlayerActed"),
+				).toMatchObject({ seat, action: "fold", auto: true }),
+			{ timeout: 8_000, interval: 100 },
+		);
+		// The hand ended: no clock until the next is dealt.
+		expect(timers.map((t) => (t as { timer: unknown }).timer)).toContain(null);
+	}, 30_000);
+
 	it("refuses invalid payloads before they reach the table", async () => {
 		const tableId = await newTable();
 		const alice = await client(tableId);
@@ -304,7 +353,13 @@ describe("Table gateway (e2e)", () => {
 		const snapshot = await carol.join();
 		expect(snapshot.versions).toEqual(second!.versions);
 		expect(snapshot.seats).toEqual([
-			{ seat: 3, userId: alice.userId, stack: 200, status: "sitting-out" },
+			{
+				seat: 3,
+				userId: alice.userId,
+				stack: 200,
+				status: "sitting-out",
+				timeBankMs: 30_000,
+			},
 		]);
 	});
 
