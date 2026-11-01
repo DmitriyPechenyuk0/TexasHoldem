@@ -5,6 +5,7 @@ import {
 	EventStore,
 	type RecordedEvent,
 	type StoredEvent,
+	type StreamAppend,
 	type Upcasters,
 	upcast,
 	type VersionedEvent,
@@ -13,6 +14,9 @@ import { type Database, isUniqueViolation } from "../database/index.js";
 import type { EventsTable } from "./events-table.js";
 
 type EventRow = EventsTable["$inferSelect"];
+
+/** The client or a transaction of it. */
+type Executor = Pick<Database, "execute">;
 
 /**
  * The event store in Postgres, over one context's events table. Neither payloads nor metadata are
@@ -35,8 +39,36 @@ export class PostgresEventStore<
 		events: readonly E[],
 		metadata: EventMetadata = {},
 	): Promise<number> {
+		await this.insert(this.db, { streamId, expectedVersion, events }, metadata);
+		return expectedVersion + events.length;
+	}
+
+	async appendToStreams(
+		appends: readonly StreamAppend<E>[],
+		metadata: EventMetadata = {},
+	): Promise<readonly number[]> {
+		await this.db.transaction(async (tx) => {
+			for (const append of appends) {
+				await this.insert(tx, append, metadata);
+			}
+		});
+		return appends.map(
+			({ expectedVersion, events }) => expectedVersion + events.length,
+		);
+	}
+
+	/**
+	 * One statement, so a single round trip: it inserts nothing unless the stream is at the expected
+	 * version. Two appends that both see that version race for the next one, and the unique (stream,
+	 * version) constraint turns the loser away.
+	 */
+	private async insert(
+		db: Executor,
+		{ streamId, expectedVersion, events }: StreamAppend<E>,
+		metadata: EventMetadata,
+	): Promise<void> {
 		if (events.length === 0) {
-			return expectedVersion;
+			return;
 		}
 		const stored = events.map(({ type, v, ...payload }) => ({
 			type,
@@ -46,9 +78,6 @@ export class PostgresEventStore<
 		const { table } = this;
 		const column = (name: keyof EventRow) => sql.identifier(table[name].name);
 
-		// One statement, so a single round trip: it inserts nothing unless the stream is at the
-		// expected version. Two appends that both see that version race for the next one, and the
-		// unique (stream, version) constraint turns the loser away.
 		const insert = sql`
 			insert into ${table} (${column("streamId")}, ${column("version")}, ${column("type")},
 				${column("schemaVersion")}, ${column("payload")}, ${column("metadata")})
@@ -62,17 +91,18 @@ export class PostgresEventStore<
 
 		let inserted: readonly unknown[];
 		try {
-			inserted = await this.db.execute(insert, "objects");
+			inserted = await db.execute(insert, "objects");
 		} catch (error) {
 			if (isUniqueViolation(error)) {
-				throw new ConcurrencyError(streamId, expectedVersion, { cause: error });
+				throw new ConcurrencyError(streamId, expectedVersion, {
+					cause: error,
+				});
 			}
 			throw error;
 		}
 		if (inserted.length === 0) {
 			throw new ConcurrencyError(streamId, expectedVersion);
 		}
-		return expectedVersion + events.length;
 	}
 
 	async readStream(

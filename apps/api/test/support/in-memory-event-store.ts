@@ -4,6 +4,7 @@ import {
 	EventStore,
 	type RecordedEvent,
 	type StoredEvent,
+	type StreamAppend,
 	type Upcasters,
 	upcast,
 	type VersionedEvent,
@@ -32,8 +33,7 @@ export class InMemoryEventStore<
 		events: readonly E[],
 		metadata: EventMetadata = {},
 	): Promise<number> {
-		const current = this.log.filter((r) => r.streamId === streamId).length;
-		if (current !== expectedVersion) {
+		if (this.versionOf(streamId) !== expectedVersion) {
 			throw new ConcurrencyError(streamId, expectedVersion);
 		}
 		const occurredAt = new Date();
@@ -48,6 +48,24 @@ export class InMemoryEventStore<
 			});
 		});
 		return expectedVersion + events.length;
+	}
+
+	async appendToStreams(
+		appends: readonly StreamAppend<E>[],
+		metadata: EventMetadata = {},
+	): Promise<readonly number[]> {
+		for (const { streamId, expectedVersion } of appends) {
+			if (this.versionOf(streamId) !== expectedVersion) {
+				throw new ConcurrencyError(streamId, expectedVersion);
+			}
+		}
+		const versions: number[] = [];
+		for (const { streamId, expectedVersion, events } of appends) {
+			versions.push(
+				await this.append(streamId, expectedVersion, events, metadata),
+			);
+		}
+		return versions;
 	}
 
 	async readStream(
@@ -67,6 +85,10 @@ export class InMemoryEventStore<
 			.filter((r) => r.globalPosition > fromPosition)
 			.slice(0, limit)
 			.map((r) => this.upcasted(r));
+	}
+
+	private versionOf(streamId: string): number {
+		return this.log.filter((r) => r.streamId === streamId).length;
 	}
 
 	private upcasted(recorded: RecordedEvent<StoredEvent>): RecordedEvent<E> {

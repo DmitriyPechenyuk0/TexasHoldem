@@ -58,8 +58,8 @@ export interface ExpectedError {
 }
 
 /**
- * What hand orchestration (POK-76) will record with events: the hand being played, and stacks
- * after hands. Until then tests set them directly.
+ * What `HandScheduled` and `HandSettled` record: the hand being played, and stacks after hands.
+ * Decider tests set them directly; `decideGame` tests play real hands.
  */
 export interface HandOutcome {
 	readonly hand?: CurrentHand;

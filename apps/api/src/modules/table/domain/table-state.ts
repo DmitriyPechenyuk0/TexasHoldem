@@ -1,4 +1,4 @@
-import type { Chips, SeatIndex } from "@holdem/engine";
+import type { Chips, HandPositions, SeatIndex } from "@holdem/engine";
 import type { TableConfig } from "./table-config.js";
 
 /**
@@ -18,7 +18,7 @@ export interface SeatedPlayer {
 	readonly status: SeatStatus;
 }
 
-/** The hand being played, set and cleared by hand orchestration (POK-76). */
+/** The hand being played: set by `HandScheduled`, cleared by `HandSettled`. */
 export interface CurrentHand {
 	readonly handId: string;
 	/** The seats dealt in. */
@@ -38,6 +38,11 @@ export interface OpenedTable {
 	/** User ids, in the order they started watching. */
 	readonly spectators: readonly string[];
 	readonly hand: CurrentHand | null;
+	/** Where the button and the blinds were in the last hand, for the next one; null before the first. */
+	readonly positions: Pick<
+		HandPositions,
+		"buttonSeat" | "smallBlindSeat" | "bigBlindSeat"
+	> | null;
 }
 
 export type TableState = UnopenedTable | OpenedTable;

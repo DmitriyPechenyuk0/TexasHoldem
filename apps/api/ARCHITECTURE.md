@@ -177,6 +177,7 @@ CI applies the migrations and fails when a schema change has no migration.
 Event-sourced aggregates (the table, and the hands it runs) are stored as streams of events (ADR-002), through the `EventStore` port in `shared/application`:
 
 - `append(streamId, expectedVersion, events, metadata?)` stores all the events or none, after the stream's last one, and answers the new version. The stream must be at `expectedVersion` (0 for a new one); otherwise it throws `ConcurrencyError` (409 `event-store.version-conflict`), and the command is read, decided and appended again.
+- `appendToStreams(appends, metadata?)` does the same for several streams in one transaction, for a decision that changes more than one (a table and its hand).
 - `readStream(streamId, fromVersion?)` answers a stream's events in order. `readAll(fromPosition, limit)` pages through every stream of the store by `globalPosition`, for projections.
 - Each event carries `metadata` (`correlationId`, `causationId`, `userId`) and `occurredAt`, the time it was stored.
 - Command handlers use the helpers in `shared/application/event-sourcing.ts` with a `Decider` (`shared/domain/decider.ts`; the table's is `tableDecider`):
@@ -288,7 +289,23 @@ The table is an event-sourced decider in `modules/table/domain` (ADR-002): `deci
 - Leaving during a hand the player is dealt into marks the seat `leaving` until the hand ends; otherwise the seat is freed at once. Rebuys (an empty stack, a full buy-in) and top-ups (up to the maximum buy-in) wait until the player's hand ends.
 - At most 50 users watch a table (`MAX_SPECTATORS`); a spectator who sits down stops watching. `CloseTable` lets everyone leave first and is refused during a hand.
 - `tableDecider` bundles `decideTable`, `evolveTable` and the initial state for the event-sourcing helpers; the streams live in `table_events` (see "Event store").
-- The running hand (`state.hand`) is recorded by hand orchestration (POK-76). Until then the decider tests set it through `given(history, { hand, stacks })` in `test/support/table.ts`.
+- `decideTable` tests set the running hand (`state.hand`) and stacks directly through `given(history, { hand, stacks })` in `test/support/table.ts`.
+
+### Hands
+
+`decideGame(command, { table, hand })` (`domain/game.ts`) runs hands on top of `decideTable`: it is the only caller of the engine's hand decider (Context Map), and answers the events for both streams, `table-<tableId>` and `hand-<handId>`.
+
+- `StartHand { handId, deck, buttonDraw }` deals the next hand when no hand is running and two players are ready (`active` or `waiting-for-big-blind`; sitting-out and leaving players are not dealt in). The positions follow the dead button rule from the last hand (`nextHandPositions`); before the first hand, or when the rule leaves fewer than two to deal in, the table starts over with every ready player dealt in and the button on the seat `buttonDraw` picks (`firstHandPositions`). Waiting players dealt in become `active`, then `HandScheduled` records the hand and its positions, and the engine's `StartHand` opens the hand's stream.
+- `Act`, `ShowCards` and `MuckCards` come from a user and go to the hand on their seat (`table.not-in-hand` for a player not dealt in, `table.leaving-seat` for one who left); `Timeout { handId, seat }` comes from the turn timer and is refused for any other hand (`table.no-hand`). The hand's own refusals pass through as `HandRuleError`, with its `hand.*` code and params.
+- What follows on its own is added to the same decision: a leaving player folds on their turn (mucks at the showdown), at once if it is their turn already. When the hand ends, `HandSettled` gives every player dealt in their stack from `HandEnded`; then the leaving players' seats are freed (`SeatLeft`) and players left with no chips sit out, to rebuy and sit back in. A player who sat out during the hand plays it out and is not dealt the next.
+- `handReady(table)` says whether a hand can start now.
+
+The application side (`modules/table/application`):
+
+- `ExecuteTableCommand(tableId, command, metadata)` runs any command but `StartHand`; `StartNextHandCommand(tableId)` deals the next hand with a new id and the `DeckProvider`'s deck and button draw, or answers null when the table is not ready. Both are load → decide → append both streams in one transaction (`loadGame` / `saveGame`, `EventStore.appendToStreams`), and answer the events.
+- After a command leaves the table ready for a hand, the handler asks the `HandScheduler` to deal it. `TimerHandScheduler` waits `TABLE_HAND_PAUSE_MS` (3 s by default, so players see the result), one timer per table, and deals again after the pause when the deal lost a race. The table runtime (POK-77) will run these deals in the table's mailbox.
+- `RandomDeckProvider` shuffles each hand from a fresh 32-byte server seed (ADR-008). Committing to the seed before the deal and revealing it after is POK-86.
+- `test/table-hands.e2e-spec.ts` plays 100 random hands at a six-seat table through the command bus, with players sitting out, leaving, busting and rebuying, and checks every chip after each hand; `HOLDEM_TABLE_SEED` replays a run.
 
 ## HTTP and sockets
 

@@ -1,4 +1,4 @@
-import type { Chips, SeatIndex } from "@holdem/engine";
+import type { Chips, HandError, SeatIndex } from "@holdem/engine";
 import { DomainError } from "@/shared/domain/domain-error.js";
 import type { InvalidTableConfigReason } from "./table-config.js";
 
@@ -200,6 +200,47 @@ export class SpectatorsFullError extends DomainError {
 	}
 }
 
+export class NotEnoughPlayersError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.not-enough-players";
+
+	constructor() {
+		super("Two players ready to play are needed for a hand");
+	}
+}
+
+/** No hand is being played, or not the one the command was meant for. */
+export class NoHandError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.no-hand";
+
+	constructor() {
+		super("No hand is being played");
+	}
+}
+
+export class NotInHandError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.not-in-hand";
+
+	constructor() {
+		super("Not dealt into this hand");
+	}
+}
+
+/** The hand refused the command (`@holdem/engine`): its `hand.*` code and params pass through. */
+export class HandRuleError extends DomainError {
+	readonly kind = "rule-violation";
+	readonly code: HandError["code"];
+
+	constructor(error: HandError) {
+		super(`The hand refused the command: ${error.code}`, {
+			params: "params" in error ? error.params : undefined,
+		});
+		this.code = error.code;
+	}
+}
+
 export type TableError =
 	| TableNotOpenError
 	| TableAlreadyOpenError
@@ -221,4 +262,8 @@ export type TableError =
 	| HandInProgressError
 	| AlreadySpectatingError
 	| NotSpectatingError
-	| SpectatorsFullError;
+	| SpectatorsFullError
+	| NotEnoughPlayersError
+	| NoHandError
+	| NotInHandError
+	| HandRuleError;

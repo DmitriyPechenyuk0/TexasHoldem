@@ -43,6 +43,13 @@ export class ConcurrencyError extends DomainError {
 	}
 }
 
+/** Events for one stream, which must be at `expectedVersion`. */
+export interface StreamAppend<E extends VersionedEvent> {
+	readonly streamId: string;
+	readonly expectedVersion: number;
+	readonly events: readonly E[];
+}
+
 /**
  * Port for append-only event streams (ADR-002). Events are never changed once stored: a schema
  * change bumps `v` and adds an upcaster, which reads turn old events into the current shape with.
@@ -58,6 +65,15 @@ export abstract class EventStore<E extends VersionedEvent = VersionedEvent> {
 		events: readonly E[],
 		metadata?: EventMetadata,
 	): Promise<number>;
+
+	/**
+	 * Appends to several streams at once, all or none, as `append` does to each; answers their new
+	 * versions in the same order. For a decision that changes more than one stream.
+	 */
+	abstract appendToStreams(
+		appends: readonly StreamAppend<E>[],
+		metadata?: EventMetadata,
+	): Promise<readonly number[]>;
 
 	/** The stream's events from `fromVersion` (1 by default) on, in order; none for an unknown stream. */
 	abstract readStream(

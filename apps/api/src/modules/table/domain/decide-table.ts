@@ -129,7 +129,7 @@ function takeSeat(
 		: accept(taken);
 }
 
-/** A player dealt into the running hand keeps the seat until it ends, and is folded meanwhile (POK-76). */
+/** A player dealt into the running hand keeps the seat until it ends, and folds on their turn (`decideGame`). */
 function leaveSeat(state: TableState, userId: string): TableDecision {
 	const found = seatOf(state, userId);
 	if (!found.ok) return found;
