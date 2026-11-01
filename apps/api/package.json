@@ -1,6 +1,6 @@
 {
 	"name": "@holdem/api",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"private": true,
 	"license": "MIT",
 	"type": "module",
@@ -10,6 +10,7 @@
 		"start": "nest start --env-file .env",
 		"start:debug": "nest start --debug --watch --env-file .env",
 		"start:prod": "node --env-file-if-exists=.env dist/main",
+		"start:two": "node scripts/two-instances.mjs",
 		"lint": "oxlint --type-aware --deny-warnings src/ test/ && pnpm run lint:deps",
 		"lint:deps": "depcruise src test --output-type err-long",
 		"typecheck": "tsc --noEmit",
@@ -35,6 +36,7 @@
 		"@nestjs/platform-socket.io": "^12.2.0",
 		"@nestjs/websockets": "^12.2.0",
 		"@redis/client": "^6.3.0",
+		"@socket.io/redis-streams-adapter": "^0.3.1",
 		"better-auth": "^1.7.12",
 		"drizzle-orm": "1.0.0-rc.5",
 		"express": "^5.3.0",

@@ -58,6 +58,10 @@ describe("dependency rules", () => {
 					"export const seat = DomainError;\n",
 				"src/modules/table/domain/table.ts":
 					'import { seat } from "./seat.js";\nexport const table = seat;\n',
+				"test/support/table.ts":
+					'import { table } from "../../src/modules/table/domain/table.js";\nexport const given = table;\n',
+				"src/modules/table/domain/table.spec.ts":
+					'import { given } from "../../../../test/support/table.js";\nexport const spec = given;\n',
 				"src/modules/table/application/commands/take-seat.handler.ts":
 					'import { table } from "../../domain/table.js";\n' +
 					'import { Clock } from "../../../../shared/application/clock.js";\n' +
@@ -234,6 +238,15 @@ describe("dependency rules", () => {
 					"export const clock = fakeClock;\n",
 			},
 			"production-code-imports-no-tests: src/shared/infrastructure/system-clock.ts -> test/support/fake-clock.ts",
+		],
+		[
+			"domain code importing test support",
+			{
+				"test/support/table.ts": exportsValue("given"),
+				"src/modules/table/domain/table.ts":
+					'import { given } from "../../../../test/support/table.js";\nexport const table = given;\n',
+			},
+			"production-code-imports-no-tests: src/modules/table/domain/table.ts -> test/support/table.ts",
 		],
 		[
 			"production code importing a dev dependency",

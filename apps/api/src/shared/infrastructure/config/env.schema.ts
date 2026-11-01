@@ -6,6 +6,27 @@ const port = z
 	.string()
 	.transform(Number)
 	.pipe(z.int({ error: portError }).min(1, portError).max(65535, portError));
+const leaseTtlError =
+	"must be a whole number of milliseconds from 1000 to 60000";
+const leaseTtl = z
+	.string()
+	.transform(Number)
+	.pipe(
+		z
+			.int({ error: leaseTtlError })
+			.min(1_000, leaseTtlError)
+			.max(60_000, leaseTtlError),
+	);
+const handPauseError = "must be a whole number of milliseconds from 0 to 60000";
+const handPause = z
+	.string()
+	.transform(Number)
+	.pipe(
+		z
+			.int({ error: handPauseError })
+			.min(0, handPauseError)
+			.max(60_000, handPauseError),
+	);
 const httpUrl = z.url({ protocol: /^https?$/ });
 const databaseUrl = z.url({ protocol: /^postgres(ql)?$/ });
 const origin = (example: string) =>
@@ -125,6 +146,9 @@ export const envSchema = z
 		S3_FORCE_PATH_STYLE: z.stringbool().default(false),
 		S3_PUBLIC_URL: httpUrl.optional(),
 
+		TABLE_HAND_PAUSE_MS: handPause.default(3_000),
+		TABLE_LEASE_TTL_MS: leaseTtl.default(10_000),
+
 		AUTH_SECRET: z
 			.string()
 			.min(
@@ -172,6 +196,10 @@ export const envSchema = z
 				env.S3_PUBLIC_URL ??
 				bucketUrl(env.S3_ENDPOINT, env.S3_BUCKET, env.S3_FORCE_PATH_STYLE)
 			).replace(/\/+$/, ""),
+		},
+		table: {
+			handPauseMs: env.TABLE_HAND_PAUSE_MS,
+			leaseTtlMs: env.TABLE_LEASE_TTL_MS,
 		},
 		auth: {
 			secret: env.AUTH_SECRET,

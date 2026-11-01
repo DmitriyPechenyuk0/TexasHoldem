@@ -13,6 +13,7 @@ src/
       <operation>.ts        the schemas of one endpoint or event
       index.ts              the context's public entry
   realtime/                 socket.io namespaces and their events: define.ts, then one file per namespace
+  events/                   integration events between api instances: the envelope, then one file per context
 ```
 
 Import a context through its subpath, so bundles only carry what they use:
@@ -22,6 +23,13 @@ import { ServerTimeResponse } from "@holdem/shared/contracts/system";
 import { PingEvent } from "@holdem/shared/realtime";
 import { TableId, Chips } from "@holdem/shared";
 ```
+
+## Integration events
+
+`src/events` (`@holdem/shared/events`) holds the schemas of the api's integration events between contexts, as they travel between api instances through Redis. Only the api uses it.
+
+- `IntegrationEventEnvelope`: `{ from, name, v, data }`. `from` is the sending instance, `name` is `<context>.<event>`, and `v` the schema version of `data`.
+- Each event version has a schema of its own, named after it: `UserRegisteredV1`, `UserVerifiedV1`. A change to an event's data adds a new version next to the old one; an instance drops a version it does not know.
 
 ## Realtime
 
@@ -47,6 +55,17 @@ export type SystemClientToServerEvents = ClientToServerEvents<typeof systemNames
 - **Event names are kebab-case and stable.** A name is part of the contract: a breaking change to its payload or ack gets a new name (`take-seat-v2`) while the old one is still served, and the old one is removed only when no client sends it.
 - **Realtime schemas never coerce or transform.** JSON keeps types over a socket, so the sender's type and the parsed type are the same.
 - The receiver always parses: the api validates every payload, and the web app parses acks with `ackOf(Event.ack)`.
+
+### The table namespace
+
+`/table` (`tableNamespace`, `src/realtime/table.ts`) carries the game. Every client payload names its `tableId`, since one socket may follow several tables.
+
+- **Commands**: `join { as: "player" | "spectator" }` answers the whole `TableView`; `leave`, `take-seat`, `leave-seat`, `sit-out`, `sit-in`, `act { action, amount? }`, `show-cards`, `muck-cards`, `top-up` and `rebuy` answer `{}` (`TableCommandAck`). Their effect arrives as an `events` batch, like everyone else's.
+- **Server events**: `snapshot` (a `TableView`, whenever the client has to start over), `events` (`TableEventsBatch`: one command's `table` and `hand` events), `timer` (the turn clock, POK-84) and `problem` (a failure that answers no command of this client).
+- **What a viewer sees**: `TableView.hand` is the engine's `toPlayerView` and `HandEventView` its `redactEvent`, for that viewer: never the deck, a burn card or a hole card not shown. Table events (`TableEventView`) are public. Parsing is no redaction: a raw `HoleCardsDealt` parses with every player's cards, so the api only ever sends `redactEvent` output.
+- **Absences** (POK-85): seats show `disconnectedAt` and `sittingOutSince`, and `PlayerDisconnected`, `PlayerReconnected` and `SitOutStarted` change them. `TableSettings` has the table's policy: `reconnectGraceSeconds` before a disconnected player sits out, `disconnectedTurnSeconds` for their turns meanwhile, and `sitOutSeconds` or `sitOutHands` before one sitting out loses the seat. Closing every tab, or `leave`, counts as disconnecting; `join` again within the grace is coming back.
+- **Versions**: every snapshot and batch carries `versions`: the table stream's `tableVersion` and the current hand's stream (`hand: { handId, version }`). `followsVersions(known, batch)` says whether a batch comes right after what the client has; when it does not, a batch was missed and the client joins again for a snapshot.
+- **Engine types fit as they are.** Arrays are readonly and user ids are plain UUIDs (`playerId`, `userId`) rather than branded `UserId`, so the api sends the engine's views and events without copying them. Tests play random hands and check that every view and redacted event parses unchanged, for every viewer.
 
 ## Conventions
 

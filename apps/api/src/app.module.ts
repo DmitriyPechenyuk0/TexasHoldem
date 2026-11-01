@@ -10,11 +10,13 @@ import { IdentityModule } from "@/modules/identity/identity.module.js";
 import { AuthMiddleware } from "@/modules/identity/presentation/auth.middleware.js";
 import { ProfileModule } from "@/modules/profile/profile.module.js";
 import { SystemModule } from "@/modules/system/system.module.js";
+import { TableModule } from "@/modules/table/table.module.js";
 import {
 	AppConfig,
 	ConfigModule,
 } from "@/shared/infrastructure/config/index.js";
 import { DatabaseModule } from "@/shared/infrastructure/database/index.js";
+import { IntegrationEventsModule } from "@/shared/infrastructure/integration-events/index.js";
 import { LoggingModule } from "@/shared/infrastructure/logging/index.js";
 import { MailModule } from "@/shared/infrastructure/mail/index.js";
 import { StorageModule } from "@/shared/infrastructure/storage/index.js";
@@ -46,12 +48,14 @@ export class AppModule implements NestModule {
 				CqrsModule.forRoot(),
 				DatabaseModule,
 				RedisModule,
+				IntegrationEventsModule,
 				MailModule,
 				StorageModule,
 				SharedModule,
 				IdentityModule,
 				ProfileModule,
 				SystemModule,
+				TableModule.forRoot(config),
 			],
 		};
 	}

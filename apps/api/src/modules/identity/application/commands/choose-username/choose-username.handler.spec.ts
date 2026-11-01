@@ -1,5 +1,5 @@
 import { UserId } from "@holdem/shared";
-import type { EventBus } from "@nestjs/cqrs";
+import type { IntegrationEventBus } from "@/shared/application/integration-events.js";
 import { UserRegistered } from "../../events/user-registered.event.js";
 import { UserVerified } from "../../events/user-verified.event.js";
 import { InMemoryUsers, type StoredUser } from "../in-memory-users.js";
@@ -18,10 +18,10 @@ const pending = (user: Partial<StoredUser> = {}): StoredUser => ({
 
 function setUp(users: InMemoryUsers) {
 	const published: unknown[] = [];
-	const eventBus = {
-		publish: (event: unknown) => published.push(event),
-	} as unknown as EventBus;
-	return { handler: new ChooseUsernameHandler(users, eventBus), published };
+	const events = {
+		publish: (...added: unknown[]) => published.push(...added),
+	} as unknown as IntegrationEventBus;
+	return { handler: new ChooseUsernameHandler(users, events), published };
 }
 
 describe("ChooseUsernameHandler", () => {

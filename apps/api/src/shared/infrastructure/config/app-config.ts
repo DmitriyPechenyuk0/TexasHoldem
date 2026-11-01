@@ -39,6 +39,15 @@ export abstract class AppConfig {
 		/** Where browsers read the bucket's public objects, without a trailing slash. */
 		readonly publicUrl: string;
 	};
+	abstract readonly table: {
+		/** The pause between one hand's end and the next one's deal, for players to see the result. */
+		readonly handPauseMs: number;
+		/**
+		 * How long an instance's lease on a table lasts without renewal (ADR-004): how soon another
+		 * instance takes over the tables of one that stopped.
+		 */
+		readonly leaseTtlMs: number;
+	};
 	abstract readonly auth: {
 		readonly secret: string;
 		readonly oauth: {

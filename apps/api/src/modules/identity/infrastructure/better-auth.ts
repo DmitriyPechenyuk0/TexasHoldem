@@ -6,7 +6,6 @@ import {
 } from "@holdem/shared/contracts/identity";
 import { Logger } from "@nestjs/common";
 import { and, eq, not } from "drizzle-orm";
-import type { EventBus } from "@nestjs/cqrs";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import {
@@ -17,6 +16,7 @@ import {
 	getSessionFromCtx,
 } from "better-auth/api";
 import { username } from "better-auth/plugins/username";
+import type { IntegrationEventBus } from "@/shared/application/integration-events.js";
 import type { Mailer } from "@/shared/application/mailer.js";
 import type { RateLimiter } from "@/shared/application/rate-limiter.js";
 import type { AppConfig } from "@/shared/infrastructure/config/index.js";
@@ -110,7 +110,7 @@ export interface BetterAuthDependencies {
 	readonly config: AppConfig;
 	readonly db: Database;
 	readonly mailer: Mailer;
-	readonly eventBus: EventBus;
+	readonly events: IntegrationEventBus;
 	readonly emailThrottle: EmailThrottle;
 	readonly rateLimiter: RateLimiter;
 	readonly passwordBreaches: PasswordBreaches;
@@ -121,7 +121,7 @@ export function createBetterAuth({
 	config,
 	db,
 	mailer,
-	eventBus,
+	events,
 	emailThrottle,
 	rateLimiter,
 	passwordBreaches,
@@ -133,7 +133,7 @@ export function createBetterAuth({
 	// before `UserRegistered`; choosing the username announces both (ChooseUsernameHandler).
 	const announceVerified = (user: { id: string; username?: unknown }) => {
 		if (typeof user.username === "string") {
-			eventBus.publish(new UserVerified(UserId.parse(user.id)));
+			events.publish(new UserVerified(UserId.parse(user.id)));
 		}
 	};
 
@@ -532,7 +532,7 @@ export function createBetterAuth({
 							return;
 						}
 						const userId = UserId.parse(created.id);
-						eventBus.publish(
+						events.publish(
 							new UserRegistered(
 								userId,
 								created.username,
@@ -541,7 +541,7 @@ export function createBetterAuth({
 						);
 						// An OAuth sign-up always has a verified email; an email one gets it by the link.
 						if (created.emailVerified) {
-							eventBus.publish(new UserVerified(userId));
+							events.publish(new UserVerified(userId));
 						}
 					},
 				},

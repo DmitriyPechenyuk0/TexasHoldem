@@ -237,16 +237,14 @@ describe("Realtime (e2e)", () => {
 			expect(foreign.headers["access-control-allow-origin"]).toBe(webOrigin);
 		});
 
-		it("lets the web app open a socket.io session, and refuses any other origin", async () => {
-			const handshake = (origin: string) =>
-				request(baseUrl)
-					.get("/socket.io/?EIO=4&transport=polling")
-					.set("origin", origin);
-
-			const allowed = await handshake(webOrigin).expect(200);
-			expect(allowed.headers["access-control-allow-origin"]).toBe(webOrigin);
-			expect(allowed.headers["access-control-allow-credentials"]).toBe("true");
-			await handshake("https://evil.example").expect(403);
+		it("takes WebSockets only, so instances need no sticky sessions", async () => {
+			// Long-polling spreads one session over many requests, which a load balancer would have to
+			// send to the same instance.
+			const polling = await request(baseUrl)
+				.get("/socket.io/?EIO=4&transport=polling")
+				.set("origin", webOrigin)
+				.expect(400);
+			expect(polling.body).toMatchObject({ message: "Transport unknown" });
 		});
 
 		it("refuses a WebSocket from a page on another origin (cross-site WebSocket hijacking)", async () => {

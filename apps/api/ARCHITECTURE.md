@@ -46,7 +46,7 @@ A layer folder exists only once it has content. `modules/system` is the referenc
 
 - A **handler is the use case**. There are no `*UseCase` or application service classes, and controllers or gateways never call domain code or repositories directly: they only send messages to `CommandBus` / `QueryBus`.
 - Messages extend the typed bases from `@nestjs/cqrs`, so the bus infers the result: `class GetLobbyQuery extends Query<LobbyView>`, `class TakeSeatCommand extends Command<void>`.
-- Command handlers stay thin: load → decide → append → publish.
+- Command handlers stay thin: load → decide → append → publish (integration events through `IntegrationEventBus`, see "Integration events").
 - Each operation has its own folder with the message, the handler and the handler's test:
 
 ```
@@ -144,6 +144,9 @@ export class SystemGateway {
 - Validate every payload with `@ValidPayload(Event.payload)`: an invalid one is answered with a 400 problem before the handler runs.
 - A command returns its `Ack`; a thrown error becomes `{ ok: false, error: Problem }`. Gateways, like controllers, only send messages to the buses.
 - socket.io shares the HTTP server and its CORS policy (`WEB_ORIGIN`, with credentials). `configureApp()` sets both, for `main.ts` and the e2e tests alike.
+- WebSocket is the only transport (the web client asks for it too): a connection stays on the instance it reached, so instances behind a load balancer need no sticky sessions, as long-polling would.
+- Every namespace goes through the Redis streams adapter (`@socket.io/redis-streams-adapter`, on its own connection `socket.io`), so `server.to(room)` reaches the room's sockets on every instance. Rooms: `user:<userId>` (a user's private payloads), `table:<tableId>`, and `lobby` to come. The adapter appends each broadcast to the Redis stream `socket.io` before emitting to this instance's sockets, so a batch can arrive after an ack sent later; clients drop batches older than their snapshot. Its read blocks for 1 s (`ADAPTER_READ_BLOCK_MS`), within the 2 s command timeout its connections inherit. While Redis is down its publishes fail at once (`adapterClient`), so this instance's sockets still get every broadcast without delay and only other instances miss them. Its reading connections close gracefully when the server closes, so no pending command is left rejected.
+- `pnpm start:two` (`scripts/two-instances.mjs`) runs two built instances on `PORT + 1` and `PORT + 2` behind a round-robin TCP proxy on `PORT`, to try the app as production runs it.
 
 ## Persistence
 
@@ -171,6 +174,48 @@ export const lobbyTables = table("tables", {
 | `pnpm db:studio`   | opens Drizzle Studio                                                |
 
 CI applies the migrations and fails when a schema change has no migration.
+
+## Event store
+
+Event-sourced aggregates (the table, and the hands it runs) are stored as streams of events (ADR-002), through the `EventStore` port in `shared/application`:
+
+- `append(streamId, expectedVersion, events, metadata?)` stores all the events or none, after the stream's last one, and answers the new version. The stream must be at `expectedVersion` (0 for a new one); otherwise it throws `ConcurrencyError` (409 `event-store.version-conflict`), and the command is read, decided and appended again.
+- `appendToStreams(appends, metadata?)` does the same for several streams in one transaction, for a decision that changes more than one (a table and its hand).
+- `readStream(streamId, fromVersion?)` answers a stream's events in order. `readAll(fromPosition, limit)` pages through every stream of the store by `globalPosition`, for projections.
+- Each event carries `metadata` (`correlationId`, `causationId`, `userId`) and `occurredAt`, the time it was stored.
+- Command handlers use the helpers in `shared/application/event-sourcing.ts` with a `Decider` (`shared/domain/decider.ts`; the table's is `tableDecider`):
+
+```ts
+const loaded = await loadDecider(this.events, tableDecider, `table-${tableId}`);
+const decision = tableDecider.decide(command, loaded.state);
+if (!decision.ok) throw decision.error;
+await saveDecider(
+	this.events,
+	tableDecider,
+	`table-${tableId}`,
+	loaded,
+	decision.value,
+	metadata,
+);
+```
+
+- **Fencing.** `EventMetadata.leaseEpoch` is the epoch of the lease the writer held. An append that carries one is refused with `FencedError` (`event-store.fenced`) when the stream's last event has a newer epoch. Epochs only grow along a stream, so a writer that lost its lease can append nothing once the new holder has. The check is part of the same insert statement, so it costs no extra round trip.
+- Stored events are never changed. A new shape of an event bumps its `v`, and an upcaster turns the old one into the new one as it is read: `Upcasters` maps a type and the version it upgrades from to a function, and they are chained until the current version.
+- `PostgresEventStore` keeps a context's streams in its own table, which its schema declares with `eventsTable("<context>")` (the table context: `table_events`). An append is one statement: it inserts nothing unless the stream is at the expected version, and `UNIQUE(stream_id, version)` turns away the loser of two appends that race for the same one. Type and version have columns of their own; the rest of the event is the `payload` (jsonb).
+- One append of 1,000 events and reading them back takes about 25 ms locally. Appends one at a time are bound by the disk flushing each commit (about 1.2 ms here, so some 550 commands a second per stream), which is far more than a table needs.
+- `globalPosition` is taken when a row is inserted, so an append that commits later can still land behind a position a projection has already read. Projections that must see every event wait for a short lag or rebuild from the start; the lobby gets integration events instead (POK-74).
+- Hand events carry the deck: the stored events are as secret as the seed until the hand ends (packages/engine/README.md, "Security and storage"). The store never logs payloads or metadata, and clients only ever get redacted views.
+- Handler tests use `InMemoryEventStore` (`test/support`). `test/support/event-store-contract.ts` runs the same rules against it and against Postgres, so the fake cannot drift.
+
+## Integration events
+
+Contexts tell each other what happened through integration events (Context Map); `TableChanged`, which carries the deck, is an in-process event of the table context and never one of these.
+
+- An integration event is a class of plain data marked `@IntegrationEvent({ name, version, schema, broadcast })` (`shared/application/integration-events.ts`). `name` is `<context>.<event>` (`identity.user-registered`), and `schema` is that version's zod schema in `@holdem/shared/events`. A change to the data is a new version with a new schema.
+- Subscribers are `@EventsHandler`s. Contexts publish through the `IntegrationEventBus` port, never through `EventBus`.
+- `RedisIntegrationEventBus` publishes on this instance's `EventBus`. A `broadcast` event also goes out on the Redis channel `integration-events`, and every other instance checks it against its schema and publishes it on its own `EventBus`. A sender ignores its own broadcasts. Broadcast is for subscribers that keep something per instance (a read model in memory, the sockets it serves); the rest are handled once, where the event was published.
+- Publishing waits for the transaction to commit. Inside `inTransaction(db, work)` (`shared/infrastructure/database`), events go out once it has committed, in order, and a rollback drops them. Outside one, write first, then publish. Either way an event never tells of a change that did not happen. Transactions do not nest: work uses the `tx` it is given.
+- Delivery is at most once. An instance that stops between the commit and the publish, or that is not subscribed when a broadcast goes out (Redis unreachable, restarting), misses the event; while Redis fails, events stay on their instance and a warning is logged once. An instance that does not know an event's name or version (during a rolling deploy) drops it with a warning. A transactional outbox would make delivery at least once (POK-130).
 
 ## Redis, health and shutdown
 
@@ -249,6 +294,68 @@ How players appear to others lives in `modules/profile`: the nickname (any scrip
   3. `PUT /api/profile/avatar` with the key checks the file, not what the browser said about it: its size, its first bytes (PNG, JPEG or WebP), and that it decodes within 40 megapixels (a decompression bomb fits in 2 MB). `AvatarImages` (sharp) decodes two pictures at a time per instance (`MAX_CONCURRENT_ENCODES`), the others wait, and re-encodes each as a 256×256 WebP, which drops its metadata (where a photo was taken) and anything hidden after the image. It is stored once under `avatars/<userId>/<uuid>.webp`, cached for good (`immutable`), and the replaced avatar is deleted. The upload is deleted whatever happens. `DELETE /api/profile/avatar` goes back to none.
 - Only `avatars/*` is public (`infra/s3/avatars-policy.json`); pending uploads are private and expire after a day (`avatars-lifecycle.json`). The bucket allows uploads from `WEB_ORIGIN` (CORS); `infra/s3/init.sh` sets all three, locally and in CI. Responses carry `avatarUrl`, built from `S3_PUBLIC_URL`, ready for a CDN. A player without one gets an identicon the web app draws from the username; provider pictures are not used, so no third party learns who looks at a profile.
 
+## Table
+
+The table is an event-sourced decider in `modules/table/domain` (ADR-002): `decideTable(command, state)` answers the events a command produces or the `DomainError` it breaks (`table.*`), and `evolveTable` / `replayTable` fold events into the state. It is pure, like the hand decider in `@holdem/engine`, which only the table calls.
+
+- `TableConfig`: blinds, a buy-in range in big blinds (chips are unlimited, ADR-009), 2–9 seats, turn time (5–120 s), time bank (0–600 s), the absence policy (reconnect grace 0–600 s, a disconnected player's turn 1–120 s, a seat lost after 1–3600 s or 1–100 hands sitting out; `DEFAULT_ABSENCE_POLICY` is 120 s, 5 s, 600 s and 3 hands) and visibility. `OpenTable` checks it.
+- A player sits down waiting for the big blind (`waiting-for-big-blind`), and is dealt in once it reaches the seat. Sitting back in after sitting out waits for it again, so sitting out dodges no blind; a player who sat out during a hand they are still in is `active` again.
+- Leaving during a hand the player is dealt into marks the seat `leaving` until the hand ends; otherwise the seat is freed at once. Rebuys (an empty stack, a full buy-in) and top-ups (up to the maximum buy-in) wait until the player's hand ends.
+- At most 50 users watch a table (`MAX_SPECTATORS`); a spectator who sits down stops watching. `CloseTable` lets everyone leave first and is refused during a hand.
+- `tableDecider` bundles `decideTable`, `evolveTable` and the initial state for the event-sourcing helpers; the streams live in `table_events` (see "Event store").
+- `decideTable` tests set the running hand (`state.hand`) and stacks directly through `given(history, { hand, stacks })` in `test/support/table.ts`.
+
+### Hands
+
+`decideGame(command, { table, hand })` (`domain/game.ts`) runs hands on top of `decideTable`: it is the only caller of the engine's hand decider (Context Map), and answers the events for both streams, `table-<tableId>` and `hand-<handId>`.
+
+- `StartHand { handId, deck, buttonDraw }` deals the next hand when no hand is running and two players are ready (`active` or `waiting-for-big-blind`; sitting-out and leaving players are not dealt in). The positions follow the dead button rule from the last hand (`nextHandPositions`); before the first hand, or when the rule leaves fewer than two to deal in, the table starts over with every ready player dealt in and the button on the seat `buttonDraw` picks (`firstHandPositions`). Waiting players dealt in become `active`, then `HandScheduled` records the hand and its positions, and the engine's `StartHand` opens the hand's stream.
+- `Act`, `ShowCards` and `MuckCards` come from a user and go to the hand on their seat (`table.not-in-hand` for a player not dealt in, `table.leaving-seat` for one who left); `Timeout { handId, seat }` comes from the turn timer and is refused for any other hand (`table.no-hand`). The hand's own refusals pass through as `HandRuleError`, with its `hand.*` code and params.
+- What follows on its own is added to the same decision: a leaving player folds on their turn (mucks at the showdown), at once if it is their turn already. When the hand ends, `HandSettled` gives every player dealt in their stack from `HandEnded`; then the leaving players' seats are freed (`SeatLeft`) and players left with no chips sit out, to rebuy and sit back in. A player who sat out during the hand plays it out and is not dealt the next.
+- `handReady(table)` says whether a hand can start now.
+- **Provably fair deals** (ADR-008). `StartHand` carries the commitment, the hex SHA-256 of the server seed the deck comes from, and `DeckCommitted { handId, commitment }` publishes it before the deal. Once the hand has ended, `RevealDeck { handId, serverSeed }` publishes the seed (`DeckRevealed`), and only if it hashes to the commitment (`table.deck-mismatch` otherwise). A second reveal, or one for a hand still running, is refused. There are no client seeds: chosen when a player sits down, before the server commits, they would bind nothing.
+- **The turn clock** (`decideGame(command, state, now)`, `now` in epoch ms). Whenever a player gets a new turn (someone else is to act, or the same player again after acting), `TurnStarted { handId, seat, startedAt }` starts it. The turn lasts `turnSeconds`; a player who acts later pays the overrun out of their time bank (`TimeBankUsed`). `Timeout { handId, seat }` is accepted only for the current turn once its time and the bank are both out (`turnDueAt`); it spends what is left of the bank and checks if the player can, otherwise folds (mucks at the showdown). An early, stale or repeated timeout is refused (`table.timeout-not-due`, `table.no-hand`). The time bank (`timeBankSeconds`) is full when a player sits down and never refills while they keep the seat: leaving and sitting down again resets it.
+- **Absences** (POK-85), on the same clock. `Disconnect { userId }` comes once a user's last connection to the table closes: a player keeps the seat (`PlayerDisconnected { seat, at }`), a spectator stops watching. While disconnected, a player's turn ends `disconnectedTurnSeconds` after it started or after the disconnect, whichever is later (`turnDueAt`), so the table is not held up. `Reconnect { userId }` brings them back (`PlayerReconnected`); within the grace they play on as before. After every command, the policy applies what is due: a player still away `reconnectGraceSeconds` after the disconnect sits out; one who has sat out for `sitOutSeconds`, or `sitOutHands` hands dealt without them, leaves the seat (at the end of a hand they are still in, folding on their turn). Every change to `sitting-out`, whatever the reason (asked, busted, away), is followed by `SitOutStarted { seat, at }`, the sit-out clock; hands missed are counted when one is dealt. `ExpireAbsences` applies the policy alone, and is refused when nothing is due (`table.absence-not-due`). A player back after the grace stays sitting out until they sit in.
+
+The application side (`modules/table/application`):
+
+- Every table runs in a `TableRuntime` of its own: a mailbox takes its commands one at a time, in the order they came, so commands for a table never interleave. It folds the table's streams once and keeps the state in memory; each decision is appended to both streams in one transaction (`saveGame`, `EventStore.appendToStreams`) at the version it was made on. When another writer got there first (`ConcurrencyError`), it reloads and decides once more, then gives up. A failed append makes it reload before the next command.
+- **One instance runs a table** (ADR-004). `TableRuntimeRegistry` runs it where its lease is (`TableLeases`, `RedisTableLeases`). The lease is the key `table:<id>:owner` = `<instanceId>:<epoch>`, `SET … PX TABLE_LEASE_TTL_MS` (10 s by default). The epoch comes from `table:<id>:epoch` and is pushed past the stream's last stored epoch, should the counter be lost. Lease keys start with the database's name, so environments that share one Redis (the e2e tests) never take each other's tables.
+  - The first command for a table nobody holds takes the lease on the instance it reached: the streams are folded, the runtime resumes from them and arms whatever is due (the deal, the turn timer, the absence timer).
+  - Leases are renewed every third of their time to live. If Redis answers that a lease is gone, its runtime stops at once (`abandon`). If Redis does not answer, runtimes go on running, since no other instance can take a table over meanwhile either.
+  - Every append carries the lease epoch. An instance that lost a table and still writes to it is fenced off (`FencedError`): its runtime stops, and the command is sent to the new holder.
+- **Commands go to the holder.** `execute`, `dealNextHand` and `viewFor` run locally when the table runs here. Otherwise they go to the holder through `TableRequests` (`RedisTableRequests`: pub/sub on `table-requests:<instanceId>`, replies on `table-replies:<instanceId>`), and errors come back with their kind, code and params.
+  - Answers carry no hand events, because those hold the deck. `execute` answers once the command is stored, `dealNextHand` whether a hand was dealt, and `viewFor` the redacted `TableView`.
+  - A request to an instance nobody listens for fails at once; one unanswered within 5 s fails with `table.unavailable`. A table that moved meanwhile (`table.moved`) is sent once more to its new holder.
+  - While a table changes hands, a command may still be refused (`table.moved`, `table.unavailable`, or a version conflict with the last writes of the old holder), and the client sends it again.
+- **Takeover** (POK-80). Every lease ever taken and not released is in the set `tables:leased`. Every lease time to live, each instance takes over the tables in that set whose lease ran out (`orphans`). When an instance starts, it also takes over the tables whose last hand never ended (`UnfinishedTables`, a scan of `table_events`), a random moment within half a lease after the start. The runtime picks up from the streams: a hand left mid-turn is timed out, an ended one is followed by the next deal. A takeover is logged as `table taken over`, with the time since the table's last event and how long the takeover took.
+- A runtime idle (nothing queued, no deal, turn or absence due) for 10 minutes is dropped and its lease released; the next command takes it again. On shutdown, queued commands finish and every lease is released, so another instance can take the tables at once. `pnpm start:two` runs two instances to try it.
+- `ExecuteTableCommand(tableId, command, metadata)` runs any command but `StartHand` and answers once it is stored. `StartNextHandCommand(tableId)` deals the next hand and answers whether it did. Both run on the table's holder.
+- The runtime times out the player to act: after every change, and when it loads a table, it sets one timer for `turnDueAt` that queues `Timeout` in the mailbox like any command. A timer that lost the race with the player's action is refused by the table and ignored. A runtime with a turn running is never idle, so it is not dropped mid-hand.
+- It keeps a second timer, the same way, for the next reconnect grace or sit-out to run out (`absenceDueAt`), which queues `ExpireAbsences`. A runtime with someone away is not idle either.
+- `TablePresence` (port; `RedisTablePresence`) knows who follows each table across instances: a sorted set per user and table in Redis, `table-presence:<tableId>:<userId>`, of connection ids scored by when they run out. Each instance refreshes the connections it holds every 20 s for 60 s, so those of an instance that died run out on their own; each change is one script, so of two last tabs closing at once on two instances, exactly one sees none left. `ConnectToTableCommand` records a connection and, when it is the user's first, sends `Reconnect`; `DisconnectFromTableCommand` forgets one and, when it was the last, sends `Disconnect`. The table's refusals (a user who was not away, or has nothing there) are expected and dropped. While Redis cannot be reached, nobody is reported back or gone: players then play on under the usual turn timer, rather than being sat out because the outage hid their tabs.
+- After each command that leaves the table ready for a hand, the runtime deals one `TABLE_HAND_PAUSE_MS` later (3 s by default, so players see the result), in its own mailbox, with a new hand id and the `DeckProvider`'s deck and button draw.
+- Each change is published in this process as `TableChanged { tableId, versions, events, state }` on the `EventBus`, in the order the table took the commands. `versions` is where the streams are after it: the table's, and the current or last hand's (`TableVersions` in `@holdem/shared/realtime`). Between hands the game keeps the last hand, so its stream and its result stay known. Hand events and `state.hand` carry the deck: only redacted views ever leave the api.
+- `GetTableViewQuery(tableId, userId)` reads the table through its runtime on the holder, after the commands queued before it, and answers the `TableView` that user may see (`application/table-views.ts`).
+- `POST /api/dev/tables` (`DevTablesController`, contract in `@holdem/shared/contracts/table`) opens a table without the lobby: a 1/2 table for six unless the body says otherwise, answering `{ tableId }`. `TableModule.forRoot(config)` registers it outside production only, so a production build has no such route (404).
+
+### Realtime
+
+`TableGateway` (`presentation/table.gateway.ts`) serves the `/table` namespace of `@holdem/shared/realtime`:
+
+- Every socket joins its user's room, `user:<userId>`, when it connects. `join` adds it to the table's room, `table:<tableId>`, records the connection (a disconnected player is back before the snapshot is read, so it shows them back), and answers the table as the user sees it. A user without a seat watches as a spectator (`JoinAsSpectator`, at most 50), whatever `as` says. The room is joined before the snapshot is read, so a batch sent in between is older than the snapshot and the client drops it. A first `join` that fails takes all of that back; a failed resync keeps following.
+- Commands (`take-seat`, `act`, …) need `RequirePlayer`, become `ExecuteTableCommand`s with the user as metadata, and are answered `{ ok: true, data: {} }` once the table took them, or with the rule they broke. Payloads are validated first (400 `request.invalid`), and nothing invalid reaches the table.
+- Each `TableChanged` goes out as `events` batches, redacted for each audience (`eventsBatchFor`, the engine's `redactEvent`): every seated player, and one who just left, gets their own batch in their user room; the rest of the table's room gets the spectators' batch. No other batch is sent, so nobody receives another player's hole cards before they are shown, nor the deck or a burn card.
+- A client that misses a batch notices it with `followsVersions` and sends `join` again for a snapshot.
+- The turn clock is public: after a change that starts or ends a turn, or that disconnects or brings back a player, everyone following the table and every player gets `timer { tableId, timer }` with absolute server times (`turnEndsAt`, then `timeBankMs` of bank), or `timer: null`. Snapshots carry the same `timer` and the server's clock (`serverTime`), so a client can correct for clock skew.
+- `leave`, or a socket disconnecting, stops it following the table; once none of the user's sockets on any instance does, a player is disconnected and a spectator stops watching (`TablePresence`).
+- `SocketRateLimit` (`shared/presentation/realtime`) refuses more than 10 commands a second per socket with 429 `request.rate-limited`, before validation.
+- Rooms go through the Redis streams adapter, so they reach sockets on every instance (see "Realtime"). Commands reach the table's holder wherever the socket is, and its changes are broadcast from there.
+
+- `SeededDeckProvider` shuffles each hand from a fresh 32-byte server seed out of the CSPRNG and keeps the seed in `table_hand_decks`, server-only, like the deck in the hand's stream. Right after the command that ends a hand, the runtime takes the seed out (`reveal`, which sets `revealedAt`) and queues `RevealDeck` before the next deal. So no payload carries the seed before the hand has ended.
+- `GET /api/hands/:handId/fairness` (`HandsController`, no session needed) answers `HandFairnessResponse`: the commitment, the revealed seed and the dealt cards (the deck's first cards, burns included, in order), all `verifyDeck` needs. While the hand runs it answers 409 `table.deck-not-revealed`; for an unknown hand 404 `table.hand-not-found`. Snapshots carry the current or last hand's commitment (`fairness`).
+- `test/table-hands.e2e-spec.ts` plays 100 random hands at a six-seat table through the command bus, with players sitting out, leaving, busting and rebuying, and checks every chip after each hand; `HOLDEM_TABLE_SEED` replays a run.
+
 ## HTTP and sockets
 
 - Every REST route lives under `/api` (`API_PREFIX` from `@holdem/shared`), so production can serve the web app and the api from one origin behind a reverse proxy (`/api/*` and `/socket.io/*` → api). Requests outside it get a 404 problem too.
@@ -275,6 +382,6 @@ How players appear to others lives in `modules/profile`: the nickname (any scrip
 
 - Coverage counts every file in `src` except `main.ts`, so untested files lower it too. The thresholds in `vitest.config.ts` are a baseline just under the current numbers: raise them when coverage grows, never lower them to make a change pass. `packages/engine` requires 100%.
 - Unit-test handlers by constructing them with fakes for their ports; no Nest container needed.
-- Unit-test domain code with plain inputs and outputs (Given/When/Then for deciders).
+- Unit-test domain code with plain inputs and outputs (Given/When/Then for deciders). Domain specs may use `test/support`; the code itself may not.
 - e2e tests boot the real app through `createTestApp()` from `test/support`, configured from `.env.example`.
 - Tests that touch the database call `createTestDatabase()`: it creates a fresh `holdem_test_*` database with every migration applied, and `drop()` removes it. Pass its `url` to `createTestApp({ config: { database: { url } } })`. They need the services from `pnpm infra:up`.

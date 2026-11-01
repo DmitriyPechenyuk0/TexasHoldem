@@ -126,13 +126,34 @@ describe("Health (e2e)", () => {
 			expect(back.status).toBe(200);
 			expect(back.body.checks).toEqual({ database: "up", redis: "up" });
 
-			// One warning per outage and one line on recovery, attributed to no request.
-			const redisLines = lines.filter((line) => line.context === "Redis");
-			expect(redisLines.map((line) => line.level)).toEqual(["warn", "info"]);
-			for (const line of redisLines) {
+			// Per connection, one warning per outage and one line on recovery, attributed to no
+			// request: the shared one, and the subscribers of integration events and table requests
+			// and the socket.io adapter's, which readiness does not wait for and may reconnect a
+			// little later. The adapter's own reading connections stay quiet.
+			const redisLines = () => lines.filter((line) => line.context === "Redis");
+			const byConnection = (name: string) =>
+				redisLines()
+					.filter((line) => String(line.msg).startsWith(`holdem-api:${name} `))
+					.map((line) => line.level);
+			const connections = [
+				"shared",
+				"integration-events",
+				"socket.io",
+				"table-requests",
+			];
+			await vi.waitFor(
+				() => {
+					for (const name of connections) {
+						expect(byConnection(name)).toEqual(["warn", "info"]);
+					}
+				},
+				{ timeout: 5_000 },
+			);
+			expect(redisLines()).toHaveLength(2 * connections.length);
+			for (const line of redisLines()) {
 				expect(line).not.toHaveProperty("requestId");
 			}
-		});
+		}, 15_000);
 	});
 
 	describe("with the database unreachable", () => {

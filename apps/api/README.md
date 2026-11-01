@@ -6,6 +6,7 @@ The NestJS server: REST under `/api` and socket.io on http://localhost:4000. Lay
 cp .env.example .env     # once; every variable is documented there
 pnpm dev                 # watch mode; needs `pnpm infra:up` from the repository root
 pnpm build && pnpm start:prod
+pnpm build && pnpm start:two   # two instances behind a round-robin proxy on :4000, as in production
 pnpm lint                # oxlint + dependency rules
 pnpm typecheck
 pnpm test                # unit tests
