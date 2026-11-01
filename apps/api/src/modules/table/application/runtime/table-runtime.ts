@@ -239,11 +239,13 @@ export class TableRuntime {
 				this.enqueue(() =>
 					this.run(async () => ({ type: "Timeout", handId, seat })),
 				).catch((error: unknown) => {
-					// A turn that ended meanwhile, or a clock that ran fast: nothing to time out.
+					// A turn that ended meanwhile, or a timer that fired early: set it again from what
+					// the table is now, or it would never fire for this turn.
 					if (
 						error instanceof TimeoutNotDueError ||
 						error instanceof NoHandError
 					) {
+						this.rearm();
 						return;
 					}
 					this.logger.error({
@@ -281,6 +283,7 @@ export class TableRuntime {
 					this.run(async () => ({ type: "ExpireAbsences" })),
 				).catch((error: unknown) => {
 					if (error instanceof AbsenceNotDueError) {
+						this.rearm();
 						return;
 					}
 					this.logger.error({
@@ -292,6 +295,14 @@ export class TableRuntime {
 			},
 			Math.max(0, dueAt - this.deps.now()),
 		);
+	}
+
+	/** Sets the timers again from the state in memory, after one fired too early to act. */
+	private rearm(): void {
+		if (this.loaded) {
+			this.armTurnTimer(this.loaded.state);
+			this.armAbsenceTimer(this.loaded.state);
+		}
 	}
 
 	private cancelAbsenceTimer(): void {

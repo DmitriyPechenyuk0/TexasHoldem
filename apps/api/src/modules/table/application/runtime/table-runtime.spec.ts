@@ -405,6 +405,26 @@ describe("TableRuntime", () => {
 			expect(runtime.idle).toBe(true);
 		});
 
+		it("sets itself again when it fires a moment before the table's clock says it is due", async () => {
+			vi.useFakeTimers();
+			const { runtime, published, setNow } = setUp();
+			await runtime.execute(open);
+			await runtime.execute(takeSeat(0));
+			await runtime.execute({ type: "Disconnect", userId: "u0" });
+
+			// The timer is due at 120 s; the clock it is checked against still reads a moment before.
+			setNow(119_999);
+			await vi.advanceTimersByTimeAsync(120_000);
+			expect(runtime.idle).toBe(false);
+			setNow(120_000);
+			await vi.advanceTimersByTimeAsync(1);
+
+			expect(published.at(-1)!.events.table.map(({ type }) => type)).toEqual([
+				"PlayerStatusChanged",
+				"SitOutStarted",
+			]);
+		});
+
 		it("stands down for a player who is back within the grace", async () => {
 			const { runtime, lastChange } = await disconnected();
 			await vi.advanceTimersByTimeAsync(60_000);
