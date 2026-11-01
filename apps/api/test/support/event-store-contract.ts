@@ -129,6 +129,50 @@ export function eventStoreContract(subject: () => EventStoreSubject): void {
 		expect(await store.readStream("account-1")).toHaveLength(2);
 	});
 
+	it("appends to several streams at once and answers their versions", async () => {
+		await store.append("account-1", 0, [deposited(1)]);
+
+		const versions = await store.appendToStreams(
+			[
+				{ streamId: "account-1", expectedVersion: 1, events: [deposited(2)] },
+				{ streamId: "account-2", expectedVersion: 0, events: [] },
+				{
+					streamId: "account-3",
+					expectedVersion: 0,
+					events: [deposited(3), deposited(4)],
+				},
+			],
+			{ correlationId: "c-1" },
+		);
+
+		expect(versions).toEqual([2, 0, 2]);
+		const all = await store.readAll(0, 100);
+		expect(all.map((r) => [r.streamId, r.version, r.event])).toEqual([
+			["account-1", 1, deposited(1)],
+			["account-1", 2, deposited(2)],
+			["account-3", 1, deposited(3)],
+			["account-3", 2, deposited(4)],
+		]);
+		expect(all.slice(1).map((r) => r.metadata)).toEqual(
+			Array(3).fill({ correlationId: "c-1" }),
+		);
+	});
+
+	it("appends to no stream when one of them has moved on", async () => {
+		await store.append("account-2", 0, [deposited(1)]);
+
+		const append = store.appendToStreams([
+			{ streamId: "account-1", expectedVersion: 0, events: [deposited(2)] },
+			{ streamId: "account-2", expectedVersion: 0, events: [deposited(3)] },
+		]);
+
+		await expect(append).rejects.toMatchObject({
+			code: "event-store.version-conflict",
+			params: { streamId: "account-2", expectedVersion: 0 },
+		});
+		expect(await store.readAll(0, 100)).toHaveLength(1);
+	});
+
 	it("numbers each stream on its own", async () => {
 		await store.append("account-1", 0, [deposited(1)]);
 		await store.append("account-2", 0, [deposited(2), deposited(3)]);

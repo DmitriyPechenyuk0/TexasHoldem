@@ -1,4 +1,4 @@
-import type { Chips, SeatIndex } from "@holdem/engine";
+import type { Chips, HandPositions, SeatIndex } from "@holdem/engine";
 import type { TableConfig } from "./table-config.js";
 import type { SeatStatus } from "./table-state.js";
 
@@ -41,6 +41,30 @@ export type TableEvent =
 	  }
 	| { readonly type: "SpectatorJoined"; readonly v: 1; readonly userId: string }
 	| { readonly type: "SpectatorLeft"; readonly v: 1; readonly userId: string }
+	/**
+	 * A hand starts in its own stream, `hand-<handId>`. Comes after a `PlayerStatusChanged`
+	 * to `active` for every player dealt in who was waiting for the big blind.
+	 */
+	| {
+			readonly type: "HandScheduled";
+			readonly v: 1;
+			readonly handId: string;
+			readonly buttonSeat: SeatIndex;
+			readonly smallBlindSeat: SeatIndex;
+			readonly bigBlindSeat: SeatIndex;
+			/** The seats dealt in, in seat order. */
+			readonly seats: HandPositions["dealtIn"];
+	  }
+	/** The hand ended: every player dealt in now has the stack it ended with. */
+	| {
+			readonly type: "HandSettled";
+			readonly v: 1;
+			readonly handId: string;
+			readonly stacks: readonly {
+				readonly seat: SeatIndex;
+				readonly stack: Chips;
+			}[];
+	  }
 	/** Comes after a `SeatLeft` for every player and a `SpectatorLeft` for every spectator. */
 	| { readonly type: "TableClosed"; readonly v: 1 };
 

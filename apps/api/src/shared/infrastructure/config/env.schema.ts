@@ -6,6 +6,16 @@ const port = z
 	.string()
 	.transform(Number)
 	.pipe(z.int({ error: portError }).min(1, portError).max(65535, portError));
+const handPauseError = "must be a whole number of milliseconds from 0 to 60000";
+const handPause = z
+	.string()
+	.transform(Number)
+	.pipe(
+		z
+			.int({ error: handPauseError })
+			.min(0, handPauseError)
+			.max(60_000, handPauseError),
+	);
 const httpUrl = z.url({ protocol: /^https?$/ });
 const databaseUrl = z.url({ protocol: /^postgres(ql)?$/ });
 const origin = (example: string) =>
@@ -125,6 +135,8 @@ export const envSchema = z
 		S3_FORCE_PATH_STYLE: z.stringbool().default(false),
 		S3_PUBLIC_URL: httpUrl.optional(),
 
+		TABLE_HAND_PAUSE_MS: handPause.default(3_000),
+
 		AUTH_SECRET: z
 			.string()
 			.min(
@@ -173,6 +185,7 @@ export const envSchema = z
 				bucketUrl(env.S3_ENDPOINT, env.S3_BUCKET, env.S3_FORCE_PATH_STYLE)
 			).replace(/\/+$/, ""),
 		},
+		table: { handPauseMs: env.TABLE_HAND_PAUSE_MS },
 		auth: {
 			secret: env.AUTH_SECRET,
 			oauth: {

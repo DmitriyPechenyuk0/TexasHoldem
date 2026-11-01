@@ -39,6 +39,10 @@ export abstract class AppConfig {
 		/** Where browsers read the bucket's public objects, without a trailing slash. */
 		readonly publicUrl: string;
 	};
+	abstract readonly table: {
+		/** The pause between one hand's end and the next one's deal, for players to see the result. */
+		readonly handPauseMs: number;
+	};
 	abstract readonly auth: {
 		readonly secret: string;
 		readonly oauth: {

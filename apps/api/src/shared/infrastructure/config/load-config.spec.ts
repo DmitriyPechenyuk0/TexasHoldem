@@ -244,3 +244,19 @@ describe("S3_PUBLIC_URL", () => {
 		);
 	});
 });
+
+describe("hand pause", () => {
+	it("defaults to 3 s, and takes whole milliseconds from 0 to 60000", () => {
+		expect(parseConfig(exampleEnv()).table).toEqual({ handPauseMs: 3_000 });
+		expect(
+			parseConfig({ ...exampleEnv(), TABLE_HAND_PAUSE_MS: "0" }).table,
+		).toEqual({ handPauseMs: 0 });
+		for (const value of ["-1", "1.5", "60001", "soon"]) {
+			expect(
+				problemsOf({ ...exampleEnv(), TABLE_HAND_PAUSE_MS: value }),
+			).toEqual([
+				"TABLE_HAND_PAUSE_MS: must be a whole number of milliseconds from 0 to 60000",
+			]);
+		}
+	});
+});
