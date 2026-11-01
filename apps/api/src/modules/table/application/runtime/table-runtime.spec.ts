@@ -9,7 +9,7 @@ import {
 import { ConcurrencyError } from "@/shared/application/event-store.js";
 import type { TableCommandInput } from "../commands/execute-table-command/execute-table-command.command.js";
 import type { TableChanged } from "../events/table-changed.event.js";
-import type { TableStreamEvent } from "../game-streams.js";
+import { loadGame, type TableStreamEvent } from "../game-streams.js";
 import { TableRuntime } from "./table-runtime.js";
 
 const HAND_PAUSE_MS = 3_000;
@@ -24,7 +24,7 @@ function setUp({ fakeClock = false } = {}) {
 		store,
 		decks,
 		publish: (change) => published.push(change),
-		options: { handPauseMs: HAND_PAUSE_MS, idleMs: 60_000 },
+		options: { handPauseMs: HAND_PAUSE_MS, idleMs: 60_000, leaseTtlMs: 10_000 },
 		now: () => (fakeClock ? Date.now() : now),
 	});
 	return {
@@ -51,6 +51,30 @@ const takeSeat = (seat: number): TableCommandInput => ({
 	buyIn: 200,
 });
 const spectators = Array.from({ length: 50 }, (_, i) => `s${i}`);
+
+/** A runtime holding the lease of `epoch`, over a store another runtime may share. */
+function leased(
+	store: InMemoryEventStore<TableStreamEvent>,
+	epoch: number,
+	onLost: () => void = () => undefined,
+) {
+	const decks = new FixedDeckProvider();
+	return new TableRuntime(
+		"t-1",
+		{
+			store,
+			decks,
+			publish: () => undefined,
+			options: {
+				handPauseMs: HAND_PAUSE_MS,
+				idleMs: 60_000,
+				leaseTtlMs: 10_000,
+			},
+			now: () => Date.now(),
+		},
+		{ epoch, onLost },
+	);
+}
 
 describe("TableRuntime", () => {
 	afterEach(() => {
@@ -433,6 +457,56 @@ describe("TableRuntime", () => {
 
 			await vi.advanceTimersByTimeAsync(600_000);
 			expect(lastChange()).toEqual(["PlayerReconnected"]);
+		});
+	});
+
+	describe("with a lease", () => {
+		it("stores its epoch with every append", async () => {
+			const { store } = setUp();
+			const runtime = leased(store, 3);
+
+			await runtime.execute(open);
+
+			const [opened] = await store.readStream("table-t-1");
+			expect(opened?.metadata.leaseEpoch).toBe(3);
+		});
+
+		it("stops at once when a newer holder has written, and refuses what was queued", async () => {
+			const { store } = setUp();
+			const onLost = vi.fn();
+			const old = leased(store, 1, onLost);
+			await old.execute(open);
+			await leased(store, 2).execute({ type: "JoinAsSpectator", userId: "s1" });
+
+			const fenced = old.execute({ type: "JoinAsSpectator", userId: "s2" });
+			const queued = old.execute({ type: "JoinAsSpectator", userId: "s3" });
+
+			await expect(fenced).rejects.toMatchObject({ code: "table.moved" });
+			await expect(queued).rejects.toMatchObject({ code: "table.moved" });
+			expect(onLost).toHaveBeenCalledTimes(1);
+			await expect(old.execute(takeSeat(0))).rejects.toThrow(
+				"no longer running here",
+			);
+			expect(await store.readStream("table-t-1")).toHaveLength(2);
+		});
+
+		it("takes a table up from its streams and arms what is due, such as the next deal", async () => {
+			vi.useFakeTimers();
+			const { store, runtime } = setUp();
+			await runtime.execute(open);
+			await runtime.execute(takeSeat(0));
+			await runtime.execute(takeSeat(1));
+			await runtime.dispose();
+
+			const takenOver = leased(store, 2);
+			takenOver.resume(await loadGame(store, "t-1"));
+			await vi.advanceTimersByTimeAsync(HAND_PAUSE_MS);
+
+			const types = (await store.readStream("table-t-1")).map(
+				({ event }) => event.type,
+			);
+			expect(types).toContain("HandScheduled");
+			await takenOver.dispose();
 		});
 	});
 

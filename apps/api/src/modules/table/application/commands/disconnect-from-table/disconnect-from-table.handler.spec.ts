@@ -7,10 +7,9 @@ import { DisconnectFromTableHandler } from "./disconnect-from-table.handler.js";
 function setUp(last: boolean, outcome: Promise<unknown>) {
 	const disconnect = vi.fn().mockResolvedValue(last);
 	const execute = vi.fn().mockReturnValue(outcome);
-	const get = vi.fn().mockReturnValue({ execute });
 	const handler = new DisconnectFromTableHandler(
 		{ disconnect } as unknown as TablePresence,
-		{ get } as unknown as TableRuntimeRegistry,
+		{ execute } as unknown as TableRuntimeRegistry,
 	);
 	return { handler, disconnect, execute };
 }
@@ -28,6 +27,7 @@ describe("DisconnectFromTableHandler", () => {
 
 		expect(disconnect).toHaveBeenCalledWith("t-1", "u0", "socket-1");
 		expect(execute).toHaveBeenCalledWith(
+			"t-1",
 			{ type: "Disconnect", userId: "u0" },
 			{ userId: "u0" },
 		);

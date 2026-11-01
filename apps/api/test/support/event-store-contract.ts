@@ -173,6 +173,42 @@ export function eventStoreContract(subject: () => EventStoreSubject): void {
 		expect(await store.readAll(0, 100)).toHaveLength(1);
 	});
 
+	it("takes no events of an older lease epoch than the stream's last, once it has one", async () => {
+		// Before any epoch, and without one, appends go through as usual.
+		await store.append("account-1", 0, [deposited(1)]);
+		await store.append("account-1", 1, [deposited(2)], { leaseEpoch: 2 });
+
+		// The holder of epoch 1 lost the lease: whatever version it expects, it is fenced off.
+		for (const expected of [2, 1]) {
+			await expect(
+				store.append("account-1", expected, [deposited(3)], { leaseEpoch: 1 }),
+			).rejects.toMatchObject({
+				code: "event-store.fenced",
+				params: { streamId: "account-1", leaseEpoch: 1 },
+			});
+		}
+		await expect(
+			store.appendToStreams(
+				[{ streamId: "account-1", expectedVersion: 2, events: [deposited(3)] }],
+				{ leaseEpoch: 1 },
+			),
+		).rejects.toMatchObject({ code: "event-store.fenced" });
+
+		// The same epoch and newer ones go on; a stale version is still a conflict.
+		await store.append("account-1", 2, [deposited(3)], { leaseEpoch: 2 });
+		await expect(
+			store.append("account-1", 2, [deposited(4)], { leaseEpoch: 3 }),
+		).rejects.toMatchObject({ code: "event-store.version-conflict" });
+		await store.append("account-1", 3, [deposited(4)], { leaseEpoch: 3 });
+		const stream = await store.readStream("account-1");
+		expect(stream.map(({ metadata }) => metadata.leaseEpoch)).toEqual([
+			undefined,
+			2,
+			2,
+			3,
+		]);
+	});
+
 	it("numbers each stream on its own", async () => {
 		await store.append("account-1", 0, [deposited(1)]);
 		await store.append("account-2", 0, [deposited(2), deposited(3)]);

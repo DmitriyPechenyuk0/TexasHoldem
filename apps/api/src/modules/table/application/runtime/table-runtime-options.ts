@@ -4,4 +4,6 @@ export abstract class TableRuntimeOptions {
 	abstract readonly handPauseMs: number;
 	/** How long a table may go without commands before its runtime is dropped from memory. */
 	abstract readonly idleMs: number;
+	/** How long a table lease lasts unless renewed (`TABLE_LEASE_TTL_MS`). */
+	abstract readonly leaseTtlMs: number;
 }

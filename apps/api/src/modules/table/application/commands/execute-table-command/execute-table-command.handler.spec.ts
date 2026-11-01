@@ -3,14 +3,13 @@ import { ExecuteTableCommand } from "./execute-table-command.command.js";
 import { ExecuteTableCommandHandler } from "./execute-table-command.handler.js";
 
 describe("ExecuteTableCommandHandler", () => {
-	it("queues the command, with its metadata, in the table's runtime", async () => {
-		const execute = vi.fn().mockResolvedValue({ table: [], hand: [] });
-		const get = vi.fn().mockReturnValue({ execute });
+	it("runs the command, with its metadata, on the table, wherever it runs", async () => {
+		const execute = vi.fn().mockResolvedValue(undefined);
 		const handler = new ExecuteTableCommandHandler({
-			get,
+			execute,
 		} as unknown as TableRuntimeRegistry);
 
-		const events = await handler.execute(
+		await handler.execute(
 			new ExecuteTableCommand(
 				"t-1",
 				{ type: "SitOut", userId: "u0" },
@@ -18,9 +17,8 @@ describe("ExecuteTableCommandHandler", () => {
 			),
 		);
 
-		expect(events).toEqual({ table: [], hand: [] });
-		expect(get).toHaveBeenCalledWith("t-1");
 		expect(execute).toHaveBeenCalledWith(
+			"t-1",
 			{ type: "SitOut", userId: "u0" },
 			{ userId: "u0" },
 		);

@@ -16,7 +16,9 @@ export interface TestAppOptions extends Pick<
 	"controllers" | "providers"
 > {
 	/** Overrides on top of `.env.example`, e.g. `{ database: { url: testDatabase.url } }`. */
-	readonly config?: Partial<AppConfig>;
+	readonly config?: Partial<Omit<AppConfig, "table">> & {
+		readonly table?: Partial<AppConfig["table"]>;
+	};
 	/**
 	 * Prefix of the app's rate-limit counters. Each app gets a fresh one, so test files and reruns
 	 * sharing Redis never count each other's requests; apps that share counters pass the same.
@@ -46,8 +48,12 @@ export async function createTestApp({
 	...extra
 }: TestAppOptions = {}): Promise<INestApplication<App>> {
 	const log: AppConfig["log"] = { level: "debug", pretty: false };
-	// exampleConfig() returns a fresh object, so overriding it in place is safe.
-	const appConfig = Object.assign(exampleConfig(), { log }, config);
+	// exampleConfig() returns a fresh object, so overriding it in place is safe. `table` is merged,
+	// so a test sets one timing and keeps the others.
+	const example = exampleConfig();
+	const appConfig = Object.assign(example, { log }, config, {
+		table: { ...example.table, ...config?.table },
+	});
 	const moduleRef = await Test.createTestingModule({
 		imports: [AppModule.forRoot(appConfig)],
 		...extra,

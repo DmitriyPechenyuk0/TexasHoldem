@@ -28,6 +28,8 @@ export interface LoadedGame {
 	/** The current or last hand's stream; null before the first hand. */
 	readonly handId: string | null;
 	readonly handVersion: number;
+	/** The lease epoch of the streams' last events (ADR-004); 0 before any was fenced. */
+	readonly leaseEpoch: number;
 }
 
 /** Where the streams of a loaded game are, as clients follow them (`TableVersions`). */
@@ -67,19 +69,27 @@ export async function loadGame(
 				handStream(handId),
 			)
 		: { state: initialHandState, version: 0 };
+	const handRecorded = handId
+		? await handEvents(store).readStream(handStream(handId), hand.version)
+		: [];
+	const leaseEpoch = Math.max(
+		recorded.at(-1)?.metadata.leaseEpoch ?? 0,
+		handRecorded.at(-1)?.metadata.leaseEpoch ?? 0,
+	);
 	return {
 		tableId,
 		state: { table, hand: hand.state },
 		tableVersion: recorded.at(-1)?.version ?? 0,
 		handId,
 		handVersion: hand.version,
+		leaseEpoch,
 	};
 }
 
 /**
  * Appends a decision to the table's stream and its hand's, both or neither, and answers the game
  * after it. A hand that starts gets a stream of its own. Throws `ConcurrencyError` when another
- * command got there first.
+ * command got there first, and `FencedError` when a newer lease holder has written to them.
  */
 export async function saveGame(
 	store: EventStore<TableStreamEvent>,
@@ -121,5 +131,6 @@ export async function saveGame(
 		tableVersion,
 		handId,
 		handVersion: newHandVersion,
+		leaseEpoch: Math.max(loaded.leaseEpoch, metadata?.leaseEpoch ?? 0),
 	};
 }

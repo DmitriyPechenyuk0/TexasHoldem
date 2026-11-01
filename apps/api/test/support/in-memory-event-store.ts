@@ -1,6 +1,7 @@
 import {
 	ConcurrencyError,
 	type EventMetadata,
+	FencedError,
 	EventStore,
 	type RecordedEvent,
 	type StoredEvent,
@@ -33,9 +34,7 @@ export class InMemoryEventStore<
 		events: readonly E[],
 		metadata: EventMetadata = {},
 	): Promise<number> {
-		if (this.versionOf(streamId) !== expectedVersion) {
-			throw new ConcurrencyError(streamId, expectedVersion);
-		}
+		this.check(streamId, expectedVersion, metadata);
 		const occurredAt = new Date();
 		events.forEach((event, index) => {
 			this.log.push({
@@ -55,9 +54,7 @@ export class InMemoryEventStore<
 		metadata: EventMetadata = {},
 	): Promise<readonly number[]> {
 		for (const { streamId, expectedVersion } of appends) {
-			if (this.versionOf(streamId) !== expectedVersion) {
-				throw new ConcurrencyError(streamId, expectedVersion);
-			}
+			this.check(streamId, expectedVersion, metadata);
 		}
 		const versions: number[] = [];
 		for (const { streamId, expectedVersion, events } of appends) {
@@ -85,6 +82,24 @@ export class InMemoryEventStore<
 			.filter((r) => r.globalPosition > fromPosition)
 			.slice(0, limit)
 			.map((r) => this.upcasted(r));
+	}
+
+	/** An append's rules: no newer lease epoch on the stream, and the stream at `expectedVersion`. */
+	private check(
+		streamId: string,
+		expectedVersion: number,
+		{ leaseEpoch }: EventMetadata,
+	): void {
+		const last = this.log.findLast((r) => r.streamId === streamId);
+		if (
+			leaseEpoch !== undefined &&
+			(last?.metadata.leaseEpoch ?? 0) > leaseEpoch
+		) {
+			throw new FencedError(streamId, leaseEpoch);
+		}
+		if (this.versionOf(streamId) !== expectedVersion) {
+			throw new ConcurrencyError(streamId, expectedVersion);
+		}
 	}
 
 	private versionOf(streamId: string): number {

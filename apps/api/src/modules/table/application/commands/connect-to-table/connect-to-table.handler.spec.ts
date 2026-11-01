@@ -7,10 +7,9 @@ import { ConnectToTableHandler } from "./connect-to-table.handler.js";
 function setUp(first: boolean, outcome: Promise<unknown>) {
 	const connect = vi.fn().mockResolvedValue(first);
 	const execute = vi.fn().mockReturnValue(outcome);
-	const get = vi.fn().mockReturnValue({ execute });
 	const handler = new ConnectToTableHandler(
 		{ connect } as unknown as TablePresence,
-		{ get } as unknown as TableRuntimeRegistry,
+		{ execute } as unknown as TableRuntimeRegistry,
 	);
 	return { handler, connect, execute };
 }
@@ -28,6 +27,7 @@ describe("ConnectToTableHandler", () => {
 
 		expect(connect).toHaveBeenCalledWith("t-1", "u0", "socket-1");
 		expect(execute).toHaveBeenCalledWith(
+			"t-1",
 			{ type: "Reconnect", userId: "u0" },
 			{ userId: "u0" },
 		);
