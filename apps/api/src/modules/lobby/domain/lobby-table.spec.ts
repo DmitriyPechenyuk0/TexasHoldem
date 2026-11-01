@@ -1,4 +1,9 @@
-import { createLobbyTable, type NewTable } from "./lobby-table.js";
+import {
+	createLobbyTable,
+	type LobbyTable,
+	mayJoin,
+	type NewTable,
+} from "./lobby-table.js";
 import { STAKE_PRESETS } from "./stake-presets.js";
 
 const draft = (overrides: Partial<NewTable> = {}): NewTable => ({
@@ -9,6 +14,7 @@ const draft = (overrides: Partial<NewTable> = {}): NewTable => ({
 	visibility: "public",
 	creatorId: "u-1",
 	createdAt: new Date(0),
+	inviteCode: "K7MPQ2XZ",
 	...overrides,
 });
 
@@ -19,7 +25,12 @@ describe("createLobbyTable", () => {
 		expect(created).toEqual({
 			ok: true,
 			value: {
-				table: { ...draft(), status: "open" },
+				table: {
+					...draft(),
+					status: "open",
+					inviteCode: null,
+					passwordHash: null,
+				},
 				preset: {
 					id: "micro",
 					smallBlind: 1,
@@ -46,6 +57,41 @@ describe("createLobbyTable", () => {
 			"lobby.unknown-preset",
 			{ presetId: "nosebleed" },
 		]);
+	});
+});
+
+describe("private tables", () => {
+	it("keep their invite code, and take a password of 4 to 64 characters", () => {
+		const created = createLobbyTable(
+			draft({ visibility: "private", password: "four" }),
+		);
+		expect(created.ok && created.value.table.inviteCode).toBe("K7MPQ2XZ");
+
+		const codeOf = (overrides: Partial<NewTable>) => {
+			const result = createLobbyTable(draft(overrides));
+			return result.ok ? null : result.error.code;
+		};
+		expect(codeOf({ visibility: "private", password: "abc" })).toBe(
+			"lobby.invalid-password",
+		);
+		expect(codeOf({ visibility: "private", password: "x".repeat(65) })).toBe(
+			"lobby.invalid-password",
+		);
+		expect(codeOf({ password: "secret" })).toBe("lobby.password-needs-private");
+	});
+
+	it("take their creator and invited users; a public one takes anyone", () => {
+		const table = {
+			...draft({ visibility: "private" }),
+			status: "open",
+			passwordHash: null,
+		} as LobbyTable;
+		expect(mayJoin(table, "u-1", false)).toBe(true);
+		expect(mayJoin(table, "u-2", true)).toBe(true);
+		expect(mayJoin(table, "u-2", false)).toBe(false);
+		expect(mayJoin({ ...table, visibility: "public" }, "u-2", false)).toBe(
+			true,
+		);
 	});
 });
 

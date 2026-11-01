@@ -1,4 +1,8 @@
-import { CreateTableRequest, StakePresetsResponse } from "./index.js";
+import {
+	CreateTableRequest,
+	InviteCode,
+	StakePresetsResponse,
+} from "./index.js";
 
 describe("lobby contracts", () => {
 	it("take a table's name, stakes, seats, visibility and turn time", () => {
@@ -36,5 +40,18 @@ describe("lobby contracts", () => {
 			},
 		];
 		expect(StakePresetsResponse.parse(presets)).toEqual(presets);
+	});
+
+	it("read invite codes without look-alike characters, in either case", () => {
+		expect(InviteCode.parse("K7mpq2Xz")).toBe("K7MPQ2XZ");
+		for (const code of [
+			"K7MPQ2X",
+			"K7MPQ2XZ9",
+			"K0MPQ2XZ",
+			"K1MPQ2XZ",
+			"KOMPQ2XZ",
+		]) {
+			expect(InviteCode.safeParse(code).success).toBe(false);
+		}
 	});
 });

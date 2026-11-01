@@ -1,9 +1,15 @@
 export {
 	CreateTableRequest,
 	CreateTableResponse,
+	InviteCode,
+	InviteCodeResponse,
+	InviteResponse,
+	RedeemInviteRequest,
+	RedeemInviteResponse,
 	StakePreset,
 	StakePresetsResponse,
 	TABLE_NAME_LENGTH,
+	TABLE_PASSWORD_LENGTH,
 	TABLE_SEATS,
 	TURN_SECONDS,
 } from "./lobby.js";

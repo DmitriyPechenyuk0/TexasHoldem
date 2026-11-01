@@ -20,6 +20,10 @@ export const lobbyTables = table(
 		/** `open` | `closed`. */
 		status: text().notNull(),
 		createdAt: timestamp({ withTimezone: true }).notNull(),
+		/** A private table's invite code; null for a public one. */
+		inviteCode: text().unique(),
+		/** A private table's password, hashed (scrypt); never the password. */
+		passwordHash: text(),
 	},
 	(columns) => [index().on(columns.creatorId, columns.status)],
 );
