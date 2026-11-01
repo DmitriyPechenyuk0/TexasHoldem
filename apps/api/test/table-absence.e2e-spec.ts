@@ -169,11 +169,12 @@ describe("Table absences (e2e)", () => {
 					"SitOutStarted",
 					"SeatLeft",
 				]),
-			{ timeout: 5_000, interval: 100 },
+			{ timeout: 10_000, interval: 100 },
 		);
 		const [, satOut] = (await store.readStream(`table-${tableId}`)).slice(
 			seatedAt,
 		);
 		expect(satOut?.event).toMatchObject({ status: "sitting-out" });
-	});
+		// Signing up through Mailpit, then the grace and the sit-out: more than the default 5 s.
+	}, 30_000);
 });
