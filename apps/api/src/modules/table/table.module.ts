@@ -8,6 +8,7 @@ import {
 import { PostgresEventStore } from "@/shared/infrastructure/event-store/index.js";
 import { ConnectToTableHandler } from "./application/commands/connect-to-table/connect-to-table.handler.js";
 import { DisconnectFromTableHandler } from "./application/commands/disconnect-from-table/disconnect-from-table.handler.js";
+import { PublishPotsAwardedHandler } from "./application/events/publish-pots-awarded.handler.js";
 import { PublishTableSummaryHandler } from "./application/events/publish-table-summary.handler.js";
 import { ExecuteTableCommandHandler } from "./application/commands/execute-table-command/execute-table-command.handler.js";
 import { StartNextHandHandler } from "./application/commands/start-next-hand/start-next-hand.handler.js";
@@ -76,6 +77,7 @@ export class TableModule {
 				GetTableViewHandler,
 				GetHandFairnessHandler,
 				PublishTableSummaryHandler,
+				PublishPotsAwardedHandler,
 				TableGateway,
 			],
 		};

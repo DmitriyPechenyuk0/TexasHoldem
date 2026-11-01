@@ -52,6 +52,7 @@ describe("defineEvent and defineNamespace", () => {
 			table: "/table",
 			lobby: "/lobby",
 			social: "/social",
+			chat: "/chat",
 		});
 		expect(systemNamespace.clientToServer.ping).toBe(PingEvent);
 	});
