@@ -430,6 +430,7 @@ function expectNothingHidden(
 	const ended = new Set<string>();
 	let revealed = 0;
 	let holeCardsSeen = 0;
+	let deals = 0;
 	for (const payload of received) {
 		walk(payload);
 		if ("settings" in payload) {
@@ -453,6 +454,7 @@ function expectNothingHidden(
 		}
 		for (const event of payload.hand) {
 			if (event.type === "HoleCardsDealt") {
+				deals += 1;
 				for (const { seat, cards } of event.hands) {
 					if (seat === viewer) {
 						expect(cards).not.toBeNull();
@@ -464,6 +466,8 @@ function expectNothingHidden(
 			}
 		}
 	}
-	expect(holeCardsSeen).toBe(viewer === "spectator" ? 0 : 1);
+	// Their own cards in every deal (the next hand may have been dealt meanwhile), nobody else's.
+	expect(deals).toBeGreaterThanOrEqual(1);
+	expect(holeCardsSeen).toBe(viewer === "spectator" ? 0 : deals);
 	expect(revealed).toBeGreaterThanOrEqual(1);
 }
