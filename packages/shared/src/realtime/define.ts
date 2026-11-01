@@ -8,6 +8,7 @@ export const NAMESPACES = {
 	table: "/table",
 	lobby: "/lobby",
 	social: "/social",
+	chat: "/chat",
 } as const;
 export type NamespacePath = (typeof NAMESPACES)[keyof typeof NAMESPACES];
 

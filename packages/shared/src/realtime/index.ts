@@ -80,3 +80,16 @@ export {
 	type SocialServerToClientEvents,
 	TableInviteReceivedEvent,
 } from "./social.js";
+export {
+	CHAT_MESSAGE_LENGTH,
+	type ChatClientToServerEvents,
+	ChatMessage,
+	ChatMessageEvent,
+	chatNamespace,
+	type ChatServerToClientEvents,
+	DealerChatMessage,
+	JoinChatEvent,
+	LeaveChatEvent,
+	PlayerChatMessage,
+	SendChatEvent,
+} from "./chat.js";
