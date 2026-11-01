@@ -13,6 +13,7 @@ src/
       <operation>.ts        the schemas of one endpoint or event
       index.ts              the context's public entry
   realtime/                 socket.io namespaces and their events: define.ts, then one file per namespace
+  events/                   integration events between api instances: the envelope, then one file per context
 ```
 
 Import a context through its subpath, so bundles only carry what they use:
@@ -22,6 +23,13 @@ import { ServerTimeResponse } from "@holdem/shared/contracts/system";
 import { PingEvent } from "@holdem/shared/realtime";
 import { TableId, Chips } from "@holdem/shared";
 ```
+
+## Integration events
+
+`src/events` (`@holdem/shared/events`) holds the schemas of the api's integration events between contexts, as they travel between api instances through Redis. Only the api uses it.
+
+- `IntegrationEventEnvelope`: `{ from, name, v, data }`. `from` is the sending instance, `name` is `<context>.<event>`, and `v` the schema version of `data`.
+- Each event version has a schema of its own, named after it: `UserRegisteredV1`, `UserVerifiedV1`. A change to an event's data adds a new version next to the old one; an instance drops a version it does not know.
 
 ## Realtime
 

@@ -18,6 +18,10 @@
 		"./realtime": {
 			"types": "./dist/realtime/index.d.ts",
 			"default": "./dist/realtime/index.js"
+		},
+		"./events": {
+			"types": "./dist/events/index.d.ts",
+			"default": "./dist/events/index.js"
 		}
 	},
 	"scripts": {

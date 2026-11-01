@@ -16,6 +16,7 @@ import {
 	ConfigModule,
 } from "@/shared/infrastructure/config/index.js";
 import { DatabaseModule } from "@/shared/infrastructure/database/index.js";
+import { IntegrationEventsModule } from "@/shared/infrastructure/integration-events/index.js";
 import { LoggingModule } from "@/shared/infrastructure/logging/index.js";
 import { MailModule } from "@/shared/infrastructure/mail/index.js";
 import { StorageModule } from "@/shared/infrastructure/storage/index.js";
@@ -47,6 +48,7 @@ export class AppModule implements NestModule {
 				CqrsModule.forRoot(),
 				DatabaseModule,
 				RedisModule,
+				IntegrationEventsModule,
 				MailModule,
 				StorageModule,
 				SharedModule,
