@@ -40,12 +40,40 @@ const PUBLISHING_COMMANDS: ReadonlySet<PropertyKey> = new Set([
 ]);
 
 /**
- * The streams adapter publishes each broadcast before it emits to this instance's sockets. While
- * Redis is down, a queued command would hold every broadcast up for the command timeout; failing
- * at once lets this instance's sockets get it straight away, and only other instances miss it.
- * Its reading connections, from `duplicate()`, are untouched: they wait for Redis to come back.
+ * A connection the adapter opened with `duplicate()`, which it ends with the deprecated
+ * `disconnect()`. In node-redis 6 that destroys the connection and rejects its pending commands,
+ * which nothing awaits; closing lets them finish first, unless Redis is down anyway.
  */
-export function failingFastWhileDown(redis: Redis): Redis {
+function closingGracefully(redis: Redis): Redis {
+	return new Proxy(redis, {
+		get(target, property) {
+			if (property === "disconnect") {
+				return async () => {
+					if (target.isReady) {
+						await target.close().catch(() => target.destroy());
+					} else if (target.isOpen) {
+						target.destroy();
+					}
+				};
+			}
+			const value: unknown = Reflect.get(target, property, target);
+			return typeof value === "function"
+				? (value as (...args: unknown[]) => unknown).bind(target)
+				: value;
+		},
+	});
+}
+
+/**
+ * The client the streams adapter is given:
+ *
+ * - It publishes each broadcast before it emits to this instance's sockets. While Redis is down, a
+ *   queued command would hold every broadcast up for the command timeout; failing at once lets this
+ *   instance's sockets get it straight away, and only other instances miss it.
+ * - Its reading connections, from `duplicate()`, wait for Redis to come back, and close without
+ *   leaving rejected commands behind when the server closes.
+ */
+export function adapterClient(redis: Redis): Redis {
 	return new Proxy(redis, {
 		get(target, property) {
 			const value: unknown = Reflect.get(target, property, target);
@@ -53,6 +81,10 @@ export function failingFastWhileDown(redis: Redis): Redis {
 				return value;
 			}
 			const method = (value as (...args: unknown[]) => unknown).bind(target);
+			if (property === "duplicate") {
+				return (...args: unknown[]) =>
+					closingGracefully(method(...args) as Redis);
+			}
 			if (!PUBLISHING_COMMANDS.has(property)) {
 				return method;
 			}
@@ -126,7 +158,7 @@ export class SocketIoAdapter extends IoAdapter {
 			...options,
 			cors: { origin: webOrigin, credentials: true },
 			transports: ["websocket"],
-			adapter: createAdapter(failingFastWhileDown(redis), {
+			adapter: createAdapter(adapterClient(redis), {
 				blockTimeInMs: ADAPTER_READ_BLOCK_MS,
 			}) as ServerOptions["adapter"],
 			// Runs once per connection, on its handshake.
