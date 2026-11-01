@@ -19,6 +19,14 @@ export class DrizzleFriendshipRepository extends FriendshipRepository {
 		super();
 	}
 
+	async areFriends(a: string, b: string): Promise<boolean> {
+		const rows = await this.db
+			.select({ since: friendships.since })
+			.from(friendships)
+			.where(and(eq(friendships.userId, a), eq(friendships.friendId, b)));
+		return rows.length > 0;
+	}
+
 	/** Advisory locks per player, taken in one order so two units of work never wait on each other. */
 	locked<T>(
 		userIds: readonly string[],

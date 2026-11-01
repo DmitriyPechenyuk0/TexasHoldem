@@ -411,6 +411,13 @@ Who plays with whom (`modules/social`). Players are shown by their cards (userna
   - `friends-presence` answers every friend's presence. Changes reach a socket from its connection on, since it joins its room before the player is shown online.
   - `FriendRequestSent` goes out as `friend-request-received`. `FriendshipCreated` goes out as `friend-added` to both players, followed by their presence.
   - While Redis is down, nobody comes online or goes offline.
+- **Table invites** (POK-109).
+  - `POST /api/table-invites { friendId, tableId }` invites a friend to a table the player may join themselves. The lobby answers this through the shared-kernel `GetInvitableTableQuery`, which finds the table open, public or with access. A stranger is `social.not-friends`, and a table out of reach is `social.table-not-found`. Each player may send one invite a minute per friend and table (429).
+  - `RedisTableInvites` keeps the invite for 10 minutes, in a sorted set per invitee scored by expiry. The friend hears `table-invite-received` on `/social`.
+  - `GET /api/table-invites` lists the waiting invites, without those to tables closed or out of the sender's reach.
+  - `POST /api/table-invites/accept { inviterId, tableId }` takes the invite out (once, atomically) and answers `{ tableId }`. For a private table it grants access through the lobby (`GrantTableAccessCommand`), as a redeemed invite code would, with no password.
+  - Declining (`/decline`) tells nobody.
+  - Access is granted only on accepting, so an invite that runs out grants nothing.
 
 ## HTTP and sockets
 

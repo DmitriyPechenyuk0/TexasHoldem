@@ -1,8 +1,10 @@
 import {
 	FriendsResponse,
+	InviteFriendRequest,
 	PlayerSearchQuery,
 	PlayerSearchResponse,
 	SendFriendRequestRequest,
+	TableInvitesResponse,
 } from "./index.js";
 
 const card = {
@@ -44,5 +46,31 @@ describe("social contracts", () => {
 			PlayerSearchResponse.safeParse([{ ...card, relation: "blocked" }])
 				.success,
 		).toBe(false);
+	});
+
+	it("invite a friend to a table, by ids", () => {
+		const tableId = "5d1f8a0e-2b9c-4e7a-8f3d-6c4b2a1e9f07";
+		expect(
+			InviteFriendRequest.parse({ friendId: card.userId, tableId }),
+		).toEqual({ friendId: card.userId, tableId });
+		expect(
+			InviteFriendRequest.safeParse({ friendId: "bob", tableId }).success,
+		).toBe(false);
+		const invite = {
+			from: card,
+			table: {
+				tableId,
+				name: "Friday game",
+				presetId: "low",
+				smallBlind: 5,
+				bigBlind: 10,
+				maxSeats: 6,
+				playerCount: 1,
+				handsPlayed: 0,
+				visibility: "private",
+			},
+			expiresAt: "2026-11-02T10:10:00.000Z",
+		};
+		expect(TableInvitesResponse.parse([invite])).toEqual([invite]);
 	});
 });

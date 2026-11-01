@@ -35,6 +35,7 @@ import { DisconnectFromSocialCommand } from "../application/commands/disconnect-
 import { FriendRequestSent } from "../application/events/friend-request-sent.event.js";
 import { FriendshipCreated } from "../application/events/friendship-created.event.js";
 import { PresenceChanged } from "../application/events/presence-changed.event.js";
+import { TableInviteSent } from "../application/events/table-invite-sent.event.js";
 import { GetFriendsPresenceQuery } from "../application/queries/get-friends-presence/get-friends-presence.query.js";
 import {
 	GetPresenceWatchersQuery,
@@ -80,7 +81,7 @@ const asFriendPresence = ({
  * The `/social` namespace (POK-105). A player is online while any socket of theirs is connected
  * here, and goes offline a few seconds after the last one closes. Their online friends are told
  * every change of their presence, as each may see it, and they hear of friend requests and new
- * friends. Everything goes to player rooms, emitted on the instance where it happened.
+ * friends and table invites. Everything goes to player rooms, emitted on the instance where it happened.
  */
 @RealtimeGateway(socialNamespace)
 @UseGuards(SocketRateLimit)
@@ -107,6 +108,7 @@ export class SocialGateway
 			this.eventBus.pipe(ofType(PresenceChanged)),
 			this.eventBus.pipe(ofType(FriendRequestSent)),
 			this.eventBus.pipe(ofType(FriendshipCreated)),
+			this.eventBus.pipe(ofType(TableInviteSent)),
 		).subscribe((event) => {
 			this.tell(event).catch((error: unknown) =>
 				this.logger.error({
@@ -160,10 +162,24 @@ export class SocialGateway
 	}
 
 	private async tell(
-		event: PresenceChanged | FriendRequestSent | FriendshipCreated,
+		event:
+			PresenceChanged | FriendRequestSent | FriendshipCreated | TableInviteSent,
 	): Promise<void> {
 		if (event instanceof PresenceChanged) {
 			await this.tellPresence(event.userId);
+		} else if (event instanceof TableInviteSent) {
+			const [from] = await this.queryBus.execute(
+				new GetPlayerCardsQuery([event.inviterId]),
+			);
+			if (from) {
+				this.server
+					.to(playerRoom(event.inviteeId))
+					.emit("table-invite-received", {
+						from: asCard(from),
+						table: { ...event.table, tableId: event.table.tableId as TableId },
+						expiresAt: event.expiresAt.toISOString(),
+					});
+			}
 		} else if (event instanceof FriendRequestSent) {
 			const [from] = await this.queryBus.execute(
 				new GetPlayerCardsQuery([event.fromId]),

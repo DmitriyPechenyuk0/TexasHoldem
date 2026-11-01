@@ -15,6 +15,10 @@ export class InMemoryFriendships
 	readonly friendships = new Map<string, Date>();
 	readonly locks: (readonly string[])[] = [];
 
+	async areFriends(a: string, b: string): Promise<boolean> {
+		return this.friendships.has(`${a}→${b}`);
+	}
+
 	async locked<T>(
 		userIds: readonly string[],
 		work: (friendships: Friendships) => Promise<T>,

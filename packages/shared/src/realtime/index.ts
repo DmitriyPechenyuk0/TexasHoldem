@@ -78,4 +78,5 @@ export {
 	type SocialClientToServerEvents,
 	socialNamespace,
 	type SocialServerToClientEvents,
+	TableInviteReceivedEvent,
 } from "./social.js";
