@@ -16,6 +16,7 @@ import {
 	type ContractEvent,
 	eventStoreContract,
 } from "./support/event-store-contract.js";
+import { tableConfig } from "./support/table.js";
 import {
 	createTestDatabase,
 	type TestDatabase,
@@ -160,16 +161,7 @@ describe("PostgresEventStore (e2e)", () => {
 			{
 				type: "OpenTable",
 				tableId: "table-1",
-				config: {
-					smallBlind: 1,
-					bigBlind: 2,
-					minBuyInBigBlinds: 40,
-					maxBuyInBigBlinds: 100,
-					maxSeats: 6,
-					turnSeconds: 20,
-					timeBankSeconds: 30,
-					visibility: "public",
-				},
+				config: tableConfig({ minBuyInBigBlinds: 40, maxBuyInBigBlinds: 100 }),
 			},
 			{
 				type: "TakeSeat",

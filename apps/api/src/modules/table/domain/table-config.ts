@@ -14,6 +14,17 @@ export interface TableConfig {
 	readonly turnSeconds: number;
 	/** Extra seconds a player can draw on when the turn time runs out (POK-84). */
 	readonly timeBankSeconds: number;
+	/**
+	 * Seconds a disconnected player has to come back before they sit out (POK-85). Meanwhile, their
+	 * turns are cut to `disconnectedTurnSeconds`.
+	 */
+	readonly reconnectGraceSeconds: number;
+	/** Seconds a disconnected player's turn lasts, from the turn's start or the disconnect. */
+	readonly disconnectedTurnSeconds: number;
+	/** A player who sits out this long loses the seat. */
+	readonly sitOutSeconds: number;
+	/** So does one who sits out this many hands. */
+	readonly sitOutHands: number;
 	/** Private tables are not listed in the lobby. */
 	readonly visibility: TableVisibility;
 }
@@ -23,6 +34,21 @@ export const MAX_TABLE_SEATS = 9;
 export const MIN_TURN_SECONDS = 5;
 export const MAX_TURN_SECONDS = 120;
 export const MAX_TIME_BANK_SECONDS = 600;
+export const MAX_RECONNECT_GRACE_SECONDS = 600;
+export const MAX_SIT_OUT_SECONDS = 3600;
+export const MAX_SIT_OUT_HANDS = 100;
+
+/**
+ * The absence policy every table gets unless the lobby picks another (POK-85): two minutes to
+ * reconnect, with five-second turns meanwhile; a seat is lost after ten minutes or three hands
+ * sitting out.
+ */
+export const DEFAULT_ABSENCE_POLICY = {
+	reconnectGraceSeconds: 120,
+	disconnectedTurnSeconds: 5,
+	sitOutSeconds: 600,
+	sitOutHands: 3,
+} as const satisfies Partial<TableConfig>;
 
 /** Which part of a `TableConfig` is wrong. */
 export type InvalidTableConfigReason =
@@ -32,6 +58,9 @@ export type InvalidTableConfigReason =
 	| "seats"
 	| "turn-time"
 	| "time-bank"
+	| "reconnect-grace"
+	| "disconnected-turn-time"
+	| "sit-out"
 	| "visibility";
 
 const isPositiveInteger = (value: number) =>
@@ -76,6 +105,18 @@ export function validateTableConfig(
 	}
 	if (!inRange(config.timeBankSeconds, 0, MAX_TIME_BANK_SECONDS)) {
 		return "time-bank";
+	}
+	if (!inRange(config.reconnectGraceSeconds, 0, MAX_RECONNECT_GRACE_SECONDS)) {
+		return "reconnect-grace";
+	}
+	if (!inRange(config.disconnectedTurnSeconds, 1, MAX_TURN_SECONDS)) {
+		return "disconnected-turn-time";
+	}
+	if (
+		!inRange(config.sitOutSeconds, 1, MAX_SIT_OUT_SECONDS) ||
+		!inRange(config.sitOutHands, 1, MAX_SIT_OUT_HANDS)
+	) {
+		return "sit-out";
 	}
 	if (config.visibility !== "public" && config.visibility !== "private") {
 		return "visibility";

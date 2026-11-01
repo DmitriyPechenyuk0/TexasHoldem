@@ -11,6 +11,7 @@ import {
 } from "../../../../test/support/table.js";
 import { replayTable } from "./evolve-table.js";
 import {
+	absenceDueAt,
 	decideGame,
 	evolveGame,
 	turnDueAt,
@@ -32,7 +33,7 @@ const gameOf = (history: readonly TableEvent[]): GameState => ({
 });
 
 const isClock = ({ type }: TableEvent) =>
-	type === "TurnStarted" || type === "TimeBankUsed";
+	type === "TurnStarted" || type === "TimeBankUsed" || type === "SitOutStarted";
 const isDeck = ({ type }: TableEvent) =>
 	type === "DeckCommitted" || type === "DeckRevealed";
 
@@ -42,8 +43,8 @@ const COMMITMENT = commitServerSeed(hexToBytes(SEED));
 
 /**
  * Runs a command that must be accepted at `now`: answers its events and the state after them.
- * The turn clock's events are set apart in `clock`, and the deck's in `deck`, so tests of other
- * rules can ignore them.
+ * The clock events (turns, time banks, sit-outs) are set apart in `clock`, and the deck's in
+ * `deck`, so tests of other rules can ignore them.
  */
 function run(state: GameState, command: GameCommand, now = 0) {
 	const decision = decideGame(command, state, now);
@@ -588,6 +589,192 @@ describe("the turn clock", () => {
 		expect(ended.clock).toEqual([]);
 		expect(table(ended.state).turn).toBeNull();
 		expect(turnDueAt(ended.state.table)).toBeNull();
+	});
+});
+
+describe("absences (POK-85)", () => {
+	// The default policy: 120 s to reconnect, with 5 s turns meanwhile; the seat is lost after
+	// 600 s or 3 hands sitting out.
+	const disconnect = (state: GameState, userId: string, now: number) =>
+		run(state, { type: "Disconnect", userId }, now);
+	const playerAt = (state: GameState, seat: number) =>
+		table(state).players.find((player) => player.seat === seat);
+	const foldOut = (from: GameState) => {
+		let state = from;
+		while (state.hand.status === "in-progress") {
+			state = run(state, {
+				type: "Act",
+				userId: userAt(state, toAct(state)),
+				action: "fold",
+			}).state;
+		}
+		return state;
+	};
+
+	it("keeps a disconnected player's seat, and lets a disconnected spectator go", () => {
+		const watched = gameOf([
+			...tableWith(0, 1),
+			{ type: "SpectatorJoined", v: 1, userId: "s" },
+		]);
+		const { events, state } = disconnect(watched, "u0", 1_000);
+		expect(events.table).toEqual([
+			{ type: "PlayerDisconnected", v: 1, seat: 0, at: 1_000 },
+		]);
+		expect(playerAt(state, 0)).toMatchObject({
+			status: "waiting-for-big-blind",
+			disconnectedAt: 1_000,
+		});
+		expect(refusal(state, { type: "Disconnect", userId: "u0" })?.code).toBe(
+			"table.already-disconnected",
+		);
+
+		expect(disconnect(watched, "s", 1_000).events.table).toEqual([
+			{ type: "SpectatorLeft", v: 1, userId: "s" },
+		]);
+		expect(
+			refusal(watched, { type: "Disconnect", userId: "stranger" })?.code,
+		).toBe("table.not-seated");
+	});
+
+	it("lets a player back within the grace as if nothing happened", () => {
+		const away = disconnect(gameOf(tableWith(0, 1)), "u0", 0).state;
+		expect(absenceDueAt(away.table)).toBe(120_000);
+
+		const { events, state } = run(
+			away,
+			{ type: "Reconnect", userId: "u0" },
+			119_999,
+		);
+		expect(events.table).toEqual([
+			{ type: "PlayerReconnected", v: 1, seat: 0 },
+		]);
+		expect(playerAt(state, 0)).toMatchObject({
+			status: "waiting-for-big-blind",
+			disconnectedAt: null,
+		});
+		expect(absenceDueAt(state.table)).toBeNull();
+		expect(refusal(state, { type: "Reconnect", userId: "u0" })?.code).toBe(
+			"table.not-disconnected",
+		);
+	});
+
+	it("sits a player out once the grace is over, until they are back and sit in", () => {
+		const away = disconnect(gameOf(tableWith(0, 1)), "u0", 0).state;
+		expect(refusal(away, { type: "ExpireAbsences" }, 119_999)?.code).toBe(
+			"table.absence-not-due",
+		);
+
+		const { events, clock, state } = run(
+			away,
+			{ type: "ExpireAbsences" },
+			120_000,
+		);
+		expect(events.table).toEqual([statusChanged(0, "sitting-out")]);
+		expect(clock).toEqual([
+			{ type: "SitOutStarted", v: 1, seat: 0, at: 120_000 },
+		]);
+
+		// Back after the grace: connected again, but sitting out until they sit in.
+		const back = run(state, { type: "Reconnect", userId: "u0" }, 130_000).state;
+		expect(playerAt(back, 0)).toMatchObject({
+			status: "sitting-out",
+			disconnectedAt: null,
+			sitOut: { since: 120_000, handsMissed: 0 },
+		});
+		const sitIn = run(back, { type: "SitIn", userId: "u0" }, 131_000).state;
+		expect(playerAt(sitIn, 0)?.sitOut).toBeNull();
+		expect(absenceDueAt(sitIn.table)).toBeNull();
+	});
+
+	it("frees the seat of a player who sat out for too long", () => {
+		const satOut = run(
+			gameOf(tableWith(0, 1)),
+			{ type: "SitOut", userId: "u0" },
+			1_000,
+		);
+		expect(satOut.clock).toEqual([
+			{ type: "SitOutStarted", v: 1, seat: 0, at: 1_000 },
+		]);
+		expect(absenceDueAt(satOut.state.table)).toBe(601_000);
+		expect(
+			refusal(satOut.state, { type: "ExpireAbsences" }, 600_999)?.code,
+		).toBe("table.absence-not-due");
+
+		const { events, state } = run(
+			satOut.state,
+			{ type: "ExpireAbsences" },
+			601_000,
+		);
+		expect(events.table).toEqual([
+			{ type: "SeatLeft", v: 1, seat: 0, userId: "u0" },
+		]);
+		expect(absenceDueAt(state.table)).toBeNull();
+	});
+
+	it("frees the seat of a player who sat out three hands, as the third is dealt", () => {
+		let state = run(gameOf(tableWith(0, 1, 2)), {
+			type: "SitOut",
+			userId: "u2",
+		}).state;
+		for (const missed of [1, 2]) {
+			state = foldOut(start(state, `hand-${missed}`).state);
+			expect(playerAt(state, 2)?.sitOut?.handsMissed).toBe(missed);
+		}
+
+		const third = start(state, "hand-3");
+		expect(third.events.table.at(-1)).toEqual({
+			type: "SeatLeft",
+			v: 1,
+			seat: 2,
+			userId: "u2",
+		});
+		expect(playerAt(third.state, 2)).toBeUndefined();
+	});
+
+	it("folds a player who has to leave during a hand they are in, on their turn", () => {
+		let { state } = start(gameOf(tableWith(0, 1, 2)));
+		const seat = toAct(state)!;
+		state = run(state, { type: "SitOut", userId: `u${seat}` }).state;
+
+		const { events } = run(state, { type: "ExpireAbsences" }, 600_000);
+		expect(events.table[0]).toEqual(statusChanged(seat, "leaving"));
+		expect(events.hand[0]).toMatchObject({
+			type: "PlayerActed",
+			seat,
+			action: "fold",
+		});
+	});
+
+	it("cuts a disconnected player's turns short, so the table is not held up", () => {
+		const { state } = start(gameOf(tableWith(0, 1, 2)), "hand-1", 0, 0);
+		const seat = toAct(state)!;
+		const userId = `u${seat}`;
+
+		// Gone as the turn starts: 5 s, and nothing comes out of the time bank.
+		const gone = disconnect(state, userId, 0).state;
+		expect(turnDueAt(gone.table)).toBe(5_000);
+		const timedOut = run(
+			gone,
+			{ type: "Timeout", handId: "hand-1", seat },
+			5_000,
+		);
+		expect(timedOut.events.hand[0]).toMatchObject({
+			type: "PlayerActed",
+			seat,
+			auto: true,
+		});
+		expect(timedOut.clock.map(({ type }) => type)).not.toContain(
+			"TimeBankUsed",
+		);
+
+		// Gone during the turn: 5 s from then.
+		expect(turnDueAt(disconnect(state, userId, 12_000).state.table)).toBe(
+			17_000,
+		);
+
+		// Back in time: the turn runs on as usual, time bank included.
+		const back = run(gone, { type: "Reconnect", userId }, 4_000).state;
+		expect(turnDueAt(back.table)).toBe(50_000);
 	});
 });
 

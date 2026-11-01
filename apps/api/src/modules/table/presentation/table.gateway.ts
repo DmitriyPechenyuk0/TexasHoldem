@@ -19,6 +19,7 @@ import {
 	TopUpEvent,
 } from "@holdem/shared/realtime";
 import {
+	Logger,
 	type OnModuleDestroy,
 	type OnModuleInit,
 	UseGuards,
@@ -41,6 +42,8 @@ import { SocketRateLimit } from "@/shared/presentation/realtime/socket-rate-limi
 import { RealtimeGateway } from "@/shared/presentation/realtime/realtime-gateway.decorator.js";
 import { ValidPayload } from "@/shared/presentation/request-validation.js";
 import { RequirePlayer } from "@/shared/presentation/require-player.guard.js";
+import { ConnectToTableCommand } from "../application/commands/connect-to-table/connect-to-table.command.js";
+import { DisconnectFromTableCommand } from "../application/commands/disconnect-from-table/disconnect-from-table.command.js";
 import {
 	ExecuteTableCommand,
 	type TableCommandInput,
@@ -75,13 +78,17 @@ const CLOCK_EVENTS: ReadonlySet<string> = new Set([
 	"TurnStarted",
 	"TimeBankUsed",
 	"HandSettled",
+	"PlayerDisconnected",
+	"PlayerReconnected",
 ]);
 
 /**
  * The `/table` namespace (POK-82, POK-83). Commands go to the table's runtime through the command
  * bus and are answered once it took them; what they changed reaches every follower as an `events`
  * batch, redacted for each: a seated player's to their user room, the spectators' one to the rest
- * of the table's room. Nothing unredacted ever leaves: hand events carry the deck.
+ * of the table's room. Nothing unredacted ever leaves: hand events carry the deck. Which sockets
+ * follow each table is also told to the table (POK-85): a user's first one brings a disconnected
+ * player back, and their last one disconnects a player or ends a spectator's watch.
  */
 @RealtimeGateway(tableNamespace)
 @UseGuards(SocketRateLimit)
@@ -92,6 +99,7 @@ export class TableGateway
 		OnModuleInit,
 		OnModuleDestroy
 {
+	private readonly logger = new Logger(TableGateway.name);
 	@WebSocketServer()
 	private readonly server!: TableNamespace;
 	/** The tables each socket follows, to stop watching them when it disconnects. */
@@ -125,16 +133,28 @@ export class TableGateway
 		const tables = this.following.get(socket.id) ?? new Set<string>();
 		this.following.delete(socket.id);
 		const { viewer } = socket.data;
-		if (viewer) {
-			await Promise.all(
-				[...tables].map((tableId) => this.stopWatching(tableId, viewer.userId)),
-			);
+		if (!viewer) {
+			return;
+		}
+		const outcomes = await Promise.allSettled(
+			[...tables].map((tableId) =>
+				this.unfollow(tableId, viewer.userId, socket.id),
+			),
+		);
+		for (const outcome of outcomes) {
+			if (outcome.status === "rejected") {
+				this.logger.error({
+					msg: "disconnect not told to the table",
+					err: outcome.reason,
+				});
+			}
 		}
 	}
 
 	/**
 	 * Follows the table and answers it as this user sees it. A user without a seat watches it as
 	 * a spectator, whatever `as` says, so every follower without a seat counts against the limit.
+	 * A disconnected player is back before the snapshot is taken, so it already shows them back.
 	 */
 	@SubscribeMessage(JoinTableEvent.name)
 	async join(
@@ -143,9 +163,13 @@ export class TableGateway
 		{ tableId }: Payload<typeof JoinTableEvent>,
 		@CurrentUser() viewer: Viewer,
 	): Promise<Ack<TableView>> {
+		const following = this.followed(socket).has(tableId);
 		// The room first: a batch sent before the snapshot is older than it, and the client drops it.
 		await socket.join(tableRoom(tableId));
 		try {
+			await this.commandBus.execute(
+				new ConnectToTableCommand(tableId, viewer.userId, socket.id),
+			);
 			let view = await this.view(tableId, viewer);
 			const seated = view.seats.some(({ userId }) => userId === viewer.userId);
 			if (!seated && (await this.watch(tableId, viewer))) {
@@ -154,7 +178,11 @@ export class TableGateway
 			this.followed(socket).add(tableId);
 			return { ok: true, data: view };
 		} catch (error) {
-			await socket.leave(tableRoom(tableId));
+			// A join that failed takes back only what it started: a resync keeps following.
+			if (!following) {
+				await socket.leave(tableRoom(tableId));
+				await this.unfollow(tableId, viewer.userId, socket.id);
+			}
 			throw error;
 		}
 	}
@@ -167,8 +195,9 @@ export class TableGateway
 		@CurrentUser() viewer: Viewer,
 	): Promise<Ack<TableCommandAck>> {
 		await socket.leave(tableRoom(tableId));
-		this.followed(socket).delete(tableId);
-		await this.stopWatching(tableId, viewer.userId);
+		if (this.followed(socket).delete(tableId)) {
+			await this.unfollow(tableId, viewer.userId, socket.id);
+		}
 		return accepted;
 	}
 
@@ -362,26 +391,15 @@ export class TableGateway
 		}
 	}
 
-	/** Stops watching once none of the user's sockets follows the table any more. */
-	private async stopWatching(tableId: string, userId: string): Promise<void> {
-		const sockets = await this.server.in(tableRoom(tableId)).fetchSockets();
-		if (sockets.some((socket) => socket.data.viewer?.userId === userId)) {
-			return;
-		}
-		try {
-			await this.commandBus.execute(
-				new ExecuteTableCommand(
-					tableId,
-					{ type: "LeaveSpectating", userId },
-					{ userId },
-				),
-			);
-		} catch (error) {
-			// A player, or a table that is closed or gone: there was nothing to stop watching.
-			if (!(error instanceof DomainError)) {
-				throw error;
-			}
-		}
+	/** The socket no longer follows the table: once none of the user's sockets does, the table knows. */
+	private unfollow(
+		tableId: string,
+		userId: string,
+		socketId: string,
+	): Promise<void> {
+		return this.commandBus.execute(
+			new DisconnectFromTableCommand(tableId, userId, socketId),
+		);
 	}
 
 	private followed(socket: TableSocket): Set<string> {

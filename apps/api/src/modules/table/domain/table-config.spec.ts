@@ -28,6 +28,27 @@ describe("validateTableConfig", () => {
 				tableConfig({ maxSeats: 9, turnSeconds: 120, timeBankSeconds: 600 }),
 			),
 		).toBeNull();
+		// The absence policy at its bounds: sitting out at once, and the longest waits.
+		expect(
+			validateTableConfig(
+				tableConfig({
+					reconnectGraceSeconds: 0,
+					disconnectedTurnSeconds: 1,
+					sitOutSeconds: 1,
+					sitOutHands: 1,
+				}),
+			),
+		).toBeNull();
+		expect(
+			validateTableConfig(
+				tableConfig({
+					reconnectGraceSeconds: 600,
+					disconnectedTurnSeconds: 120,
+					sitOutSeconds: 3600,
+					sitOutHands: 100,
+				}),
+			),
+		).toBeNull();
 	});
 
 	it.each<[string, Partial<TableConfig>]>([
@@ -47,6 +68,14 @@ describe("validateTableConfig", () => {
 		["time-bank", { timeBankSeconds: -1 }],
 		["time-bank", { timeBankSeconds: 601 }],
 		["time-bank", { timeBankSeconds: Number.NaN }],
+		["reconnect-grace", { reconnectGraceSeconds: -1 }],
+		["reconnect-grace", { reconnectGraceSeconds: 601 }],
+		["disconnected-turn-time", { disconnectedTurnSeconds: 0 }],
+		["disconnected-turn-time", { disconnectedTurnSeconds: 121 }],
+		["sit-out", { sitOutSeconds: 0 }],
+		["sit-out", { sitOutSeconds: 3601 }],
+		["sit-out", { sitOutHands: 0 }],
+		["sit-out", { sitOutHands: 101 }],
 		["visibility", { visibility: "hidden" as TableConfig["visibility"] }],
 	])("refuses %s in %o", (reason, overrides) => {
 		expect(validateTableConfig(tableConfig(overrides))).toBe(reason);

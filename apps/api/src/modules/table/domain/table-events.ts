@@ -85,6 +85,31 @@ export type TableEvent =
 			readonly usedMs: number;
 			readonly remainingMs: number;
 	  }
+	/**
+	 * The player's last connection to the table closed at `at` (epoch ms). Their turns are cut
+	 * short, and they sit out unless they reconnect within the table's grace (POK-85).
+	 */
+	| {
+			readonly type: "PlayerDisconnected";
+			readonly v: 1;
+			readonly seat: SeatIndex;
+			readonly at: number;
+	  }
+	| {
+			readonly type: "PlayerReconnected";
+			readonly v: 1;
+			readonly seat: SeatIndex;
+	  }
+	/**
+	 * The sit-out clock: follows every change to `sitting-out`. The player loses the seat once they
+	 * have sat out from `at` (epoch ms) for the table's `sitOutSeconds`, or `sitOutHands` hands.
+	 */
+	| {
+			readonly type: "SitOutStarted";
+			readonly v: 1;
+			readonly seat: SeatIndex;
+			readonly at: number;
+	  }
 	/** The hand ended: every player dealt in now has the stack it ended with. */
 	| {
 			readonly type: "HandSettled";

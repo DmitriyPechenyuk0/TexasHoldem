@@ -6,6 +6,8 @@ import {
 	DATABASE,
 } from "@/shared/infrastructure/database/index.js";
 import { PostgresEventStore } from "@/shared/infrastructure/event-store/index.js";
+import { ConnectToTableHandler } from "./application/commands/connect-to-table/connect-to-table.handler.js";
+import { DisconnectFromTableHandler } from "./application/commands/disconnect-from-table/disconnect-from-table.handler.js";
 import { ExecuteTableCommandHandler } from "./application/commands/execute-table-command/execute-table-command.handler.js";
 import { StartNextHandHandler } from "./application/commands/start-next-hand/start-next-hand.handler.js";
 import { GetHandFairnessHandler } from "./application/queries/get-hand-fairness/get-hand-fairness.handler.js";
@@ -13,7 +15,9 @@ import { GetTableViewHandler } from "./application/queries/get-table-view/get-ta
 import { DeckProvider } from "./application/deck-provider.js";
 import { TableRuntimeRegistry } from "./application/runtime/table-runtime-registry.js";
 import { TableRuntimeOptions } from "./application/runtime/table-runtime-options.js";
+import { TablePresence } from "./application/table-presence.js";
 import { tableEvents } from "./infrastructure/persistence/schema.js";
+import { RedisTablePresence } from "./infrastructure/redis-table-presence.js";
 import { SeededDeckProvider } from "./infrastructure/seeded-deck-provider.js";
 import { DevTablesController } from "./presentation/dev-tables.controller.js";
 import { HandsController } from "./presentation/hands.controller.js";
@@ -25,7 +29,8 @@ const IDLE_MS = 10 * 60_000;
 /**
  * Tables and the hands they run, event-sourced (ADR-002): seats, spectators and the deal, with
  * `@holdem/engine` deciding every hand. Each table runs in a runtime of its own, one command at a
- * time; players and spectators follow it on the `/table` namespace.
+ * time; players and spectators follow it on the `/table` namespace, and who still does is kept in
+ * Redis, across instances.
  */
 @Module({})
 export class TableModule {
@@ -43,6 +48,7 @@ export class TableModule {
 					useFactory: (db: Database) => new PostgresEventStore(db, tableEvents),
 				},
 				{ provide: DeckProvider, useClass: SeededDeckProvider },
+				{ provide: TablePresence, useClass: RedisTablePresence },
 				{
 					provide: TableRuntimeOptions,
 					inject: [AppConfig],
@@ -54,6 +60,8 @@ export class TableModule {
 				TableRuntimeRegistry,
 				ExecuteTableCommandHandler,
 				StartNextHandHandler,
+				ConnectToTableHandler,
+				DisconnectFromTableHandler,
 				GetTableViewHandler,
 				GetHandFairnessHandler,
 				TableGateway,

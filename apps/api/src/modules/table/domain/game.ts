@@ -15,13 +15,21 @@ import {
 import { err, ok, type Result } from "@/shared/domain/result.js";
 import { decideTable } from "./decide-table.js";
 import { evolveTable } from "./evolve-table.js";
-import type { GameCommand, HandPlayCommand } from "./table-commands.js";
+import type {
+	AbsenceCommand,
+	GameCommand,
+	HandPlayCommand,
+	TableCommand,
+} from "./table-commands.js";
 import {
+	AbsenceNotDueError,
+	AlreadyDisconnectedError,
 	HandInProgressError,
 	HandRuleError,
 	LeavingSeatError,
 	NoHandError,
 	NotEnoughPlayersError,
+	NotDisconnectedError,
 	NotInHandError,
 	NotSeatedError,
 	type TableError,
@@ -56,15 +64,21 @@ export const initialGameState: GameState = {
 	hand: initialHandState,
 };
 
-const isPlayCommand = (command: GameCommand): command is HandPlayCommand =>
-	[
-		"StartHand",
-		"Act",
-		"ShowCards",
-		"MuckCards",
-		"Timeout",
-		"RevealDeck",
-	].includes(command.type);
+/** Commands decided here, with the hand and the clock; the rest go to the table decider. */
+const GAME_COMMANDS: ReadonlySet<GameCommand["type"]> = new Set([
+	"StartHand",
+	"Act",
+	"ShowCards",
+	"MuckCards",
+	"Timeout",
+	"RevealDeck",
+	"Disconnect",
+	"Reconnect",
+	"ExpireAbsences",
+]);
+
+const isTableCommand = (command: GameCommand): command is TableCommand =>
+	!GAME_COMMANDS.has(command.type);
 
 /** Players who can be dealt in: neither sitting out nor leaving. Busted players sit out. */
 const ready = (table: OpenedTable): SeatedPlayer[] =>
@@ -189,18 +203,96 @@ class Game {
 			);
 		}
 	}
+
+	/**
+	 * The absence policy (POK-85), at the game's time: a disconnected player whose reconnect grace
+	 * is over sits out, and one who has sat out for the table's `sitOutSeconds`, or `sitOutHands`
+	 * hands, leaves the seat, keeping it until the end of a hand they are still in. Answers whether
+	 * anything was due.
+	 */
+	expireAbsences(): boolean {
+		const { table } = this;
+		if (table.status !== "open") return false;
+		const { config } = table;
+		const before = this.events.table.length;
+		for (const { userId, status, disconnectedAt, sitOut } of table.players) {
+			const graceOver =
+				disconnectedAt !== null &&
+				this.now >= disconnectedAt + config.reconnectGraceSeconds * 1000;
+			const sitOutOver =
+				sitOut !== null &&
+				(this.now >= sitOut.since + config.sitOutSeconds * 1000 ||
+					sitOut.handsMissed >= config.sitOutHands);
+			const command: TableCommand | null =
+				status === "sitting-out"
+					? sitOutOver
+						? { type: "LeaveSeat", userId }
+						: null
+					: status !== "leaving" && graceOver
+						? { type: "SitOut", userId }
+						: null;
+			if (command) {
+				const decision = decideTable(command, this.table);
+				// The player is seated and not leaving, which is all either command needs.
+				if (!decision.ok) throw decision.error;
+				this.addTable(decision.value);
+			}
+		}
+		return this.events.table.length > before;
+	}
+
+	/** Starts the sit-out clock of every player who has just started sitting out. */
+	startSitOutClocks(): void {
+		const { table } = this;
+		if (table.status !== "open") return;
+		this.addTable(
+			table.players
+				.filter(({ status, sitOut }) => status === "sitting-out" && !sitOut)
+				.map(({ seat }): TableEvent => ({
+					type: "SitOutStarted",
+					v: 1,
+					seat,
+					at: this.now,
+				})),
+		);
+	}
 }
 
 /** When the turn's own time is out; the time bank runs from then. */
 const turnEndsAt = (table: OpenedTable, startedAt: number) =>
 	startedAt + table.config.turnSeconds * 1000;
 
-/** When the player to act runs out of time altogether, bank included; null without a timed turn. */
+/**
+ * When the player to act runs out of time altogether, bank included; null without a timed turn.
+ * A disconnected player's turn is cut to `disconnectedTurnSeconds` from its start, or from the
+ * disconnect if later, so the table is not held up waiting for them (POK-85).
+ */
 export function turnDueAt(table: TableState): number | null {
 	if (table.status !== "open" || !table.turn) return null;
 	const { seat, startedAt } = table.turn;
 	const player = table.players.find((candidate) => candidate.seat === seat);
-	return turnEndsAt(table, startedAt) + (player?.timeBankMs ?? 0);
+	const dueAt = turnEndsAt(table, startedAt) + (player?.timeBankMs ?? 0);
+	if (player?.disconnectedAt == null) return dueAt;
+	const away = Math.max(startedAt, player.disconnectedAt);
+	return Math.min(dueAt, away + table.config.disconnectedTurnSeconds * 1000);
+}
+
+/**
+ * When the next reconnect grace or sit-out time runs out, for the table's runtime to send
+ * `ExpireAbsences`; null when nobody is away. Missed hands count when a hand is dealt instead.
+ */
+export function absenceDueAt(table: TableState): number | null {
+	if (table.status !== "open") return null;
+	const { config } = table;
+	const due = table.players.flatMap(({ status, disconnectedAt, sitOut }) => {
+		if (status === "sitting-out") {
+			return sitOut ? [sitOut.since + config.sitOutSeconds * 1000] : [];
+		}
+		return status !== "leaving" && disconnectedAt !== null
+			? [disconnectedAt + config.reconnectGraceSeconds * 1000]
+			: [];
+	});
+	return due.length > 0 ? Math.min(...due) : null;
 }
 
 /** A player who acts after the turn time pays the overrun out of their time bank. */
@@ -389,10 +481,45 @@ function revealDeck(
 	return ok(undefined);
 }
 
+/**
+ * The user's last connection closed: a player keeps the seat, with the time of the disconnect for
+ * the absence policy; a spectator stops watching.
+ */
+function disconnect(
+	game: Game,
+	table: OpenedTable,
+	userId: string,
+): Result<void, TableError> {
+	const player = table.players.find((seated) => seated.userId === userId);
+	if (player) {
+		if (player.disconnectedAt !== null)
+			return err(new AlreadyDisconnectedError());
+		game.addTable([
+			{ type: "PlayerDisconnected", v: 1, seat: player.seat, at: game.now },
+		]);
+		return ok(undefined);
+	}
+	if (!table.spectators.includes(userId)) return err(new NotSeatedError());
+	game.addTable([{ type: "SpectatorLeft", v: 1, userId }]);
+	return ok(undefined);
+}
+
+/** A player is back: within the grace they play on; after it, they sit out until they sit in. */
+function reconnect(
+	game: Game,
+	table: OpenedTable,
+	userId: string,
+): Result<void, TableError> {
+	const player = table.players.find((seated) => seated.userId === userId);
+	if (player?.disconnectedAt == null) return err(new NotDisconnectedError());
+	game.addTable([{ type: "PlayerReconnected", v: 1, seat: player.seat }]);
+	return ok(undefined);
+}
+
 function play(
 	game: Game,
 	table: OpenedTable,
-	command: HandPlayCommand,
+	command: HandPlayCommand | AbsenceCommand,
 ): Result<void, TableError> {
 	switch (command.type) {
 		case "StartHand":
@@ -401,6 +528,13 @@ function play(
 			return timeOut(game, table, command);
 		case "RevealDeck":
 			return revealDeck(game, table, command);
+		case "Disconnect":
+			return disconnect(game, table, command.userId);
+		case "Reconnect":
+			return reconnect(game, table, command.userId);
+		case "ExpireAbsences":
+			// Whatever is due is applied below, as after every command.
+			return ok(undefined);
 		default:
 			return playerCommand(game, table, command);
 	}
@@ -408,9 +542,10 @@ function play(
 
 /**
  * The table's decider with hands: seat and spectator commands go to `decideTable`, hand
- * commands to the hand being played, and whatever follows on its own is added: leaving players
- * fold on their turn, an ended hand is settled into the table, and a new turn starts its clock
- * at `now` (epoch ms): the turn time, then the player's time bank.
+ * commands to the hand being played, and whatever follows on its own is added, at `now` (epoch
+ * ms): the absence policy's due seat changes, leaving players folding on their turn, an ended
+ * hand settled into the table, the sit-out clocks of players who started sitting out, and the
+ * clock of a new turn: the turn time, then the player's time bank.
  */
 export function decideGame(
 	command: GameCommand,
@@ -419,17 +554,23 @@ export function decideGame(
 ): GameDecision {
 	const game = new Game(state.table, state.hand, now);
 	const before = state.table.status === "unopened" ? null : state.table.turn;
-	if (isPlayCommand(command)) {
+	if (isTableCommand(command)) {
+		const decision = decideTable(command, state.table);
+		if (!decision.ok) return decision;
+		game.addTable(decision.value);
+	} else {
 		const table = openTable(state.table);
 		if (!table.ok) return table;
 		const played = play(game, table.value, command);
 		if (!played.ok) return played;
-	} else {
-		const decision = decideTable(command, state.table);
-		if (!decision.ok) return decision;
-		game.addTable(decision.value);
+	}
+	// Before settling, so a player who has to leave folds on their turn at once.
+	const expired = game.expireAbsences();
+	if (command.type === "ExpireAbsences" && !expired) {
+		return err(new AbsenceNotDueError());
 	}
 	game.settle();
+	game.startSitOutClocks();
 	startTurn(game, before);
 	return ok(game.events);
 }

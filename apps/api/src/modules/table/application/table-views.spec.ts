@@ -84,6 +84,32 @@ describe("table views", () => {
 		expect(view).not.toHaveProperty("hand.deck");
 	});
 
+	it("show when a player disconnected, and cut their turn short without the time bank", () => {
+		const { state } = dealt();
+		const disconnectedAt = STARTED_AT + 2_000;
+		const decision = decideGame(
+			{ type: "Disconnect", userId: "u0" },
+			state,
+			disconnectedAt,
+		);
+		if (!decision.ok) throw decision.error;
+		const away = evolveGame(state, decision.value);
+
+		const view = tableViewFor(away, versions, 1, NOW);
+
+		expect(view.seats[0]).toMatchObject({
+			disconnectedAt: "2026-11-01T10:00:02.000Z",
+			sittingOutSince: null,
+		});
+		// 5 s from the disconnect, and nothing after.
+		expect(view.timer).toEqual({
+			handId: "h-1",
+			seat: 0,
+			turnEndsAt: "2026-11-01T10:00:07.000Z",
+			timeBankMs: 0,
+		});
+	});
+
 	it("show no turn clock while nobody is to act", () => {
 		expect(turnTimerOf(replayTable(tableWith(0, 1)))).toBeNull();
 		expect(turnTimerOf(initialGameState.table)).toBeNull();

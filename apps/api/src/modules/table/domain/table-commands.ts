@@ -66,5 +66,16 @@ export type HandPlayCommand =
 			readonly seat: SeatIndex;
 	  };
 
-/** Everything the table accepts: seats and spectators, and the hands it runs. */
-export type GameCommand = TableCommand | HandPlayCommand;
+/**
+ * Who is still at the table (POK-85), on the table's clock: a user's connections come and go, and
+ * the table's runtime sends `ExpireAbsences` once a reconnect grace or a sit-out runs out.
+ */
+export type AbsenceCommand =
+	/** The user's last connection to the table closed: a player keeps the seat, a spectator leaves. */
+	| { readonly type: "Disconnect"; readonly userId: string }
+	/** A disconnected player is back. */
+	| { readonly type: "Reconnect"; readonly userId: string }
+	| { readonly type: "ExpireAbsences" };
+
+/** Everything the table accepts: seats and spectators, the hands it runs, and who is away. */
+export type GameCommand = TableCommand | HandPlayCommand | AbsenceCommand;

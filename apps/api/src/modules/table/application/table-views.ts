@@ -10,7 +10,7 @@ import type {
 	TableView,
 	TurnTimer,
 } from "@holdem/shared/realtime";
-import type { GameEvents, GameState } from "../domain/game.js";
+import { type GameEvents, type GameState, turnDueAt } from "../domain/game.js";
 import { TableNotOpenError } from "../domain/table-errors.js";
 import type { OpenedTable, TableState } from "../domain/table-state.js";
 
@@ -22,23 +22,29 @@ export function viewerAt(table: OpenedTable, userId: string): Viewer {
 	);
 }
 
+const isoOrNull = (epochMs: number | null) =>
+	epochMs === null ? null : new Date(epochMs).toISOString();
+
 /**
  * The running turn's clock, in absolute server time: the turn time ends at `turnEndsAt`, and the
- * player's time bank runs on after it. Null while nobody is to act.
+ * player's time bank runs on after it. A disconnected player's turn is cut short, so it ends
+ * sooner and draws less on the bank, if at all (`turnDueAt`). Null while nobody is to act.
  */
 export function turnTimerOf(table: TableState): TurnTimer | null {
-	if (table.status !== "open" || !table.turn) {
+	const dueAt = turnDueAt(table);
+	if (table.status !== "open" || !table.turn || dueAt === null) {
 		return null;
 	}
 	const { handId, seat, startedAt } = table.turn;
-	const player = table.players.find((candidate) => candidate.seat === seat);
+	const turnEndsAt = Math.min(
+		startedAt + table.config.turnSeconds * 1000,
+		dueAt,
+	);
 	return {
 		handId,
 		seat,
-		turnEndsAt: new Date(
-			startedAt + table.config.turnSeconds * 1000,
-		).toISOString(),
-		timeBankMs: player?.timeBankMs ?? 0,
+		turnEndsAt: new Date(turnEndsAt).toISOString(),
+		timeBankMs: dueAt - turnEndsAt,
 	};
 }
 
@@ -63,13 +69,25 @@ export function tableViewFor(
 		serverTime: now.toISOString(),
 		status: table.status,
 		settings: table.config,
-		seats: table.players.map(({ seat, userId, stack, status, timeBankMs }) => ({
-			seat,
-			userId,
-			stack,
-			status,
-			timeBankMs,
-		})),
+		seats: table.players.map(
+			({
+				seat,
+				userId,
+				stack,
+				status,
+				timeBankMs,
+				disconnectedAt,
+				sitOut,
+			}) => ({
+				seat,
+				userId,
+				stack,
+				status,
+				timeBankMs,
+				disconnectedAt: isoOrNull(disconnectedAt),
+				sittingOutSince: isoOrNull(sitOut?.since ?? null),
+			}),
+		),
 		spectatorCount: table.spectators.length,
 		hand: toPlayerView(state.hand, viewer),
 		timer: turnTimerOf(table),
