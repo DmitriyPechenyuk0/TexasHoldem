@@ -91,9 +91,14 @@ describe("PostgresEventStore (e2e)", () => {
 					`insert into table_events (stream_id, version, type, schema_version, payload, metadata)
 					values ('account-1', 1, 'Deposited', 1, '{"amount": 1}', '{}')`,
 				);
-				const append = store.append("account-1", 0, [
-					{ type: "Deposited", v: 1, amount: 2 },
-				]);
+				// Settled as soon as it fails: it may fail before the commit below has answered, and an
+				// unobserved rejection would fail the run.
+				const failure = store
+					.append("account-1", 0, [{ type: "Deposited", v: 1, amount: 2 }])
+					.then(
+						() => null,
+						(error: unknown) => error,
+					);
 				await vi.waitFor(async () => {
 					const [row] = await database.db.execute<{ waiting: number }>(
 						sql`select count(*)::int as waiting from pg_stat_activity
@@ -104,10 +109,9 @@ describe("PostgresEventStore (e2e)", () => {
 				});
 				await other.query("commit");
 
-				await expect(append).rejects.toBeInstanceOf(ConcurrencyError);
-				await expect(append).rejects.toMatchObject({
-					cause: { cause: { code: "23505" } },
-				});
+				const error = await failure;
+				expect(error).toBeInstanceOf(ConcurrencyError);
+				expect(error).toMatchObject({ cause: { cause: { code: "23505" } } });
 			} finally {
 				await other.end();
 			}
