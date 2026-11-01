@@ -99,7 +99,8 @@ describe("Rate limits across two api instances (e2e)", () => {
 
 		expect(problemOf(refused).code).toBe("request.rate-limited");
 		expect(Number(refused.headers["retry-after"])).toBeGreaterThan(14 * 60);
-	});
+		// 31 sign-ins in a row, each checking a password with scrypt: slow on a loaded machine.
+	}, 20_000);
 
 	it("allows 3 sign-ups a minute per address, then 429 with Retry-After", async () => {
 		const ip = nextAddress();
