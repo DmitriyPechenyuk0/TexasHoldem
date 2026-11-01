@@ -1,4 +1,4 @@
-import type { Ack } from "@holdem/shared";
+import type { Ack, UserId } from "@holdem/shared";
 import {
 	type ChatClientToServerEvents,
 	type ChatMessage,
@@ -38,6 +38,7 @@ import { RequirePlayer } from "@/shared/presentation/require-player.guard.js";
 import { SendChatMessageCommand } from "../application/commands/send-chat-message/send-chat-message.command.js";
 import { ChatMessagePosted } from "../application/events/chat-message-posted.event.js";
 import { GetChatHistoryQuery } from "../application/queries/get-chat-history/get-chat-history.query.js";
+import { GetMutedIdsQuery } from "../application/queries/get-muted-ids/get-muted-ids.query.js";
 
 type ChatNamespace = Namespace<
 	ChatClientToServerEvents,
@@ -64,7 +65,7 @@ const asContract = (message: unknown): ChatMessage => message as ChatMessage;
 
 /**
  * The `/chat` namespace (POK-104). Joining a table's chat takes access to the table, as joining
- * the table does; it answers the last messages. Whoever follows the chat may write to it, being
+ * the table does; it answers the last messages, and whom the player muted (POK-107). Whoever follows the chat may write to it, being
  * a verified player: at the table or watching it, since the web app follows both together.
  */
 @RealtimeGateway(chatNamespace)
@@ -102,7 +103,7 @@ export class ChatGateway implements OnModuleInit, OnModuleDestroy {
 		@ValidPayload(JoinChatEvent.payload)
 		{ tableId }: Payload<typeof JoinChatEvent>,
 		@CurrentUser() viewer: Viewer,
-	): Promise<Ack<{ messages: ChatMessage[] }>> {
+	): Promise<Ack<{ messages: ChatMessage[]; muted: UserId[] }>> {
 		const allowed = await this.queryBus.execute(
 			new CanJoinTableQuery(tableId, viewer.userId),
 		);
@@ -114,10 +115,17 @@ export class ChatGateway implements OnModuleInit, OnModuleDestroy {
 			);
 		}
 		await socket.join(chatRoom(tableId));
-		const messages = await this.queryBus.execute(
-			new GetChatHistoryQuery(tableId),
-		);
-		return { ok: true, data: { messages: messages.map(asContract) } };
+		const [messages, muted] = await Promise.all([
+			this.queryBus.execute(new GetChatHistoryQuery(tableId)),
+			this.queryBus.execute(new GetMutedIdsQuery(viewer.userId)),
+		]);
+		return {
+			ok: true,
+			data: {
+				messages: messages.map(asContract),
+				muted: muted.map((userId) => userId as UserId),
+			},
+		};
 	}
 
 	@SubscribeMessage(LeaveChatEvent.name)

@@ -51,12 +51,16 @@ const tablePayload = <Shape extends z.ZodRawShape>(shape: Shape) =>
 
 /**
  * Follows a table's chat: answers its last messages, oldest first, and `message` follows for each
- * new one. A private table's chat needs access to the table (`chat.access-denied`).
+ * new one. A private table's chat needs access to the table (`chat.access-denied`). `muted` are
+ * the players whose messages the client hides from this player (`/api/chat/mutes`).
  */
 export const JoinChatEvent = defineEvent(
 	"join",
 	tablePayload({}),
-	z.object({ messages: z.array(ChatMessage).readonly() }),
+	z.object({
+		messages: z.array(ChatMessage).readonly(),
+		muted: z.array(UserId).readonly(),
+	}),
 );
 
 export const LeaveChatEvent = defineEvent(

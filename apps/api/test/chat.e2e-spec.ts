@@ -16,14 +16,14 @@ import { PotsAwarded } from "@/modules/table/index.js";
 import { IntegrationEventBus } from "@/shared/application/integration-events.js";
 import { createTestApp } from "./support/create-test-app.js";
 import { WEB_ORIGIN } from "./support/identity.js";
-import { connectedSocket, signedInUser } from "./support/realtime.js";
+import { connectedSocket, signedInUser, signIn } from "./support/realtime.js";
 import {
 	createTestDatabase,
 	type TestDatabase,
 } from "./support/test-database.js";
 
 type ChatSocket = Socket<ChatServerToClientEvents, ChatClientToServerEvents>;
-type Joined = Ack<{ messages: ChatMessage[] }>;
+type Joined = Ack<{ messages: ChatMessage[]; muted: string[] }>;
 
 /** Two api instances: a table's chat reaches its followers on both (POK-104). */
 describe("Chat (e2e)", () => {
@@ -52,7 +52,7 @@ describe("Chat (e2e)", () => {
 
 	let lastAddress = 0;
 	const user = async () => {
-		const { cookie, userId } = await signedInUser(apps[0]!);
+		const { cookie, userId, email } = await signedInUser(apps[0]!);
 		const ip = `198.22.0.${++lastAddress}`;
 		const post = (path: string, body: object = {}) =>
 			request(apps[0]!.getHttpServer())
@@ -61,7 +61,7 @@ describe("Chat (e2e)", () => {
 				.set("Origin", WEB_ORIGIN)
 				.set("X-Forwarded-For", ip)
 				.send(body);
-		return { cookie, userId, post };
+		return { cookie, userId, email, post };
 	};
 	type User = Awaited<ReturnType<typeof user>>;
 
@@ -108,7 +108,7 @@ describe("Chat (e2e)", () => {
 		const bobs = await chatOn(1, bob);
 		expect(await alices.join(tableId)).toEqual({
 			ok: true,
-			data: { messages: [] },
+			data: { messages: [], muted: [] },
 		});
 		await bobs.join(tableId);
 
@@ -133,7 +133,7 @@ describe("Chat (e2e)", () => {
 		const carols = await chatOn(1, carol);
 		expect(await carols.join(tableId)).toEqual({
 			ok: true,
-			data: { messages: [message] },
+			data: { messages: [message], muted: [] },
 		});
 	});
 
@@ -228,6 +228,59 @@ describe("Chat (e2e)", () => {
 				}),
 			]),
 		);
+	});
+
+	it("keeps the mute list on the server: the same after a reconnect and on another device", async () => {
+		const [ivan, troll] = [await user(), await user()];
+		const tableId = await table(ivan, "public");
+		const mute = (userId: string) =>
+			request(apps[1]!.getHttpServer())
+				.put(`/api/chat/mutes/${userId}`)
+				.set("Cookie", ivan.cookie)
+				.set("Origin", WEB_ORIGIN);
+
+		await mute(troll.userId).expect(204);
+		await mute(troll.userId).expect(204);
+		expect((await mute(ivan.userId).expect(422)).body).toMatchObject({
+			code: "chat.mute-self",
+		});
+		expect(
+			(await mute("0b7c6f1e-58a4-4f6b-9a39-5f0f6a8a1c2d").expect(404)).body,
+		).toMatchObject({ code: "chat.player-not-found" });
+
+		const first = await chatOn(0, ivan);
+		expect(await first.join(tableId)).toMatchObject({
+			ok: true,
+			data: { muted: [troll.userId] },
+		});
+		first.socket.disconnect();
+		// Another device: a session of its own, on the other instance.
+		const { cookie } = await signIn(apps[1]!, ivan.email);
+		const other = await chatOn(1, { ...ivan, cookie });
+		expect(await other.join(tableId)).toMatchObject({
+			ok: true,
+			data: { muted: [troll.userId] },
+		});
+		const listed = await request(apps[0]!.getHttpServer())
+			.get("/api/chat/mutes")
+			.set("Cookie", cookie)
+			.expect(200);
+		expect(listed.body).toEqual([
+			expect.objectContaining({
+				userId: troll.userId,
+				mutedAt: expect.any(String),
+			}),
+		]);
+
+		await request(apps[0]!.getHttpServer())
+			.delete(`/api/chat/mutes/${troll.userId}`)
+			.set("Cookie", cookie)
+			.set("Origin", WEB_ORIGIN)
+			.expect(204);
+		expect(await other.join(tableId)).toMatchObject({
+			ok: true,
+			data: { muted: [] },
+		});
 	});
 
 	it("is for those with access to the table, who joined its chat, with a verified email", async () => {
