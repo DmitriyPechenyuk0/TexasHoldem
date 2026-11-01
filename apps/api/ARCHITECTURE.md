@@ -356,6 +356,16 @@ The application side (`modules/table/application`):
 - `GET /api/hands/:handId/fairness` (`HandsController`, no session needed) answers `HandFairnessResponse`: the commitment, the revealed seed and the dealt cards (the deck's first cards, burns included, in order), all `verifyDeck` needs. While the hand runs it answers 409 `table.deck-not-revealed`; for an unknown hand 404 `table.hand-not-found`. Snapshots carry the current or last hand's commitment (`fairness`).
 - `test/table-hands.e2e-spec.ts` plays 100 random hands at a six-seat table through the command bus, with players sitting out, leaving, busting and rebuying, and checks every chip after each hand; `HOLDEM_TABLE_SEED` replays a run.
 
+## Lobby
+
+The lobby owns which tables there are and what they were created with; the table context runs them (Context Map, customer–supplier). `modules/lobby`:
+
+- Stake presets (`domain/stake-presets.ts`): micro 1/2, low 5/10, mid 25/50 and high 100/200, each with a buy-in of 40–100 big blinds. `GET /api/lobby/presets` lists them, from the smallest.
+- `POST /api/lobby/tables` (`AuthGuard`, `RequirePlayer`) takes `CreateTableRequest` (`@holdem/shared/contracts/lobby`): a name (1–40 characters once trimmed), a preset, 2–9 seats, a visibility and an optional turn time (5–120 s, 20 by default). It answers `{ tableId }`, and the table can be joined at once on `/table`.
+  - `CreateTableHandler` validates the settings (`lobby.invalid-name`, `lobby.unknown-preset`) and stores the row in `lobby_tables` first. A player keeps at most 3 open tables (`lobby.too-many-tables`). The check and the insert run under a Postgres advisory lock on the creator, so two tables created at once cannot both slip under the limit.
+  - It then opens the table through the table context's public API (`ExecuteTableCommand` with `OpenTable`, from `modules/table/index.ts`), with the preset's stakes, a 30 s time bank and the default absence policy. A table that could not be opened leaves no row behind.
+- `POST /api/dev/tables` stays for trying tables out without the lobby, outside production only.
+
 ## HTTP and sockets
 
 - Every REST route lives under `/api` (`API_PREFIX` from `@holdem/shared`), so production can serve the web app and the api from one origin behind a reverse proxy (`/api/*` and `/socket.io/*` → api). Requests outside it get a 404 problem too.
