@@ -1,6 +1,5 @@
 import { Command } from "@nestjs/cqrs";
 import type { EventMetadata } from "@/shared/application/event-store.js";
-import type { GameEvents } from "../../../domain/game.js";
 import type { GameCommand } from "../../../domain/table-commands.js";
 
 /**
@@ -12,8 +11,11 @@ export type TableCommandInput = Exclude<
 	{ type: "StartHand" | "RevealDeck" }
 >;
 
-/** Runs one command on a table, and answers the events it added to each stream. */
-export class ExecuteTableCommand extends Command<GameEvents> {
+/**
+ * Runs one command on a table, on the instance that runs it, and answers once it is stored; its
+ * events reach the table's followers (`TableChanged`).
+ */
+export class ExecuteTableCommand extends Command<void> {
 	constructor(
 		readonly tableId: string,
 		readonly command: TableCommandInput,

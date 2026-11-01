@@ -245,12 +245,30 @@ describe("S3_PUBLIC_URL", () => {
 	});
 });
 
+describe("table lease", () => {
+	it("lasts 10 s by default, and takes whole milliseconds from 1000 to 60000", () => {
+		expect(parseConfig(exampleEnv()).table.leaseTtlMs).toBe(10_000);
+		expect(
+			parseConfig({ ...exampleEnv(), TABLE_LEASE_TTL_MS: "1000" }).table
+				.leaseTtlMs,
+		).toBe(1_000);
+		for (const value of ["999", "60001", "1.5", "soon"]) {
+			expect(
+				problemsOf({ ...exampleEnv(), TABLE_LEASE_TTL_MS: value }),
+			).toEqual([
+				"TABLE_LEASE_TTL_MS: must be a whole number of milliseconds from 1000 to 60000",
+			]);
+		}
+	});
+});
+
 describe("hand pause", () => {
 	it("defaults to 3 s, and takes whole milliseconds from 0 to 60000", () => {
-		expect(parseConfig(exampleEnv()).table).toEqual({ handPauseMs: 3_000 });
+		expect(parseConfig(exampleEnv()).table.handPauseMs).toBe(3_000);
 		expect(
-			parseConfig({ ...exampleEnv(), TABLE_HAND_PAUSE_MS: "0" }).table,
-		).toEqual({ handPauseMs: 0 });
+			parseConfig({ ...exampleEnv(), TABLE_HAND_PAUSE_MS: "0" }).table
+				.handPauseMs,
+		).toBe(0);
 		for (const value of ["-1", "1.5", "60001", "soon"]) {
 			expect(
 				problemsOf({ ...exampleEnv(), TABLE_HAND_PAUSE_MS: value }),

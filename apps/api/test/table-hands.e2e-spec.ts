@@ -108,6 +108,10 @@ describe("Table hands (e2e)", () => {
 			await seatNewPlayer(seat);
 		}
 
+		const settledHands = async () =>
+			(await store.readStream(`table-${tableId}`)).filter(
+				({ event }) => event.type === "HandSettled",
+			).length;
 		let hands = 0;
 		for (let step = 0; hands < HANDS; step++) {
 			expect(step).toBeLessThan(HANDS * 200);
@@ -134,10 +138,9 @@ describe("Table hands (e2e)", () => {
 						await seatNewPlayer(seat);
 					}
 				}
-				const dealt = await bus.execute(new StartNextHandCommand(tableId));
-				if (dealt?.table.some((e) => e.type === "HandSettled")) {
-					hands += 1;
-				}
+				await bus.execute(new StartNextHandCommand(tableId));
+				// A deal can end its hand at once, when the blinds put everyone all in.
+				hands = await settledHands();
 				continue;
 			}
 
@@ -179,10 +182,8 @@ describe("Table hands (e2e)", () => {
 				}
 				command = options[pick(options.length)]!;
 			}
-			const events = await send(command);
-			if (events.table.some((e) => e.type === "HandSettled")) {
-				hands += 1;
-			}
+			await send(command);
+			hands = await settledHands();
 		}
 
 		await checkTableStream(store, tableId);

@@ -6,6 +6,17 @@ const port = z
 	.string()
 	.transform(Number)
 	.pipe(z.int({ error: portError }).min(1, portError).max(65535, portError));
+const leaseTtlError =
+	"must be a whole number of milliseconds from 1000 to 60000";
+const leaseTtl = z
+	.string()
+	.transform(Number)
+	.pipe(
+		z
+			.int({ error: leaseTtlError })
+			.min(1_000, leaseTtlError)
+			.max(60_000, leaseTtlError),
+	);
 const handPauseError = "must be a whole number of milliseconds from 0 to 60000";
 const handPause = z
 	.string()
@@ -136,6 +147,7 @@ export const envSchema = z
 		S3_PUBLIC_URL: httpUrl.optional(),
 
 		TABLE_HAND_PAUSE_MS: handPause.default(3_000),
+		TABLE_LEASE_TTL_MS: leaseTtl.default(10_000),
 
 		AUTH_SECRET: z
 			.string()
@@ -185,7 +197,10 @@ export const envSchema = z
 				bucketUrl(env.S3_ENDPOINT, env.S3_BUCKET, env.S3_FORCE_PATH_STYLE)
 			).replace(/\/+$/, ""),
 		},
-		table: { handPauseMs: env.TABLE_HAND_PAUSE_MS },
+		table: {
+			handPauseMs: env.TABLE_HAND_PAUSE_MS,
+			leaseTtlMs: env.TABLE_LEASE_TTL_MS,
+		},
 		auth: {
 			secret: env.AUTH_SECRET,
 			oauth: {

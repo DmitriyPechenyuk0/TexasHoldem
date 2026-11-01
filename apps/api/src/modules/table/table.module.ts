@@ -15,9 +15,15 @@ import { GetTableViewHandler } from "./application/queries/get-table-view/get-ta
 import { DeckProvider } from "./application/deck-provider.js";
 import { TableRuntimeRegistry } from "./application/runtime/table-runtime-registry.js";
 import { TableRuntimeOptions } from "./application/runtime/table-runtime-options.js";
+import { TableLeases } from "./application/table-leases.js";
 import { TablePresence } from "./application/table-presence.js";
+import { TableRequests } from "./application/table-requests.js";
+import { UnfinishedTables } from "./application/unfinished-tables.js";
 import { tableEvents } from "./infrastructure/persistence/schema.js";
+import { PostgresUnfinishedTables } from "./infrastructure/persistence/postgres-unfinished-tables.js";
+import { RedisTableLeases } from "./infrastructure/redis-table-leases.js";
 import { RedisTablePresence } from "./infrastructure/redis-table-presence.js";
+import { RedisTableRequests } from "./infrastructure/redis-table-requests.js";
 import { SeededDeckProvider } from "./infrastructure/seeded-deck-provider.js";
 import { DevTablesController } from "./presentation/dev-tables.controller.js";
 import { HandsController } from "./presentation/hands.controller.js";
@@ -29,8 +35,8 @@ const IDLE_MS = 10 * 60_000;
 /**
  * Tables and the hands they run, event-sourced (ADR-002): seats, spectators and the deal, with
  * `@holdem/engine` deciding every hand. Each table runs in a runtime of its own, one command at a
- * time; players and spectators follow it on the `/table` namespace, and who still does is kept in
- * Redis, across instances.
+ * time, on the one instance holding its lease (ADR-004), which the others send its commands to;
+ * players and spectators follow it on the `/table` namespace, and who still does is kept in Redis.
  */
 @Module({})
 export class TableModule {
@@ -49,12 +55,16 @@ export class TableModule {
 				},
 				{ provide: DeckProvider, useClass: SeededDeckProvider },
 				{ provide: TablePresence, useClass: RedisTablePresence },
+				{ provide: TableLeases, useClass: RedisTableLeases },
+				{ provide: TableRequests, useClass: RedisTableRequests },
+				{ provide: UnfinishedTables, useClass: PostgresUnfinishedTables },
 				{
 					provide: TableRuntimeOptions,
 					inject: [AppConfig],
 					useFactory: (appConfig: AppConfig): TableRuntimeOptions => ({
 						handPauseMs: appConfig.table.handPauseMs,
 						idleMs: IDLE_MS,
+						leaseTtlMs: appConfig.table.leaseTtlMs,
 					}),
 				},
 				TableRuntimeRegistry,

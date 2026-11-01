@@ -24,9 +24,11 @@ export class ConnectToTableHandler implements ICommandHandler<ConnectToTableComm
 			return;
 		}
 		try {
-			await this.runtimes
-				.get(tableId)
-				.execute({ type: "Reconnect", userId }, { userId });
+			await this.runtimes.execute(
+				tableId,
+				{ type: "Reconnect", userId },
+				{ userId },
+			);
 		} catch (error) {
 			if (!(error instanceof DomainError)) {
 				throw error;

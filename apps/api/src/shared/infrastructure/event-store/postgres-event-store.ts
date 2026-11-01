@@ -2,6 +2,7 @@ import { and, asc, eq, gt, gte, sql } from "drizzle-orm";
 import {
 	ConcurrencyError,
 	type EventMetadata,
+	FencedError,
 	EventStore,
 	type RecordedEvent,
 	type StoredEvent,
@@ -59,8 +60,9 @@ export class PostgresEventStore<
 
 	/**
 	 * One statement, so a single round trip: it inserts nothing unless the stream is at the expected
-	 * version. Two appends that both see that version race for the next one, and the unique (stream,
-	 * version) constraint turns the loser away.
+	 * version and, for a fenced append, its last event's lease epoch is no newer. Two appends that
+	 * both see that version race for the next one, and the unique (stream, version) constraint
+	 * turns the loser away. Epochs only grow along a stream, so its last event has the newest.
 	 */
 	private async insert(
 		db: Executor,
@@ -77,6 +79,13 @@ export class PostgresEventStore<
 		}));
 		const { table } = this;
 		const column = (name: keyof EventRow) => sql.identifier(table[name].name);
+		const { leaseEpoch } = metadata;
+		const last = sql`(select ${table.metadata} from ${table}
+			where ${table.streamId} = ${streamId} order by ${table.version} desc limit 1)`;
+		const fenced =
+			leaseEpoch === undefined
+				? sql``
+				: sql`and coalesce((${last}->>'leaseEpoch')::bigint, 0) <= ${leaseEpoch}`;
 
 		const insert = sql`
 			insert into ${table} (${column("streamId")}, ${column("version")}, ${column("type")},
@@ -87,6 +96,7 @@ export class PostgresEventStore<
 				with ordinality as e(event, position)
 			where (select coalesce(max(${table.version}), 0) from ${table}
 				where ${table.streamId} = ${streamId}) = ${expectedVersion}
+			${fenced}
 			returning ${column("version")}`;
 
 		let inserted: readonly unknown[];
@@ -101,8 +111,29 @@ export class PostgresEventStore<
 			throw error;
 		}
 		if (inserted.length === 0) {
-			throw new ConcurrencyError(streamId, expectedVersion);
+			throw await this.refusal(db, streamId, expectedVersion, leaseEpoch);
 		}
+	}
+
+	/** Why an append inserted nothing: a newer lease epoch, or a stream that moved on. */
+	private async refusal(
+		db: Executor,
+		streamId: string,
+		expectedVersion: number,
+		leaseEpoch: number | undefined,
+	): Promise<Error> {
+		if (leaseEpoch !== undefined) {
+			const { table } = this;
+			const [last] = await db.execute<{ epoch: string | null }>(
+				sql`select ${table.metadata}->>'leaseEpoch' as epoch from ${table}
+					where ${table.streamId} = ${streamId} order by ${table.version} desc limit 1`,
+				"objects",
+			);
+			if (last?.epoch != null && Number(last.epoch) > leaseEpoch) {
+				return new FencedError(streamId, leaseEpoch);
+			}
+		}
+		return new ConcurrencyError(streamId, expectedVersion);
 	}
 
 	async readStream(

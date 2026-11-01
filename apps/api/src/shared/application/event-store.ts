@@ -13,6 +13,12 @@ export interface EventMetadata {
 	/** The command or event that produced them. */
 	readonly causationId?: string;
 	readonly userId?: string;
+	/**
+	 * The epoch of the lease its writer held on the stream (ADR-004). A stream takes no events of an
+	 * epoch older than its last one's (`FencedError`), so a writer that lost its lease can no longer
+	 * append once the new holder has.
+	 */
+	readonly leaseEpoch?: number;
 }
 
 export interface RecordedEvent<E extends VersionedEvent> {
@@ -43,6 +49,18 @@ export class ConcurrencyError extends DomainError {
 	}
 }
 
+/** The stream already has events of a newer lease epoch: its writer lost the lease. */
+export class FencedError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "event-store.fenced";
+
+	constructor(streamId: string, leaseEpoch: number) {
+		super(`Stream ${streamId} has moved past lease epoch ${leaseEpoch}`, {
+			params: { streamId, leaseEpoch },
+		});
+	}
+}
+
 /** Events for one stream, which must be at `expectedVersion`. */
 export interface StreamAppend<E extends VersionedEvent> {
 	readonly streamId: string;
@@ -57,7 +75,8 @@ export interface StreamAppend<E extends VersionedEvent> {
 export abstract class EventStore<E extends VersionedEvent = VersionedEvent> {
 	/**
 	 * Appends `events` to a stream that must be at `expectedVersion` (0 for a new stream), all or
-	 * none, and answers its new version. Throws `ConcurrencyError` when the stream has moved on.
+	 * none, and answers its new version. Throws `ConcurrencyError` when the stream has moved on, and
+	 * `FencedError` when its last event has a newer `leaseEpoch` than `metadata`'s.
 	 */
 	abstract append(
 		streamId: string,

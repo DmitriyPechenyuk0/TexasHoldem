@@ -4,6 +4,7 @@ import {
 	ConcurrencyError,
 	type EventMetadata,
 	type EventStore,
+	FencedError,
 } from "@/shared/application/event-store.js";
 import {
 	absenceDueAt,
@@ -30,6 +31,15 @@ import {
 	versionsOf,
 } from "../game-streams.js";
 import type { TableRuntimeOptions } from "./table-runtime-options.js";
+import { TableMovedError } from "./table-routing-errors.js";
+
+/** What one runtime holds of its table's lease (ADR-004). */
+export interface RuntimeLease {
+	/** Stored with every event it appends, so a newer holder fences it off. */
+	readonly epoch: number;
+	/** Called once the runtime finds the table written by a newer holder, and stops. */
+	readonly onLost: () => void;
+}
 
 export interface TableRuntimeDeps {
 	readonly store: EventStore<TableStreamEvent>;
@@ -60,11 +70,14 @@ export class TableRuntime {
 	private turnTimer: ReturnType<typeof setTimeout> | null = null;
 	private absenceTimer: ReturnType<typeof setTimeout> | null = null;
 	private disposed = false;
+	private lost = false;
 	private usedAt: number;
 
 	constructor(
 		readonly tableId: string,
 		private readonly deps: TableRuntimeDeps,
+		/** Without one (tests), appends are not fenced. */
+		readonly lease: RuntimeLease | null = null,
 	) {
 		this.usedAt = deps.now();
 	}
@@ -116,6 +129,36 @@ export class TableRuntime {
 		return this.enqueue(() => this.load());
 	}
 
+	/**
+	 * Takes the table up from its streams as loaded when the lease was acquired, and arms what is
+	 * due: the next deal, the turn timer, the absence timer. A table taken over from an instance that
+	 * stopped carries on from where its streams are (POK-80).
+	 */
+	resume(loaded: LoadedGame): void {
+		if (this.disposed || this.loaded) {
+			return;
+		}
+		this.loaded = loaded;
+		this.armTimers(loaded.state);
+	}
+
+	/**
+	 * Stops at once, without waiting for queued work, which is refused: a newer holder of the lease
+	 * runs the table now. The state in memory is dropped.
+	 */
+	abandon(): void {
+		if (this.lost) {
+			return;
+		}
+		this.lost = true;
+		this.disposed = true;
+		this.loaded = null;
+		this.cancelNextHand();
+		this.cancelTurnTimer();
+		this.cancelAbsenceTimer();
+		this.lease?.onLost();
+	}
+
 	/** Stops dealing hands and answers once the queued commands have run. */
 	async dispose(): Promise<void> {
 		this.disposed = true;
@@ -146,6 +189,9 @@ export class TableRuntime {
 		metadata?: EventMetadata,
 		retry = true,
 	): Promise<GameEvents | null> {
+		if (this.lost) {
+			throw new TableMovedError(this.tableId);
+		}
 		const loaded = await this.load();
 		const command = await commandFor(loaded.state);
 		if (!command) {
@@ -157,10 +203,17 @@ export class TableRuntime {
 		}
 		let saved: LoadedGame;
 		try {
-			saved = await saveGame(this.deps.store, loaded, decision.value, metadata);
+			saved = await saveGame(this.deps.store, loaded, decision.value, {
+				...metadata,
+				...(this.lease && { leaseEpoch: this.lease.epoch }),
+			});
 		} catch (error) {
 			// The stored streams are ahead of, or no longer match, the state in memory.
 			this.loaded = null;
+			if (error instanceof FencedError) {
+				this.abandon();
+				throw new TableMovedError(this.tableId);
+			}
 			if (error instanceof ConcurrencyError && retry) {
 				return this.run(commandFor, metadata, false);
 			}
@@ -175,9 +228,7 @@ export class TableRuntime {
 				saved.state,
 			),
 		);
-		this.scheduleNextHand(saved.state);
-		this.armTurnTimer(saved.state);
-		this.armAbsenceTimer(saved.state);
+		this.armTimers(saved.state);
 		for (const event of decision.value.table) {
 			if (event.type === "HandSettled") {
 				this.revealDeck(event.handId);
@@ -213,10 +264,16 @@ export class TableRuntime {
 	private async load(): Promise<LoadedGame> {
 		if (!this.loaded) {
 			this.loaded = await loadGame(this.deps.store, this.tableId);
-			this.armTurnTimer(this.loaded.state);
-			this.armAbsenceTimer(this.loaded.state);
+			this.armTimers(this.loaded.state);
 		}
 		return this.loaded;
+	}
+
+	/** Whatever the state has due next: the deal, the turn's timeout, an absence. */
+	private armTimers(state: GameState): void {
+		this.scheduleNextHand(state);
+		this.armTurnTimer(state);
+		this.armAbsenceTimer(state);
 	}
 
 	/**
@@ -297,12 +354,25 @@ export class TableRuntime {
 		);
 	}
 
-	/** Sets the timers again from the state in memory, after one fired too early to act. */
+	/**
+	 * Sets the timers again after one the table refused: it fired a moment early, or the state in
+	 * memory is behind the streams. Reloading first, so a timer never fires again and again on a
+	 * stale state.
+	 */
 	private rearm(): void {
-		if (this.loaded) {
-			this.armTurnTimer(this.loaded.state);
-			this.armAbsenceTimer(this.loaded.state);
+		if (this.disposed) {
+			return;
 		}
+		this.enqueue(async () => {
+			this.loaded = null;
+			await this.load();
+		}).catch((error: unknown) => {
+			this.logger.error({
+				msg: "table not reloaded",
+				tableId: this.tableId,
+				err: error,
+			});
+		});
 	}
 
 	private cancelAbsenceTimer(): void {

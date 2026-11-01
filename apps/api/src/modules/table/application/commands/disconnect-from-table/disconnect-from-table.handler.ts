@@ -24,9 +24,11 @@ export class DisconnectFromTableHandler implements ICommandHandler<DisconnectFro
 			return;
 		}
 		try {
-			await this.runtimes
-				.get(tableId)
-				.execute({ type: "Disconnect", userId }, { userId });
+			await this.runtimes.execute(
+				tableId,
+				{ type: "Disconnect", userId },
+				{ userId },
+			);
 		} catch (error) {
 			if (!(error instanceof DomainError)) {
 				throw error;
