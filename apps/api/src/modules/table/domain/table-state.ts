@@ -16,6 +16,18 @@ export interface SeatedPlayer {
 	readonly userId: string;
 	readonly stack: Chips;
 	readonly status: SeatStatus;
+	/**
+	 * Time bank left, drawn on once a turn's time is out. Full when the player sits down, and never
+	 * refilled while they keep the seat.
+	 */
+	readonly timeBankMs: number;
+}
+
+/** The turn being timed: when the player to act got it (epoch milliseconds). */
+export interface TurnClock {
+	readonly handId: string;
+	readonly seat: SeatIndex;
+	readonly startedAt: number;
 }
 
 /** The hand being played: set by `HandScheduled`, cleared by `HandSettled`. */
@@ -38,6 +50,8 @@ export interface OpenedTable {
 	/** User ids, in the order they started watching. */
 	readonly spectators: readonly string[];
 	readonly hand: CurrentHand | null;
+	/** The turn being timed while a player is to act; null otherwise. */
+	readonly turn: TurnClock | null;
 	/** Where the button and the blinds were in the last hand, for the next one; null before the first. */
 	readonly positions: Pick<
 		HandPositions,

@@ -153,14 +153,12 @@ describe("Table hands (e2e)", () => {
 				command = [
 					{ type: "ShowCards", userId } as const,
 					{ type: "MuckCards", userId } as const,
-					{ type: "Timeout", handId: hand.handId, seat } as const,
-				][pick(3)]!;
+				][pick(2)]!;
 			} else {
 				const options: TableCommandInput[] = [
 					{ type: "Act", userId, action: legal.canCheck ? "check" : "call" },
 					{ type: "Act", userId, action: legal.canCheck ? "check" : "call" },
 					{ type: "Act", userId, action: "fold" },
-					{ type: "Timeout", handId: hand.handId, seat },
 				];
 				if (legal.aggression) {
 					const { kind, minTo, maxTo } = legal.aggression;

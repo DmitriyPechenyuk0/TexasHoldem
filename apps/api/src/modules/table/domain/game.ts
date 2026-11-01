@@ -25,6 +25,7 @@ import {
 	type TableError,
 	TableClosedError,
 	TableNotOpenError,
+	TimeoutNotDueError,
 } from "./table-errors.js";
 import type { TableEvent } from "./table-events.js";
 import type { OpenedTable, SeatedPlayer, TableState } from "./table-state.js";
@@ -104,6 +105,8 @@ class Game {
 	constructor(
 		public table: TableState,
 		public hand: HandState,
+		/** When the command is taken, in epoch milliseconds: the turn clock runs on it. */
+		readonly now: number,
 	) {}
 
 	addTable(events: readonly TableEvent[]): void {
@@ -180,6 +183,67 @@ class Game {
 	}
 }
 
+/** When the turn's own time is out; the time bank runs from then. */
+const turnEndsAt = (table: OpenedTable, startedAt: number) =>
+	startedAt + table.config.turnSeconds * 1000;
+
+/** When the player to act runs out of time altogether, bank included; null without a timed turn. */
+export function turnDueAt(table: TableState): number | null {
+	if (table.status !== "open" || !table.turn) return null;
+	const { seat, startedAt } = table.turn;
+	const player = table.players.find((candidate) => candidate.seat === seat);
+	return turnEndsAt(table, startedAt) + (player?.timeBankMs ?? 0);
+}
+
+/** A player who acts after the turn time pays the overrun out of their time bank. */
+function chargeTimeBank(game: Game, table: OpenedTable, seat: number): void {
+	const { turn } = table;
+	if (!turn || turn.seat !== seat) return;
+	const player = table.players.find((candidate) => candidate.seat === seat);
+	const overrun = game.now - turnEndsAt(table, turn.startedAt);
+	if (!player || overrun <= 0 || player.timeBankMs === 0) return;
+	const usedMs = Math.min(overrun, player.timeBankMs);
+	game.addTable([
+		{
+			type: "TimeBankUsed",
+			v: 1,
+			seat,
+			usedMs,
+			remainingMs: player.timeBankMs - usedMs,
+		},
+	]);
+}
+
+/**
+ * Starts the clock when a player gets a new turn: someone else is to act now, or the same player
+ * again after acting (the big blind heads-up, preflop then on the flop).
+ */
+function startTurn(game: Game, before: OpenedTable["turn"]): void {
+	const { table, hand } = game;
+	if (table.status !== "open" || !table.hand || hand.status !== "in-progress")
+		return;
+	const seat = hand.toAct;
+	if (seat === null) return;
+	const actedAgain = game.events.hand.some(
+		(event) =>
+			(event.type === "PlayerActed" ||
+				event.type === "CardsShown" ||
+				event.type === "CardsMucked") &&
+			event.seat === before?.seat,
+	);
+	if (before?.handId === hand.handId && before.seat === seat && !actedAgain)
+		return;
+	game.addTable([
+		{
+			type: "TurnStarted",
+			v: 1,
+			handId: hand.handId,
+			seat,
+			startedAt: game.now,
+		},
+	]);
+}
+
 function openTable(table: TableState): Result<OpenedTable, TableError> {
 	if (table.status === "unopened") return err(new TableNotOpenError());
 	if (table.status === "closed") return err(new TableClosedError());
@@ -254,11 +318,34 @@ function playerCommand(
 	// A leaving player has folded or will on their turn: the hand is no longer theirs to play.
 	if (player.status === "leaving") return err(new LeavingSeatError());
 	if (!table.hand.seats.includes(seat)) return err(new NotInHandError());
+	if (game.hand.status === "in-progress" && game.hand.toAct === seat) {
+		chargeTimeBank(game, table, seat);
+	}
 	return game.play(
 		command.type === "Act"
 			? { type: "Act", seat, action: command.action, amount: command.amount }
 			: { type: command.type, seat },
 	);
+}
+
+/**
+ * The turn timer ran out: the time bank is spent, then the player checks if they can, otherwise
+ * folds (mucks at the showdown). A timer for another hand or turn, or one that fires before the
+ * time is out, is refused, so a stale timer never times out a turn that is still running.
+ */
+function timeOut(
+	game: Game,
+	table: OpenedTable,
+	{ handId, seat }: Extract<HandPlayCommand, { type: "Timeout" }>,
+): Result<void, TableError> {
+	const { turn } = table;
+	if (!table.hand || turn?.handId !== handId || turn.seat !== seat) {
+		return err(new NoHandError());
+	}
+	const dueAt = turnDueAt(table) as number;
+	if (game.now < dueAt) return err(new TimeoutNotDueError(dueAt));
+	chargeTimeBank(game, table, seat);
+	return game.play({ type: "Timeout", seat });
 }
 
 function play(
@@ -270,9 +357,7 @@ function play(
 		case "StartHand":
 			return startHand(game, table, command);
 		case "Timeout":
-			return table.hand?.handId === command.handId
-				? game.play({ type: "Timeout", seat: command.seat })
-				: err(new NoHandError());
+			return timeOut(game, table, command);
 		default:
 			return playerCommand(game, table, command);
 	}
@@ -281,13 +366,16 @@ function play(
 /**
  * The table's decider with hands: seat and spectator commands go to `decideTable`, hand
  * commands to the hand being played, and whatever follows on its own is added: leaving players
- * fold on their turn, and an ended hand is settled into the table.
+ * fold on their turn, an ended hand is settled into the table, and a new turn starts its clock
+ * at `now` (epoch ms): the turn time, then the player's time bank.
  */
 export function decideGame(
 	command: GameCommand,
 	state: GameState,
+	now: number,
 ): GameDecision {
-	const game = new Game(state.table, state.hand);
+	const game = new Game(state.table, state.hand, now);
+	const before = state.table.status === "unopened" ? null : state.table.turn;
 	if (isPlayCommand(command)) {
 		const table = openTable(state.table);
 		if (!table.ok) return table;
@@ -299,6 +387,7 @@ export function decideGame(
 		game.addTable(decision.value);
 	}
 	game.settle();
+	startTurn(game, before);
 	return ok(game.events);
 }
 

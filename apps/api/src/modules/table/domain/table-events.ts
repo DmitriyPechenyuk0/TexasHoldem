@@ -55,6 +55,22 @@ export type TableEvent =
 			/** The seats dealt in, in seat order. */
 			readonly seats: HandPositions["dealtIn"];
 	  }
+	/** A player is to act: their turn time runs from `startedAt` (epoch ms), then their time bank. */
+	| {
+			readonly type: "TurnStarted";
+			readonly v: 1;
+			readonly handId: string;
+			readonly seat: SeatIndex;
+			readonly startedAt: number;
+	  }
+	/** The player took longer than the turn time, and the overrun came out of their time bank. */
+	| {
+			readonly type: "TimeBankUsed";
+			readonly v: 1;
+			readonly seat: SeatIndex;
+			readonly usedMs: number;
+			readonly remainingMs: number;
+	  }
 	/** The hand ended: every player dealt in now has the stack it ended with. */
 	| {
 			readonly type: "HandSettled";

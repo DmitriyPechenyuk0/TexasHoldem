@@ -45,6 +45,7 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 				spectators: [],
 				hand: null,
 				positions: null,
+				turn: null,
 			};
 		case "SeatTaken": {
 			const table = opened(state, event);
@@ -53,6 +54,7 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 				userId: event.userId,
 				stack: event.buyIn,
 				status: "waiting-for-big-blind",
+				timeBankMs: table.config.timeBankSeconds * 1000,
 			};
 			return {
 				...table,
@@ -94,6 +96,14 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 				positions: { buttonSeat, smallBlindSeat, bigBlindSeat },
 			};
 		}
+		case "TurnStarted": {
+			const { handId, seat, startedAt } = event;
+			return { ...opened(state, event), turn: { handId, seat, startedAt } };
+		}
+		case "TimeBankUsed":
+			return updatePlayer(opened(state, event), event.seat, () => ({
+				timeBankMs: event.remainingMs,
+			}));
 		case "HandSettled": {
 			const table = opened(state, event);
 			const stacks = new Map(
@@ -102,6 +112,7 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 			return {
 				...table,
 				hand: null,
+				turn: null,
 				players: table.players.map((player) => ({
 					...player,
 					stack: stacks.get(player.seat) ?? player.stack,

@@ -47,7 +47,7 @@ import {
 } from "../application/commands/execute-table-command/execute-table-command.command.js";
 import { TableChanged } from "../application/events/table-changed.event.js";
 import { GetTableViewQuery } from "../application/queries/get-table-view/get-table-view.query.js";
-import { eventsBatchFor } from "../application/table-views.js";
+import { eventsBatchFor, turnTimerOf } from "../application/table-views.js";
 
 type TableNamespace = Namespace<
 	TableClientToServerEvents,
@@ -69,6 +69,13 @@ export const tableRoom = (tableId: string): string => `table:${tableId}`;
 export const userRoom = (userId: string): string => `user:${userId}`;
 
 const accepted: Ack<TableCommandAck> = { ok: true, data: {} };
+
+/** Table events after which the turn clock reads differently. */
+const CLOCK_EVENTS: ReadonlySet<string> = new Set([
+	"TurnStarted",
+	"TimeBankUsed",
+	"HandSettled",
+]);
 
 /**
  * The `/table` namespace (POK-82, POK-83). Commands go to the table's runtime through the command
@@ -310,6 +317,15 @@ export class TableGateway
 			.to(tableRoom(tableId))
 			.except([...seats.keys()].map(userRoom))
 			.emit("events", eventsBatchFor(tableId, versions, events, "spectator"));
+		// The turn clock is public: everyone following the table, and every player, sees it.
+		if (events.table.some(({ type }) => CLOCK_EVENTS.has(type))) {
+			this.server
+				.to([tableRoom(tableId), ...[...seats.keys()].map(userRoom)])
+				.emit("timer", {
+					tableId: tableId as TableView["tableId"],
+					timer: turnTimerOf(table),
+				});
+		}
 	}
 
 	private async send(
