@@ -251,6 +251,16 @@ export const TableEventView = z.discriminatedUnion("type", [
 		bigBlindSeat: SeatIndex,
 		seats: z.array(SeatIndex).readonly(),
 	}),
+	event("DeckCommitted", {
+		handId: z.string(),
+		/** Lower-case hex SHA-256 of the server seed, published before the deal. */
+		commitment: z.string().regex(/^[0-9a-f]{64}$/),
+	}),
+	/** After the hand: the seed itself, to check the deal with (`verifyDeck`). */
+	event("DeckRevealed", {
+		handId: z.string(),
+		serverSeed: z.string().regex(/^(?:[0-9a-f]{2})+$/),
+	}),
 	event("TurnStarted", {
 		handId: z.string(),
 		seat: SeatIndex,

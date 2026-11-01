@@ -1,4 +1,5 @@
 import {
+	commitServerSeed,
 	decide as decideHand,
 	evolve as evolveHand,
 	firstHandPositions,
@@ -6,6 +7,7 @@ import {
 	type HandEvent,
 	type HandPositions,
 	type HandState,
+	hexToBytes,
 	initialHandState,
 	legalActions,
 	nextHandPositions,
@@ -26,6 +28,7 @@ import {
 	TableClosedError,
 	TableNotOpenError,
 	TimeoutNotDueError,
+	DeckMismatchError,
 } from "./table-errors.js";
 import type { TableEvent } from "./table-events.js";
 import type { OpenedTable, SeatedPlayer, TableState } from "./table-state.js";
@@ -54,9 +57,14 @@ export const initialGameState: GameState = {
 };
 
 const isPlayCommand = (command: GameCommand): command is HandPlayCommand =>
-	["StartHand", "Act", "ShowCards", "MuckCards", "Timeout"].includes(
-		command.type,
-	);
+	[
+		"StartHand",
+		"Act",
+		"ShowCards",
+		"MuckCards",
+		"Timeout",
+		"RevealDeck",
+	].includes(command.type);
 
 /** Players who can be dealt in: neither sitting out nor leaving. Busted players sit out. */
 const ready = (table: OpenedTable): SeatedPlayer[] =>
@@ -253,7 +261,12 @@ function openTable(table: TableState): Result<OpenedTable, TableError> {
 function startHand(
 	game: Game,
 	table: OpenedTable,
-	{ handId, deck, buttonDraw }: Extract<HandPlayCommand, { type: "StartHand" }>,
+	{
+		handId,
+		deck,
+		buttonDraw,
+		commitment,
+	}: Extract<HandPlayCommand, { type: "StartHand" }>,
 ): Result<void, TableError> {
 	if (table.hand) return err(new HandInProgressError());
 	const positions = positionsFor(table, buttonDraw);
@@ -284,6 +297,8 @@ function startHand(
 	});
 	if (!started.ok) return started;
 	game.addTable([
+		// Before the deal, so everyone has it before the first card (ADR-008).
+		{ type: "DeckCommitted", v: 1, handId, commitment },
 		...dealtIn
 			.filter(({ status }) => status === "waiting-for-big-blind")
 			.map(({ seat }): TableEvent => ({
@@ -348,6 +363,32 @@ function timeOut(
 	return game.play({ type: "Timeout", seat });
 }
 
+/**
+ * Publishes the server seed of a hand that has ended. It must hash to the commitment published
+ * before the deal; a hand still running, another hand, or a second reveal is refused.
+ */
+function revealDeck(
+	game: Game,
+	table: OpenedTable,
+	{ handId, serverSeed }: Extract<HandPlayCommand, { type: "RevealDeck" }>,
+): Result<void, TableError> {
+	const { deck } = table;
+	if (
+		!deck ||
+		deck.handId !== handId ||
+		deck.serverSeed !== null ||
+		table.hand?.handId === handId
+	) {
+		return err(new NoHandError());
+	}
+	const isHex = /^(?:[0-9a-f]{2})+$/.test(serverSeed);
+	if (!isHex || commitServerSeed(hexToBytes(serverSeed)) !== deck.commitment) {
+		return err(new DeckMismatchError());
+	}
+	game.addTable([{ type: "DeckRevealed", v: 1, handId, serverSeed }]);
+	return ok(undefined);
+}
+
 function play(
 	game: Game,
 	table: OpenedTable,
@@ -358,6 +399,8 @@ function play(
 			return startHand(game, table, command);
 		case "Timeout":
 			return timeOut(game, table, command);
+		case "RevealDeck":
+			return revealDeck(game, table, command);
 		default:
 			return playerCommand(game, table, command);
 	}

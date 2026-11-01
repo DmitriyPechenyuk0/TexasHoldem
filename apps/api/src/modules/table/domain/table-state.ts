@@ -23,6 +23,14 @@ export interface SeatedPlayer {
 	readonly timeBankMs: number;
 }
 
+/** What a hand's players can check its deck with (ADR-008). */
+export interface DeckFairness {
+	readonly handId: string;
+	readonly commitment: string;
+	/** Hex; null until the hand has ended and the seed is revealed. */
+	readonly serverSeed: string | null;
+}
+
 /** The turn being timed: when the player to act got it (epoch milliseconds). */
 export interface TurnClock {
 	readonly handId: string;
@@ -50,6 +58,8 @@ export interface OpenedTable {
 	/** User ids, in the order they started watching. */
 	readonly spectators: readonly string[];
 	readonly hand: CurrentHand | null;
+	/** The current or last hand's deck commitment, and its server seed once revealed. */
+	readonly deck: DeckFairness | null;
 	/** The turn being timed while a player is to act; null otherwise. */
 	readonly turn: TurnClock | null;
 	/** Where the button and the blinds were in the last hand, for the next one; null before the first. */

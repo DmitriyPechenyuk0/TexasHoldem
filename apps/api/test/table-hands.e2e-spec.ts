@@ -1,4 +1,12 @@
-import { type HandEvent, legalActions } from "@holdem/engine";
+import {
+	type HandEvent,
+	hexToBytes,
+	isCard,
+	legalActions,
+	verifyDeck,
+} from "@holdem/engine";
+import { HandFairnessResponse } from "@holdem/shared/contracts/table";
+import request from "supertest";
 import type { INestApplication } from "@nestjs/common";
 import { CommandBus } from "@nestjs/cqrs";
 import {
@@ -178,6 +186,7 @@ describe("Table hands (e2e)", () => {
 		}
 
 		await checkTableStream(store, tableId);
+		await verifyEveryDeal(app, store, tableId);
 	}, 120_000);
 });
 
@@ -306,4 +315,58 @@ async function checkTableStream(
 	for (const count of Object.values(seen)) {
 		expect(count).toBeGreaterThan(0);
 	}
+}
+
+/**
+ * Checks every hand the way any player can (ADR-008): the seed revealed after the hand matches the
+ * commitment published before its deal, and rebuilds a deck that starts with the dealt cards.
+ */
+async function verifyEveryDeal(
+	app: INestApplication,
+	store: EventStore<TableStreamEvent>,
+	tableId: string,
+): Promise<void> {
+	const recorded = await store.readStream(`table-${tableId}`);
+	const commitments = new Map(
+		recorded.flatMap(({ event }) =>
+			event.type === "DeckCommitted"
+				? [[event.handId, event.commitment] as const]
+				: [],
+		),
+	);
+	const settled = recorded.flatMap(({ event }) =>
+		event.type === "HandSettled" ? [event.handId] : [],
+	);
+	expect(settled.length).toBeGreaterThanOrEqual(HANDS);
+	// The last hand's seed is revealed right after the command that ended it.
+	await vi.waitFor(async () => {
+		await request(app.getHttpServer())
+			.get(`/api/hands/${settled.at(-1)}/fairness`)
+			.expect(200);
+	});
+	for (const handId of settled) {
+		const response = await request(app.getHttpServer())
+			.get(`/api/hands/${handId}/fairness`)
+			.expect(200);
+		const fairness = HandFairnessResponse.parse(response.body);
+		expect(fairness.commitment).toBe(commitments.get(handId));
+		// Contracts carry cards as numbers; the engine brands them.
+		const dealtCards = fairness.dealtCards.filter(isCard);
+		expect(dealtCards).toHaveLength(fairness.dealtCards.length);
+		const verification = verifyDeck({
+			serverSeed: hexToBytes(fairness.serverSeed),
+			commitment: fairness.commitment,
+			handId,
+			clientSeeds: fairness.clientSeeds,
+			dealtCards,
+		});
+		expect(verification.ok).toBe(true);
+		expect(fairness.dealtCards.length).toBeGreaterThanOrEqual(4);
+	}
+
+	const unknown = await request(app.getHttpServer())
+		.get("/api/hands/0b7c6f1e-58a4-4f6b-9a39-5f0f6a8a1c2d/fairness")
+		.expect(404);
+	expect(unknown.body).toMatchObject({ code: "table.hand-not-found" });
+	await request(app.getHttpServer()).get("/api/hands/h-1/fairness").expect(400);
 }

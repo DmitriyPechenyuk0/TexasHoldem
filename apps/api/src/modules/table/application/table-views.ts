@@ -73,8 +73,10 @@ export function tableViewFor(
 		spectatorCount: table.spectators.length,
 		hand: toPlayerView(state.hand, viewer),
 		timer: turnTimerOf(table),
-		// The seed commitment comes with POK-86.
-		fairness: null,
+		fairness: table.deck && {
+			handId: table.deck.handId,
+			serverSeedHash: table.deck.commitment,
+		},
 	};
 }
 

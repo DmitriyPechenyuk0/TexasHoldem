@@ -17,7 +17,13 @@ const NOW = new Date("2026-11-01T10:00:05.000Z");
 function dealt() {
 	const before = { ...initialGameState, table: replayTable(tableWith(0, 1)) };
 	const decision = decideGame(
-		{ type: "StartHand", handId: "h-1", deck: fullDeck(), buttonDraw: 0 },
+		{
+			type: "StartHand",
+			handId: "h-1",
+			deck: fullDeck(),
+			buttonDraw: 0,
+			commitment: "ab".repeat(32),
+		},
 		before,
 		STARTED_AT,
 	);
@@ -67,7 +73,7 @@ describe("table views", () => {
 				turnEndsAt: "2026-11-01T10:00:20.000Z",
 				timeBankMs: 30_000,
 			},
-			fairness: null,
+			fairness: { handId: "h-1", serverSeedHash: "ab".repeat(32) },
 		});
 		expect(view.hand.status).toBe("in-progress");
 		if (view.hand.status === "idle") return;

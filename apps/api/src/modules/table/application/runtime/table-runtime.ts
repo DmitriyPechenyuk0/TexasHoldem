@@ -42,7 +42,8 @@ type CommandFor = (state: GameState) => Promise<GameCommand | null>;
  * came, over the state folded once from its streams, so commands for a table never interleave.
  * Each decision is appended with the version it was made on; when another writer got there first,
  * the runtime reloads and decides once more. It also deals the next hand after the pause, and
- * times each turn out once its time and the player's time bank are spent (POK-84).
+ * times each turn out once its time and the player's time bank are spent (POK-84), and reveals
+ * each hand's server seed once it has ended (POK-86).
  */
 export class TableRuntime {
 	private readonly logger = new Logger(TableRuntime.name);
@@ -91,8 +92,11 @@ export class TableRuntime {
 					return null;
 				}
 				const handId = randomUUID();
-				const { deck, buttonDraw } = await this.deps.decks.deal(handId);
-				return { type: "StartHand", handId, deck, buttonDraw };
+				const { deck, buttonDraw, commitment } = await this.deps.decks.deal(
+					this.tableId,
+					handId,
+				);
+				return { type: "StartHand", handId, deck, buttonDraw, commitment };
 			}),
 		);
 	}
@@ -162,7 +166,35 @@ export class TableRuntime {
 		);
 		this.scheduleNextHand(saved.state);
 		this.armTurnTimer(saved.state);
+		for (const event of decision.value.table) {
+			if (event.type === "HandSettled") {
+				this.revealDeck(event.handId);
+			}
+		}
 		return decision.value;
+	}
+
+	/**
+	 * Publishes an ended hand's server seed, right after the command that ended it and before the
+	 * next deal: everyone can then check the deal against the commitment (ADR-008).
+	 */
+	private revealDeck(handId: string): void {
+		if (this.disposed) {
+			return;
+		}
+		this.enqueue(() =>
+			this.run(async () => {
+				const serverSeed = await this.deps.decks.reveal(handId);
+				return serverSeed ? { type: "RevealDeck", handId, serverSeed } : null;
+			}),
+		).catch((error: unknown) => {
+			this.logger.error({
+				msg: "deck not revealed",
+				tableId: this.tableId,
+				handId,
+				err: error,
+			});
+		});
 	}
 
 	/** The state in memory, folded from the streams first if need be; arms a running turn's timer. */

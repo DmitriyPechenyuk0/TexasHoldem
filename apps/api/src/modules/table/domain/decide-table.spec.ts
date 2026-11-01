@@ -49,6 +49,7 @@ describe("decideTable", () => {
 				spectators: [],
 				hand: null,
 				positions: null,
+				deck: null,
 				turn: null,
 			});
 			expect(state.status !== "unopened" && state.config).not.toBe(config);

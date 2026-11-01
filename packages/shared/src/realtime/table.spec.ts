@@ -232,6 +232,18 @@ describe("table realtime contracts", () => {
 				usedMs: 2_500,
 				remainingMs: 27_500,
 			},
+			{
+				type: "DeckCommitted",
+				v: 1,
+				handId: "h-1",
+				commitment: "ab".repeat(32),
+			},
+			{
+				type: "DeckRevealed",
+				v: 1,
+				handId: "h-1",
+				serverSeed: "cd".repeat(32),
+			},
 			{ type: "TableClosed", v: 1 },
 		];
 		for (const event of events) {

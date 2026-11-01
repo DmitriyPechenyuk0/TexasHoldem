@@ -138,6 +138,22 @@ describe("Table gateway (e2e)", () => {
 				true,
 			),
 		);
+		// The commitment is public before the deal; the seed stays secret while the hand runs.
+		const dealing = alice.batches.find(
+			(b) => b.hand[0]?.type === "HandStarted",
+		)!;
+		const committed = dealing.table.find((e) => e.type === "DeckCommitted");
+		const handId = dealing.versions.hand!.handId;
+		expect((await carol.join()).fairness).toEqual({
+			handId,
+			serverSeedHash:
+				committed?.type === "DeckCommitted" && committed.commitment,
+		});
+		const secret = await request(app.getHttpServer()).get(
+			`/api/hands/${handId}/fairness`,
+		);
+		expect(secret.status).toBe(409);
+		expect(secret.body).toMatchObject({ code: "table.deck-not-revealed" });
 		while (!settled(alice)) {
 			// Each player looks at most a few times a second, under the command limit.
 			await new Promise((resolve) => setTimeout(resolve, 250));
@@ -167,8 +183,11 @@ describe("Table gateway (e2e)", () => {
 				}
 			}
 		}
+		const revealedTo = (user: Client) =>
+			user.batches.some((b) => b.table.some((e) => e.type === "DeckRevealed"));
 		await vi.waitFor(() => {
-			for (const user of [alice, bob, carol]) expect(settled(user)).toBe(true);
+			for (const user of [alice, bob, carol])
+				expect(revealedTo(user)).toBe(true);
 		});
 
 		const settlement = alice.batches
@@ -401,9 +420,15 @@ function expectNothingHidden(
 		if (value && typeof value === "object") {
 			expect(value).not.toHaveProperty("deck");
 			expect(value).not.toHaveProperty("burn");
+			// The server seed travels in DeckRevealed only, checked below.
+			if ("serverSeed" in value) {
+				expect(value).toMatchObject({ type: "DeckRevealed" });
+			}
 			Object.values(value).forEach(walk);
 		}
 	};
+	const ended = new Set<string>();
+	let revealed = 0;
 	let holeCardsSeen = 0;
 	for (const payload of received) {
 		walk(payload);
@@ -417,6 +442,14 @@ function expectNothingHidden(
 				}
 			}
 			continue;
+		}
+		for (const event of payload.table) {
+			if (event.type === "HandSettled") ended.add(event.handId);
+			if (event.type === "DeckRevealed") {
+				// Never before its hand has ended.
+				expect(ended.has(event.handId)).toBe(true);
+				revealed += 1;
+			}
 		}
 		for (const event of payload.hand) {
 			if (event.type === "HoleCardsDealt") {
@@ -432,4 +465,5 @@ function expectNothingHidden(
 		}
 	}
 	expect(holeCardsSeen).toBe(viewer === "spectator" ? 0 : 1);
+	expect(revealed).toBeGreaterThanOrEqual(1);
 }
