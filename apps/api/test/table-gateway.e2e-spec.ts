@@ -349,7 +349,12 @@ describe("Table gateway (e2e)", () => {
 		]);
 		await alice.join();
 		const known = (await carol.join()).versions;
-		const seen = carol.batches.length;
+		// Batches can come after a snapshot that already holds them (carol's own join): those are
+		// older than it, and a client drops them.
+		const newer = () =>
+			carol.batches.filter(
+				({ versions }) => versions.tableVersion > known.tableVersion,
+			);
 		ok(
 			await alice.socket.emitWithAck("take-seat", {
 				tableId: tableIdOf(tableId),
@@ -362,10 +367,10 @@ describe("Table gateway (e2e)", () => {
 				tableId: tableIdOf(tableId),
 			}),
 		);
-		await vi.waitFor(() => expect(carol.batches).toHaveLength(seen + 2));
+		await vi.waitFor(() => expect(newer()).toHaveLength(2));
 
 		// The first batch is lost on the way: the second does not follow what carol has.
-		const [first, second] = carol.batches.slice(seen);
+		const [first, second] = newer();
 		expect(followsVersions(known, first!)).toBe(true);
 		expect(followsVersions(known, second!)).toBe(false);
 		expect(followsVersions(first!.versions, second!)).toBe(true);

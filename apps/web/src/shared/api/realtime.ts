@@ -14,10 +14,14 @@ export type SystemSocket = Socket<
 	SystemClientToServerEvents
 >;
 
-/** Connects to the api's root namespace, sending the session cookie along. */
+/**
+ * Connects to the api's root namespace, sending the session cookie along. WebSocket only, which
+ * is all the api takes: it runs several instances without sticky sessions.
+ */
 export function connectSystemSocket(): SystemSocket {
 	return io(new URL(systemNamespace.path, publicEnv.apiUrl).toString(), {
 		withCredentials: true,
+		transports: ["websocket"],
 	});
 }
 
