@@ -3,7 +3,10 @@ import { DomainError } from "@/shared/domain/domain-error.js";
 import { decideTable } from "@/modules/table/domain/decide-table.js";
 import { replayTable } from "@/modules/table/domain/evolve-table.js";
 import type { TableCommand } from "@/modules/table/domain/table-commands.js";
-import type { TableConfig } from "@/modules/table/domain/table-config.js";
+import {
+	DEFAULT_ABSENCE_POLICY,
+	type TableConfig,
+} from "@/modules/table/domain/table-config.js";
 import type { TableError } from "@/modules/table/domain/table-errors.js";
 import type { TableEvent } from "@/modules/table/domain/table-events.js";
 import type {
@@ -11,7 +14,10 @@ import type {
 	TableState,
 } from "@/modules/table/domain/table-state.js";
 
-/** A 1/2 table for six with a buy-in of 50–200 big blinds (100–400 chips); override any part. */
+/**
+ * A 1/2 table for six with a buy-in of 50–200 big blinds (100–400 chips) and the default absence
+ * policy; override any part.
+ */
 export const tableConfig = (
 	overrides: Partial<TableConfig> = {},
 ): TableConfig => ({
@@ -22,6 +28,7 @@ export const tableConfig = (
 	maxSeats: 6,
 	turnSeconds: 20,
 	timeBankSeconds: 30,
+	...DEFAULT_ABSENCE_POLICY,
 	visibility: "public",
 	...overrides,
 });

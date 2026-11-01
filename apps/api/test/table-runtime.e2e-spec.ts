@@ -84,6 +84,10 @@ describe("Table runtime (e2e)", () => {
 					maxSeats: 2,
 					turnSeconds: 20,
 					timeBankSeconds: 30,
+					reconnectGraceSeconds: 120,
+					disconnectedTurnSeconds: 5,
+					sitOutSeconds: 600,
+					sitOutHands: 3,
 					visibility: "public",
 				},
 			});

@@ -56,6 +56,8 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 				stack: event.buyIn,
 				status: "waiting-for-big-blind",
 				timeBankMs: table.config.timeBankSeconds * 1000,
+				disconnectedAt: null,
+				sitOut: null,
 			};
 			return {
 				...table,
@@ -70,8 +72,10 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 			};
 		}
 		case "PlayerStatusChanged":
-			return updatePlayer(opened(state, event), event.seat, () => ({
+			// The sit-out clock starts with `SitOutStarted`, and stops with any other status.
+			return updatePlayer(opened(state, event), event.seat, (player) => ({
 				status: event.status,
+				sitOut: event.status === "sitting-out" ? player.sitOut : null,
 			}));
 		case "ChipsAdded":
 			return updatePlayer(opened(state, event), event.seat, (player) => ({
@@ -95,6 +99,17 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 				...table,
 				hand: { handId, seats },
 				positions: { buttonSeat, smallBlindSeat, bigBlindSeat },
+				players: table.players.map((player) =>
+					player.sitOut && !seats.includes(player.seat)
+						? {
+								...player,
+								sitOut: {
+									...player.sitOut,
+									handsMissed: player.sitOut.handsMissed + 1,
+								},
+							}
+						: player,
+				),
 			};
 		}
 		case "DeckCommitted": {
@@ -117,6 +132,18 @@ export function evolveTable(state: TableState, event: TableEvent): TableState {
 		case "TimeBankUsed":
 			return updatePlayer(opened(state, event), event.seat, () => ({
 				timeBankMs: event.remainingMs,
+			}));
+		case "PlayerDisconnected":
+			return updatePlayer(opened(state, event), event.seat, () => ({
+				disconnectedAt: event.at,
+			}));
+		case "PlayerReconnected":
+			return updatePlayer(opened(state, event), event.seat, () => ({
+				disconnectedAt: null,
+			}));
+		case "SitOutStarted":
+			return updatePlayer(opened(state, event), event.seat, () => ({
+				sitOut: { since: event.at, handsMissed: 0 },
 			}));
 		case "HandSettled": {
 			const table = opened(state, event);

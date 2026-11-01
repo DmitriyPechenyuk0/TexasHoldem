@@ -6,13 +6,18 @@ import {
 	type EventStore,
 } from "@/shared/application/event-store.js";
 import {
+	absenceDueAt,
 	decideGame,
 	type GameEvents,
 	type GameState,
 	handReady,
 	turnDueAt,
 } from "../../domain/game.js";
-import { NoHandError, TimeoutNotDueError } from "../../domain/table-errors.js";
+import {
+	AbsenceNotDueError,
+	NoHandError,
+	TimeoutNotDueError,
+} from "../../domain/table-errors.js";
 import type { GameCommand } from "../../domain/table-commands.js";
 import type { TableCommandInput } from "../commands/execute-table-command/execute-table-command.command.js";
 import type { DeckProvider } from "../deck-provider.js";
@@ -41,9 +46,10 @@ type CommandFor = (state: GameState) => Promise<GameCommand | null>;
  * One table in memory (ADR-002): a mailbox runs its commands one at a time, in the order they
  * came, over the state folded once from its streams, so commands for a table never interleave.
  * Each decision is appended with the version it was made on; when another writer got there first,
- * the runtime reloads and decides once more. It also deals the next hand after the pause, and
- * times each turn out once its time and the player's time bank are spent (POK-84), and reveals
- * each hand's server seed once it has ended (POK-86).
+ * the runtime reloads and decides once more. It also deals the next hand after the pause, times
+ * each turn out once its time and the player's time bank are spent (POK-84), reveals each hand's
+ * server seed once it has ended (POK-86), and applies the absence policy once a reconnect grace or
+ * a sit-out runs out (POK-85).
  */
 export class TableRuntime {
 	private readonly logger = new Logger(TableRuntime.name);
@@ -52,6 +58,7 @@ export class TableRuntime {
 	private pending = 0;
 	private nextHand: ReturnType<typeof setTimeout> | null = null;
 	private turnTimer: ReturnType<typeof setTimeout> | null = null;
+	private absenceTimer: ReturnType<typeof setTimeout> | null = null;
 	private disposed = false;
 	private usedAt: number;
 
@@ -62,10 +69,13 @@ export class TableRuntime {
 		this.usedAt = deps.now();
 	}
 
-	/** No command is queued or running, and no deal or timeout is due. */
+	/** No command is queued or running, and no deal, timeout or absence is due. */
 	get idle(): boolean {
 		return (
-			this.pending === 0 && this.nextHand === null && this.turnTimer === null
+			this.pending === 0 &&
+			this.nextHand === null &&
+			this.turnTimer === null &&
+			this.absenceTimer === null
 		);
 	}
 
@@ -111,6 +121,7 @@ export class TableRuntime {
 		this.disposed = true;
 		this.cancelNextHand();
 		this.cancelTurnTimer();
+		this.cancelAbsenceTimer();
 		await this.tail;
 	}
 
@@ -166,6 +177,7 @@ export class TableRuntime {
 		);
 		this.scheduleNextHand(saved.state);
 		this.armTurnTimer(saved.state);
+		this.armAbsenceTimer(saved.state);
 		for (const event of decision.value.table) {
 			if (event.type === "HandSettled") {
 				this.revealDeck(event.handId);
@@ -197,11 +209,12 @@ export class TableRuntime {
 		});
 	}
 
-	/** The state in memory, folded from the streams first if need be; arms a running turn's timer. */
+	/** The state in memory, folded from the streams first if need be; arms the timers it needs. */
 	private async load(): Promise<LoadedGame> {
 		if (!this.loaded) {
 			this.loaded = await loadGame(this.deps.store, this.tableId);
 			this.armTurnTimer(this.loaded.state);
+			this.armAbsenceTimer(this.loaded.state);
 		}
 		return this.loaded;
 	}
@@ -248,6 +261,43 @@ export class TableRuntime {
 		if (this.turnTimer) {
 			clearTimeout(this.turnTimer);
 			this.turnTimer = null;
+		}
+	}
+
+	/**
+	 * Applies the absence policy once the next reconnect grace or sit-out runs out, like the turn
+	 * timer: set again after every change, and an early or stale one is refused by the table.
+	 */
+	private armAbsenceTimer(state: GameState): void {
+		this.cancelAbsenceTimer();
+		const dueAt = absenceDueAt(state.table);
+		if (this.disposed || dueAt === null) {
+			return;
+		}
+		this.absenceTimer = setTimeout(
+			() => {
+				this.absenceTimer = null;
+				this.enqueue(() =>
+					this.run(async () => ({ type: "ExpireAbsences" })),
+				).catch((error: unknown) => {
+					if (error instanceof AbsenceNotDueError) {
+						return;
+					}
+					this.logger.error({
+						msg: "absences not expired",
+						tableId: this.tableId,
+						err: error,
+					});
+				});
+			},
+			Math.max(0, dueAt - this.deps.now()),
+		);
+	}
+
+	private cancelAbsenceTimer(): void {
+		if (this.absenceTimer) {
+			clearTimeout(this.absenceTimer);
+			this.absenceTimer = null;
 		}
 	}
 

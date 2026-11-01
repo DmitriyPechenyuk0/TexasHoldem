@@ -240,6 +240,34 @@ export class TimeoutNotDueError extends DomainError {
 	}
 }
 
+export class AlreadyDisconnectedError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.already-disconnected";
+
+	constructor() {
+		super("The player is already disconnected");
+	}
+}
+
+export class NotDisconnectedError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.not-disconnected";
+
+	constructor() {
+		super("The player is not disconnected");
+	}
+}
+
+/** No reconnect grace or sit-out time is over yet: an early or stale absence timer. */
+export class AbsenceNotDueError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "table.absence-not-due";
+
+	constructor() {
+		super("No absence is due yet");
+	}
+}
+
 export class HandNotFoundError extends DomainError {
 	readonly kind = "not-found";
 	readonly code = "table.hand-not-found";
@@ -309,6 +337,9 @@ export type TableError =
 	| NotInHandError
 	| HandRuleError
 	| TimeoutNotDueError
+	| AlreadyDisconnectedError
+	| NotDisconnectedError
+	| AbsenceNotDueError
 	| DeckMismatchError
 	| HandNotFoundError
 	| DeckNotRevealedError;

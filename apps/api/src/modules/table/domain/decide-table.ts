@@ -92,6 +92,10 @@ function openNew(
 			maxSeats: config.maxSeats,
 			turnSeconds: config.turnSeconds,
 			timeBankSeconds: config.timeBankSeconds,
+			reconnectGraceSeconds: config.reconnectGraceSeconds,
+			disconnectedTurnSeconds: config.disconnectedTurnSeconds,
+			sitOutSeconds: config.sitOutSeconds,
+			sitOutHands: config.sitOutHands,
 			visibility: config.visibility,
 		},
 	});

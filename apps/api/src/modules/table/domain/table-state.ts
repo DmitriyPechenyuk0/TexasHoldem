@@ -21,6 +21,16 @@ export interface SeatedPlayer {
 	 * refilled while they keep the seat.
 	 */
 	readonly timeBankMs: number;
+	/** When the player's last connection to the table closed (epoch ms); null while connected. */
+	readonly disconnectedAt: number | null;
+	/** The sit-out clock, while the player sits out (`SitOutStarted`); null otherwise. */
+	readonly sitOut: SitOutClock | null;
+}
+
+/** Since when a player has sat out (epoch ms), and how many hands were dealt without them. */
+export interface SitOutClock {
+	readonly since: number;
+	readonly handsMissed: number;
 }
 
 /** What a hand's players can check its deck with (ADR-008). */

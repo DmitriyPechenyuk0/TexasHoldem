@@ -98,6 +98,8 @@ describe("decideTable", () => {
 					stack: 200,
 					status: "waiting-for-big-blind",
 					timeBankMs: 30_000,
+					disconnectedAt: null,
+					sitOut: null,
 				},
 				{
 					seat: 3,
@@ -105,6 +107,8 @@ describe("decideTable", () => {
 					stack: 150,
 					status: "waiting-for-big-blind",
 					timeBankMs: 30_000,
+					disconnectedAt: null,
+					sitOut: null,
 				},
 			]);
 		});
@@ -311,6 +315,8 @@ describe("decideTable", () => {
 				stack: 400,
 				status: "sitting-out",
 				timeBankMs: 30_000,
+				disconnectedAt: null,
+				sitOut: null,
 			});
 			given(busted, broke)
 				.when({ type: "Rebuy", userId: "u0", amount: 100 })

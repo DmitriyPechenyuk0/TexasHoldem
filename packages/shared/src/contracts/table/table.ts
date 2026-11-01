@@ -16,6 +16,10 @@ export const CreateDevTableRequest = z.object({
 	maxSeats: setting.optional(),
 	turnSeconds: setting.optional(),
 	timeBankSeconds: setting.optional(),
+	reconnectGraceSeconds: setting.optional(),
+	disconnectedTurnSeconds: setting.optional(),
+	sitOutSeconds: setting.optional(),
+	sitOutHands: setting.optional(),
 	visibility: z.enum(["public", "private"]).optional(),
 });
 export type CreateDevTableRequest = z.infer<typeof CreateDevTableRequest>;

@@ -8,7 +8,11 @@ import { CommandBus } from "@nestjs/cqrs";
 import { ValidBody } from "@/shared/presentation/request-validation.js";
 import { ExecuteTableCommand } from "../application/commands/execute-table-command/execute-table-command.command.js";
 
-/** A 1/2 table for six with a buy-in of 50–200 big blinds, 20 s a turn and a 30 s time bank. */
+/**
+ * A 1/2 table for six with a buy-in of 50–200 big blinds, 20 s a turn and a 30 s time bank, and
+ * the default absence policy: 2 min to reconnect with 5 s turns meanwhile, and a seat lost after
+ * 10 min or 3 hands sitting out.
+ */
 export const DEV_TABLE_DEFAULTS = {
 	smallBlind: 1,
 	bigBlind: 2,
@@ -17,6 +21,10 @@ export const DEV_TABLE_DEFAULTS = {
 	maxSeats: 6,
 	turnSeconds: 20,
 	timeBankSeconds: 30,
+	reconnectGraceSeconds: 120,
+	disconnectedTurnSeconds: 5,
+	sitOutSeconds: 600,
+	sitOutHands: 3,
 	visibility: "public",
 } as const;
 

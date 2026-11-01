@@ -148,8 +148,9 @@ describe("TableRuntime", () => {
 		// The deck was revealed in between, right after the hand ended.
 		const [revealed, satOut] = published.slice(-2);
 		expect(revealed?.events.table.map((e) => e.type)).toEqual(["DeckRevealed"]);
+		// One for the reveal, and two for sitting out: the status and the sit-out clock.
 		expect(satOut?.versions).toEqual({
-			tableVersion: settled.versions.tableVersion + 2,
+			tableVersion: settled.versions.tableVersion + 3,
 			hand: settled.versions.hand,
 		});
 		expect(settled.versions.hand).toEqual({
@@ -374,6 +375,44 @@ describe("TableRuntime", () => {
 			expect(
 				settled.status === "open" && settled.players.map((p) => p.timeBankMs),
 			).toEqual([0, 0]);
+		});
+	});
+
+	describe("the absence timer", () => {
+		// The default policy: 120 s to reconnect, then 600 s sitting out.
+		async function disconnected() {
+			vi.useFakeTimers();
+			const setup = setUp({ fakeClock: true });
+			await setup.runtime.execute(open);
+			await setup.runtime.execute(takeSeat(0));
+			await setup.runtime.execute({ type: "Disconnect", userId: "u0" });
+			const lastChange = () =>
+				setup.published.at(-1)!.events.table.map(({ type }) => type);
+			return { ...setup, lastChange };
+		}
+
+		it("sits a disconnected player out after the grace, then frees the seat", async () => {
+			const { runtime, lastChange } = await disconnected();
+			expect(runtime.idle).toBe(false);
+
+			await vi.advanceTimersByTimeAsync(120_000 - 1);
+			expect(lastChange()).toEqual(["PlayerDisconnected"]);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(lastChange()).toEqual(["PlayerStatusChanged", "SitOutStarted"]);
+
+			await vi.advanceTimersByTimeAsync(600_000);
+			expect(lastChange()).toEqual(["SeatLeft"]);
+			expect(runtime.idle).toBe(true);
+		});
+
+		it("stands down for a player who is back within the grace", async () => {
+			const { runtime, lastChange } = await disconnected();
+			await vi.advanceTimersByTimeAsync(60_000);
+			await runtime.execute({ type: "Reconnect", userId: "u0" });
+			expect(runtime.idle).toBe(true);
+
+			await vi.advanceTimersByTimeAsync(600_000);
+			expect(lastChange()).toEqual(["PlayerReconnected"]);
 		});
 	});
 

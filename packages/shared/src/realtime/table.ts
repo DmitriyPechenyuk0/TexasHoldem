@@ -215,6 +215,13 @@ export const TableSettings = z.object({
 	maxSeats: z.int().min(2).max(9),
 	turnSeconds: z.int().positive(),
 	timeBankSeconds: z.int().nonnegative(),
+	/** How long a disconnected player has to come back before they sit out. */
+	reconnectGraceSeconds: z.int().nonnegative(),
+	/** How long a disconnected player's turn lasts, without the time bank. */
+	disconnectedTurnSeconds: z.int().positive(),
+	/** A player sitting out this long, or this many hands, loses the seat. */
+	sitOutSeconds: z.int().positive(),
+	sitOutHands: z.int().positive(),
 	visibility: z.enum(["public", "private"]),
 });
 export type TableSettings = z.infer<typeof TableSettings>;
@@ -228,6 +235,13 @@ export const SeatView = z.object({
 	status: SeatStatus,
 	/** Time bank left: full when the player sits down, never refilled while they keep the seat. */
 	timeBankMs: z.int().nonnegative(),
+	/**
+	 * When the player's last connection to the table closed; null while connected. They sit out
+	 * once `reconnectGraceSeconds` have passed since.
+	 */
+	disconnectedAt: z.iso.datetime().nullable(),
+	/** Since when the player has sat out, for as long as they do; they lose the seat after `sitOutSeconds`. */
+	sittingOutSince: z.iso.datetime().nullable(),
 });
 export type SeatView = z.infer<typeof SeatView>;
 
@@ -272,6 +286,11 @@ export const TableEventView = z.discriminatedUnion("type", [
 		usedMs: z.int().nonnegative(),
 		remainingMs: z.int().nonnegative(),
 	}),
+	/** `at`: when the player's last connection closed, in epoch milliseconds (server time). */
+	event("PlayerDisconnected", { seat: SeatIndex, at: z.int().nonnegative() }),
+	event("PlayerReconnected", { seat: SeatIndex }),
+	/** `at`: since when the player sits out, in epoch milliseconds (server time). */
+	event("SitOutStarted", { seat: SeatIndex, at: z.int().nonnegative() }),
 	event("HandSettled", {
 		handId: z.string(),
 		stacks: z.array(z.object({ seat: SeatIndex, stack: Chips })).readonly(),

@@ -239,11 +239,12 @@ describe("Table gateway (e2e)", () => {
 		const events = (await store.readStream(`table-${tableId}`)).map(
 			(r) => r.event.type,
 		);
-		expect(events.slice(-6)).toEqual([
+		expect(events.slice(-7)).toEqual([
 			"SpectatorLeft",
 			"SeatTaken",
 			"ChipsAdded",
 			"PlayerStatusChanged",
+			"SitOutStarted",
 			"PlayerStatusChanged",
 			"SeatLeft",
 		]);
@@ -378,6 +379,8 @@ describe("Table gateway (e2e)", () => {
 				stack: 200,
 				status: "sitting-out",
 				timeBankMs: 30_000,
+				disconnectedAt: null,
+				sittingOutSince: expect.any(String),
 			},
 		]);
 	});
