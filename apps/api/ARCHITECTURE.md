@@ -145,7 +145,7 @@ export class SystemGateway {
 - A command returns its `Ack`; a thrown error becomes `{ ok: false, error: Problem }`. Gateways, like controllers, only send messages to the buses.
 - socket.io shares the HTTP server and its CORS policy (`WEB_ORIGIN`, with credentials). `configureApp()` sets both, for `main.ts` and the e2e tests alike.
 - WebSocket is the only transport (the web client asks for it too): a connection stays on the instance it reached, so instances behind a load balancer need no sticky sessions, as long-polling would.
-- Every namespace goes through the Redis streams adapter (`@socket.io/redis-streams-adapter`, on its own connection `socket.io`), so `server.to(room)` reaches the room's sockets on every instance. Rooms: `user:<userId>` (a user's private payloads), `table:<tableId>`, and `lobby` to come. The adapter appends each broadcast to the Redis stream `socket.io` before emitting to this instance's sockets, so a batch can arrive after an ack sent later; clients drop batches older than their snapshot. Its read blocks for 1 s (`ADAPTER_READ_BLOCK_MS`), within the 2 s command timeout its connections inherit. While Redis is down its publishes fail at once (`adapterClient`), so this instance's sockets still get every broadcast without delay and only other instances miss them. Its reading connections close gracefully when the server closes, so no pending command is left rejected.
+- Every namespace goes through the Redis streams adapter (`@socket.io/redis-streams-adapter`, on its own connection `socket.io`), so `server.to(room)` reaches the room's sockets on every instance. Rooms are per namespace: `user:<userId>` (a user's own payloads, on `/table` and `/social`), `table:<tableId>` and `lobby`. The adapter appends each broadcast to the Redis stream `socket.io` before emitting to this instance's sockets, so a batch can arrive after an ack sent later; clients drop batches older than their snapshot. Its read blocks for 1 s (`ADAPTER_READ_BLOCK_MS`), within the 2 s command timeout its connections inherit. While Redis is down its publishes fail at once (`adapterClient`), so this instance's sockets still get every broadcast without delay and only other instances miss them. Its reading connections close gracefully when the server closes, so no pending command is left rejected.
 - `pnpm start:two` (`scripts/two-instances.mjs`) runs two built instances on `PORT + 1` and `PORT + 2` behind a round-robin TCP proxy on `PORT`, to try the app as production runs it.
 
 ## Persistence
@@ -399,6 +399,18 @@ Who plays with whom (`modules/social`). Players are shown by their cards (userna
   - `DELETE /api/friend-requests/:userId`, which cancels the request;
   - `GET /api/players/search?q=`: usernames starting with `q`, 10 at most, without the searcher, each with its `relation`; at most 60 a minute per player. `profile_profiles.username` has a `text_pattern_ops` index for it.
 - Declining and removing tell nobody. A new request publishes the integration event `FriendRequestSent` (`social.friend-request-sent`), and a new friendship publishes `FriendshipCreated` (`social.friendship-created`). Both are published once the transaction has committed, for realtime notifications.
+- **Presence** (POK-105), on the `/social` namespace (`SocialGateway`). A player is online while any socket of theirs is connected there, on any instance.
+  - `RedisPlayerPresence` keeps the following keys, all prefixed by the database's name:
+    - a sorted set per player of connection ids, scored by when they run out (60 s, refreshed every 20 s by the instance holding them);
+    - a set of the players shown online;
+    - who sits at each table, and the tables each player sits at, from `TableSummaryChanged`.
+  - Each change is one Lua script.
+  - The first connection shows the player online. After the last one closes, `PresenceSettler` waits 5 s (`OFFLINE_GRACE_MS`) before settling, so a reload, or a reconnect to another instance, shows nothing.
+  - Every instance sweeps the players shown online every 30 s, for connections that ran out when their instance stopped. Settling is atomic, so a player goes offline once.
+  - `presence-changed` goes to each online friend's `user:<id>` room, with the presence as that friend may see it: `offline`, `online`, `at-table { tableId }`, or `playing`. A friend sees `playing` for a table they may not join (`CanJoinTableQuery`): a private table whose invite they have not redeemed. A player offline shows offline wherever they sit.
+  - `friends-presence` answers every friend's presence. Changes reach a socket from its connection on, since it joins its room before the player is shown online.
+  - `FriendRequestSent` goes out as `friend-request-received`. `FriendshipCreated` goes out as `friend-added` to both players, followed by their presence.
+  - While Redis is down, nobody comes online or goes offline.
 
 ## HTTP and sockets
 

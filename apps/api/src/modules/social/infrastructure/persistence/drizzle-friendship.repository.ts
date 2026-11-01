@@ -39,30 +39,26 @@ class DrizzleFriendships implements Friendships {
 	constructor(private readonly tx: Transaction) {}
 
 	async standing(me: string, them: string): Promise<Standing> {
-		const [friends, requests, myFriends, theirFriends, myPending] =
-			await Promise.all([
-				this.tx
-					.select({ since: friendships.since })
-					.from(friendships)
-					.where(
-						and(eq(friendships.userId, me), eq(friendships.friendId, them)),
-					),
-				this.tx
-					.select({ fromId: friendRequests.fromId })
-					.from(friendRequests)
-					.where(
-						or(
-							and(eq(friendRequests.fromId, me), eq(friendRequests.toId, them)),
-							and(eq(friendRequests.fromId, them), eq(friendRequests.toId, me)),
-						),
-					),
-				this.friendCount(me),
-				this.friendCount(them),
-				this.tx
-					.select({ requests: count() })
-					.from(friendRequests)
-					.where(eq(friendRequests.fromId, me)),
-			]);
+		// One after another: a transaction's client runs one query at a time.
+		const friends = await this.tx
+			.select({ since: friendships.since })
+			.from(friendships)
+			.where(and(eq(friendships.userId, me), eq(friendships.friendId, them)));
+		const requests = await this.tx
+			.select({ fromId: friendRequests.fromId })
+			.from(friendRequests)
+			.where(
+				or(
+					and(eq(friendRequests.fromId, me), eq(friendRequests.toId, them)),
+					and(eq(friendRequests.fromId, them), eq(friendRequests.toId, me)),
+				),
+			);
+		const myFriends = await this.friendCount(me);
+		const theirFriends = await this.friendCount(them);
+		const myPending = await this.tx
+			.select({ requests: count() })
+			.from(friendRequests)
+			.where(eq(friendRequests.fromId, me));
 		return {
 			me,
 			them,
