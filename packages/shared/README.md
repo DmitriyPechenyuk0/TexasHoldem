@@ -48,6 +48,16 @@ export type SystemClientToServerEvents = ClientToServerEvents<typeof systemNames
 - **Realtime schemas never coerce or transform.** JSON keeps types over a socket, so the sender's type and the parsed type are the same.
 - The receiver always parses: the api validates every payload, and the web app parses acks with `ackOf(Event.ack)`.
 
+### The table namespace
+
+`/table` (`tableNamespace`, `src/realtime/table.ts`) carries the game. Every client payload names its `tableId`, since one socket may follow several tables.
+
+- **Commands**: `join { as: "player" | "spectator" }` answers the whole `TableView`; `leave`, `take-seat`, `leave-seat`, `sit-out`, `sit-in`, `act { action, amount? }`, `show-cards`, `muck-cards`, `top-up` and `rebuy` answer `{}` (`TableCommandAck`). Their effect arrives as an `events` batch, like everyone else's.
+- **Server events**: `snapshot` (a `TableView`, whenever the client has to start over), `events` (`TableEventsBatch`: one command's `table` and `hand` events), `timer` (the turn clock, POK-84) and `problem` (a failure that answers no command of this client).
+- **What a viewer sees**: `TableView.hand` is the engine's `toPlayerView` and `HandEventView` its `redactEvent`, for that viewer: never the deck, a burn card or a hole card not shown. Table events (`TableEventView`) are public. Parsing is no redaction: a raw `HoleCardsDealt` parses with every player's cards, so the api only ever sends `redactEvent` output.
+- **Versions**: every snapshot and batch carries `versions`: the table stream's `tableVersion` and the current hand's stream (`hand: { handId, version }`). `followsVersions(known, batch)` says whether a batch comes right after what the client has; when it does not, a batch was missed and the client joins again for a snapshot.
+- **Engine types fit as they are.** Arrays are readonly and user ids are plain UUIDs (`playerId`, `userId`) rather than branded `UserId`, so the api sends the engine's views and events without copying them. Tests play random hands and check that every view and redacted event parses unchanged, for every viewer.
+
 ## Conventions
 
 - **A schema and its type share one name**: `export const ServerTimeResponse = z.object(…)` and `export type ServerTimeResponse = z.infer<typeof ServerTimeResponse>`.
