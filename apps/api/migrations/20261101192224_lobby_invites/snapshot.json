@@ -1,0 +1,115 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "34d7f377-e9f4-455c-adc2-6e4e5304a9e6",
+  "prevIds": [
+    "5299c492-5427-4d61-bebd-713a794e5514"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "lobby_tables",
+        "invite_code"
+      ],
+      "writes": [
+        "s|col|public.lobby_tables.invite_code",
+        "n|col|public.lobby_tables.invite_code",
+        "e|col|public.lobby_tables.invite_code"
+      ],
+      "reads": [
+        "n|tbl|public.lobby_tables",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "lobby_tables",
+        "password_hash"
+      ],
+      "writes": [
+        "s|col|public.lobby_tables.password_hash",
+        "n|col|public.lobby_tables.password_hash",
+        "e|col|public.lobby_tables.password_hash"
+      ],
+      "reads": [
+        "n|tbl|public.lobby_tables",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_unique",
+      "statementTarget": [
+        "table",
+        "public",
+        "lobby_tables"
+      ],
+      "writes": [
+        "s|uq|public.lobby_tables.lobby_tables_invite_code_key",
+        "n|uq|public.lobby_tables.lobby_tables_invite_code_key",
+        "e|uq|public.lobby_tables.lobby_tables_invite_code_key",
+        "n|con|public.lobby_tables.lobby_tables_invite_code_key",
+        "n|rel|public.lobby_tables_invite_code_key"
+      ],
+      "reads": [
+        "n|tbl|public.lobby_tables",
+        "n|sch|public",
+        "n|col|public.lobby_tables.invite_code"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "lobby_tables",
+        "name": "invite_code",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "lobby_tables",
+        "name": "password_hash",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "lobby_tables",
+        "name": "lobby_tables_invite_code_key",
+        "nameExplicit": false,
+        "columns": [
+          "invite_code"
+        ],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    }
+  ]
+}

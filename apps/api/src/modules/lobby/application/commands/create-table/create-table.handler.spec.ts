@@ -1,30 +1,12 @@
 import type { CommandBus } from "@nestjs/cqrs";
-import { Clock } from "@/shared/application/clock.js";
+import type { Clock } from "@/shared/application/clock.js";
 import { ExecuteTableCommand } from "@/modules/table/index.js";
-import type { LobbyTable } from "../../../domain/lobby-table.js";
-import { LobbyTableRepository } from "../../../domain/lobby-table.repository.js";
+import {
+	InMemoryLobbyTables,
+	PlainPasswordHasher,
+} from "../in-memory-lobby.js";
 import { CreateTableCommand } from "./create-table.command.js";
 import { CreateTableHandler } from "./create-table.handler.js";
-
-class InMemoryLobbyTables extends LobbyTableRepository {
-	readonly rows: LobbyTable[] = [];
-
-	async addUnderLimit(table: LobbyTable, limit: number): Promise<boolean> {
-		const open = this.rows.filter(
-			(row) => row.creatorId === table.creatorId && row.status === "open",
-		);
-		if (open.length >= limit) return false;
-		this.rows.push(table);
-		return true;
-	}
-
-	async remove(tableId: string): Promise<void> {
-		this.rows.splice(
-			this.rows.findIndex((row) => row.id === tableId),
-			1,
-		);
-	}
-}
 
 const NOW = new Date("2026-11-01T10:00:00.000Z");
 
@@ -41,36 +23,58 @@ function setUp(openTable: () => Promise<unknown> = async () => undefined) {
 	return {
 		tables,
 		sent,
-		handler: new CreateTableHandler(tables, commandBus, clock),
+		handler: new CreateTableHandler(
+			tables,
+			commandBus,
+			clock,
+			new PlainPasswordHasher(),
+		),
 	};
 }
 
-const create = (creatorId = "u-1", turnSeconds?: number) =>
+const create = (
+	creatorId = "u-1",
+	{
+		turnSeconds,
+		visibility = "public",
+		password,
+	}: {
+		turnSeconds?: number;
+		visibility?: "public" | "private";
+		password?: string;
+	} = {},
+) =>
 	new CreateTableCommand(
 		creatorId,
 		"Friday game",
 		"low",
 		6,
-		"private",
+		visibility,
 		turnSeconds,
+		password,
 	);
 
 describe("CreateTableHandler", () => {
 	it("stores the lobby's row, then opens the table with the preset's stakes", async () => {
 		const { tables, sent, handler } = setUp();
 
-		const tableId = await handler.execute(create("u-1", 30));
+		const { tableId, inviteCode } = await handler.execute(
+			create("u-1", { turnSeconds: 30 }),
+		);
 
+		expect(inviteCode).toBeNull();
 		expect(tables.rows).toEqual([
 			{
 				id: tableId,
 				name: "Friday game",
 				presetId: "low",
 				maxSeats: 6,
-				visibility: "private",
+				visibility: "public",
 				creatorId: "u-1",
 				status: "open",
 				createdAt: NOW,
+				inviteCode: null,
+				passwordHash: null,
 			},
 		]);
 		expect(sent).toEqual([
@@ -91,12 +95,49 @@ describe("CreateTableHandler", () => {
 						disconnectedTurnSeconds: 5,
 						sitOutSeconds: 600,
 						sitOutHands: 3,
-						visibility: "private",
+						visibility: "public",
 					},
 				},
 				{ userId: "u-1" },
 			),
 		]);
+	});
+
+	it("gives a private table an invite code, and stores its password hashed", async () => {
+		const { tables, sent, handler } = setUp();
+
+		const { inviteCode } = await handler.execute(
+			create("u-1", { visibility: "private", password: "secret" }),
+		);
+
+		expect(inviteCode).toMatch(/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}$/);
+		expect(tables.rows[0]).toMatchObject({
+			inviteCode,
+			passwordHash: "plain:secret",
+		});
+		expect(sent[0]?.command).toMatchObject({
+			config: { visibility: "private" },
+		});
+	});
+
+	it("draws another invite code when the first is taken", async () => {
+		const { tables, handler } = setUp();
+		const first = await handler.execute(
+			create("u-1", { visibility: "private" }),
+		);
+		const addUnderLimit = vi.spyOn(tables, "addUnderLimit");
+		addUnderLimit.mockResolvedValueOnce("code-taken");
+
+		const second = await handler.execute(
+			create("u-2", { visibility: "private" }),
+		);
+
+		expect(addUnderLimit).toHaveBeenCalledTimes(2);
+		expect(second.inviteCode).not.toBe(first.inviteCode);
+		addUnderLimit.mockResolvedValue("code-taken");
+		await expect(
+			handler.execute(create("u-3", { visibility: "private" })),
+		).rejects.toThrow("No free invite code");
 	});
 
 	it("gives each turn 20 s unless told otherwise", async () => {
@@ -128,6 +169,9 @@ describe("CreateTableHandler", () => {
 		await expect(
 			handler.execute(new CreateTableCommand("u-1", " ", "low", 6, "public")),
 		).rejects.toMatchObject({ code: "lobby.invalid-name" });
+		await expect(
+			handler.execute(create("u-1", { password: "secret" })),
+		).rejects.toMatchObject({ code: "lobby.password-needs-private" });
 		expect(tables.rows).toEqual([]);
 	});
 

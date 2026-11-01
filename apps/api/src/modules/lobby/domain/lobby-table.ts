@@ -1,5 +1,10 @@
 import { err, ok, type Result } from "@/shared/domain/result.js";
-import { InvalidTableNameError, UnknownPresetError } from "./lobby-errors.js";
+import {
+	InvalidPasswordError,
+	InvalidTableNameError,
+	PasswordNeedsPrivateError,
+	UnknownPresetError,
+} from "./lobby-errors.js";
 import { presetById, type StakePreset } from "./stake-presets.js";
 
 export type TableVisibility = "public" | "private";
@@ -18,10 +23,21 @@ export interface LobbyTable {
 	readonly creatorId: string;
 	readonly status: LobbyTableStatus;
 	readonly createdAt: Date;
+	/** A private table's invite code (`InviteCode`); null for a public one. */
+	readonly inviteCode: string | null;
+	/** The hash of a private table's password (never the password); null without one. */
+	readonly passwordHash: string | null;
 }
 
 /** At most this many characters, once trimmed (shared contract `TABLE_NAME_LENGTH`). */
 export const TABLE_NAME = { min: 1, max: 40 } as const;
+
+/** A private table's password, in characters (shared contract `TABLE_PASSWORD_LENGTH`). */
+export const TABLE_PASSWORD = { min: 4, max: 64 } as const;
+
+/** Invite codes: 8 characters without look-alikes, read out loud easily (`InviteCode`). */
+export const INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+export const INVITE_CODE_LENGTH = 8;
 
 /** A player keeps at most this many tables of theirs open at once. */
 export const MAX_OPEN_TABLES_PER_CREATOR = 3;
@@ -34,12 +50,19 @@ export interface NewTable {
 	readonly visibility: TableVisibility;
 	readonly creatorId: string;
 	readonly createdAt: Date;
+	/** Given to a private table only. */
+	readonly inviteCode: string | null;
+	readonly password?: string;
 }
 
-/** A new open table and its stakes, or the rule its settings break. Seats are checked by the table. */
-export function createLobbyTable(
-	table: NewTable,
-): Result<{ table: LobbyTable; preset: StakePreset }> {
+/**
+ * A new open table and its stakes, or the rule its settings break. Seats are checked by the table.
+ * The password is checked here and hashed by the caller (`passwordHash` is null until then).
+ */
+export function createLobbyTable({
+	password,
+	...table
+}: NewTable): Result<{ table: LobbyTable; preset: StakePreset }> {
 	const name = table.name.trim();
 	if (name.length < TABLE_NAME.min || name.length > TABLE_NAME.max) {
 		return err(new InvalidTableNameError(TABLE_NAME.min, TABLE_NAME.max));
@@ -48,5 +71,38 @@ export function createLobbyTable(
 	if (!preset) {
 		return err(new UnknownPresetError(table.presetId));
 	}
-	return ok({ table: { ...table, name, status: "open" }, preset });
+	if (password !== undefined) {
+		if (table.visibility !== "private") {
+			return err(new PasswordNeedsPrivateError());
+		}
+		if (
+			password.length < TABLE_PASSWORD.min ||
+			password.length > TABLE_PASSWORD.max
+		) {
+			return err(
+				new InvalidPasswordError(TABLE_PASSWORD.min, TABLE_PASSWORD.max),
+			);
+		}
+	}
+	return ok({
+		table: {
+			...table,
+			name,
+			status: "open",
+			inviteCode: table.visibility === "private" ? table.inviteCode : null,
+			passwordHash: null,
+		},
+		preset,
+	});
 }
+
+/**
+ * Who may follow or sit at the table: anyone at a public one; at a private one, its creator and
+ * whoever redeemed its invite (`hasGrant`).
+ */
+export const mayJoin = (
+	table: LobbyTable,
+	userId: string,
+	hasGrant: boolean,
+): boolean =>
+	table.visibility === "public" || table.creatorId === userId || hasGrant;
