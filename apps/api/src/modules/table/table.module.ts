@@ -8,12 +8,14 @@ import {
 import { PostgresEventStore } from "@/shared/infrastructure/event-store/index.js";
 import { ExecuteTableCommandHandler } from "./application/commands/execute-table-command/execute-table-command.handler.js";
 import { StartNextHandHandler } from "./application/commands/start-next-hand/start-next-hand.handler.js";
+import { GetTableViewHandler } from "./application/queries/get-table-view/get-table-view.handler.js";
 import { DeckProvider } from "./application/deck-provider.js";
 import { TableRuntimeRegistry } from "./application/runtime/table-runtime-registry.js";
 import { TableRuntimeOptions } from "./application/runtime/table-runtime-options.js";
 import { tableEvents } from "./infrastructure/persistence/schema.js";
 import { RandomDeckProvider } from "./infrastructure/random-deck-provider.js";
 import { DevTablesController } from "./presentation/dev-tables.controller.js";
+import { TableGateway } from "./presentation/table.gateway.js";
 
 /** A table no command has reached for this long leaves memory; its streams stay in Postgres. */
 const IDLE_MS = 10 * 60_000;
@@ -21,7 +23,7 @@ const IDLE_MS = 10 * 60_000;
 /**
  * Tables and the hands they run, event-sourced (ADR-002): seats, spectators and the deal, with
  * `@holdem/engine` deciding every hand. Each table runs in a runtime of its own, one command at a
- * time. The gateway comes with POK-82.
+ * time; players and spectators follow it on the `/table` namespace.
  */
 @Module({})
 export class TableModule {
@@ -47,6 +49,8 @@ export class TableModule {
 				TableRuntimeRegistry,
 				ExecuteTableCommandHandler,
 				StartNextHandHandler,
+				GetTableViewHandler,
+				TableGateway,
 			],
 		};
 	}

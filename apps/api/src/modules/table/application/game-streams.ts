@@ -19,15 +19,26 @@ export type TableStreamEvent = TableEvent | HandEvent;
 export const tableStream = (tableId: string): string => `table-${tableId}`;
 export const handStream = (handId: string): string => `hand-${handId}`;
 
-/** A table and its current hand, with the versions the next append expects. */
+/** A table and its current or last hand, with the versions the next append expects. */
 export interface LoadedGame {
 	readonly tableId: string;
+	/** The table, and the hand being played or, between hands, the last one played. */
 	readonly state: GameState;
 	readonly tableVersion: number;
-	/** The hand stream that commands go to, while one is being played. */
+	/** The current or last hand's stream; null before the first hand. */
 	readonly handId: string | null;
 	readonly handVersion: number;
 }
+
+/** Where the streams of a loaded game are, as clients follow them (`TableVersions`). */
+export const versionsOf = ({
+	tableVersion,
+	handId,
+	handVersion,
+}: LoadedGame) => ({
+	tableVersion,
+	hand: handId ? { handId, version: handVersion } : null,
+});
 
 // One store, read with the events of each kind of stream.
 const tableEvents = (store: EventStore<TableStreamEvent>) =>
@@ -35,20 +46,20 @@ const tableEvents = (store: EventStore<TableStreamEvent>) =>
 const handEvents = (store: EventStore<TableStreamEvent>) =>
 	store as unknown as EventStore<HandEvent>;
 
-/** Folds the table's stream, and the stream of the hand it is playing, if any. */
+/** Folds the table's stream, and the stream of its current or last hand. */
 export async function loadGame(
 	store: EventStore<TableStreamEvent>,
 	tableId: string,
 ): Promise<LoadedGame> {
-	const table = await loadDecider(
-		tableEvents(store),
-		{ evolve: evolveTable, initialState: initialTableState },
-		tableStream(tableId),
+	const recorded = await tableEvents(store).readStream(tableStream(tableId));
+	const table = recorded.reduce(
+		(state, { event }) => evolveTable(state, event),
+		initialTableState,
 	);
-	const handId =
-		table.state.status === "unopened"
-			? null
-			: (table.state.hand?.handId ?? null);
+	const scheduled = recorded.findLast(
+		({ event }) => event.type === "HandScheduled",
+	)?.event;
+	const handId = scheduled?.type === "HandScheduled" ? scheduled.handId : null;
 	const hand = handId
 		? await loadDecider(
 				handEvents(store),
@@ -58,8 +69,8 @@ export async function loadGame(
 		: { state: initialHandState, version: 0 };
 	return {
 		tableId,
-		state: { table: table.state, hand: hand.state },
-		tableVersion: table.version,
+		state: { table, hand: hand.state },
+		tableVersion: recorded.at(-1)?.version ?? 0,
 		handId,
 		handVersion: hand.version,
 	};
@@ -104,16 +115,11 @@ export async function saveGame(
 			],
 			metadata,
 		);
-	const state = evolveGame(loaded.state, events);
-	const playing =
-		state.table.status === "unopened"
-			? null
-			: (state.table.hand?.handId ?? null);
 	return {
 		tableId: loaded.tableId,
-		state,
+		state: evolveGame(loaded.state, events),
 		tableVersion,
-		handId: playing,
-		handVersion: playing ? newHandVersion : 0,
+		handId,
+		handVersion: newHandVersion,
 	};
 }

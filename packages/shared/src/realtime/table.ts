@@ -231,7 +231,7 @@ export type SeatView = z.infer<typeof SeatView>;
 
 /** A table event as clients receive it: every one is public. */
 export const TableEventView = z.discriminatedUnion("type", [
-	event("TableOpened", { tableId: TableId, config: TableSettings }),
+	event("TableOpened", { tableId: z.uuid(), config: TableSettings }),
 	event("SeatTaken", { seat: SeatIndex, userId: z.uuid(), buyIn: Chips }),
 	event("SeatLeft", { seat: SeatIndex, userId: z.uuid() }),
 	event("PlayerStatusChanged", { seat: SeatIndex, status: SeatStatus }),
