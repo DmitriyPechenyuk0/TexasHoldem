@@ -7,6 +7,7 @@ import { Logger } from "nestjs-pino";
 import proxyAddr from "proxy-addr";
 import type { AppConfig } from "@/shared/infrastructure/config/index.js";
 import { RateLimiter } from "@/shared/application/rate-limiter.js";
+import { RedisConnections } from "@/shared/infrastructure/redis/index.js";
 import { SocketIoAdapter } from "@/shared/infrastructure/realtime/socket-io.adapter.js";
 import { ViewerResolver } from "@/shared/application/viewer.js";
 import { authenticateSockets } from "@/shared/presentation/realtime/socket-session.js";
@@ -62,6 +63,7 @@ export function configureApp(app: INestApplication, config: AppConfig): void {
 			limiter: app.get(RateLimiter),
 			clientAddressOf: (request) => proxyAddr(request, trust),
 			connectionMiddleware: [authenticateSockets(app.get(ViewerResolver))],
+			redis: app.get(RedisConnections).open("socket.io"),
 		}),
 	);
 }

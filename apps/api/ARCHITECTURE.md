@@ -144,6 +144,9 @@ export class SystemGateway {
 - Validate every payload with `@ValidPayload(Event.payload)`: an invalid one is answered with a 400 problem before the handler runs.
 - A command returns its `Ack`; a thrown error becomes `{ ok: false, error: Problem }`. Gateways, like controllers, only send messages to the buses.
 - socket.io shares the HTTP server and its CORS policy (`WEB_ORIGIN`, with credentials). `configureApp()` sets both, for `main.ts` and the e2e tests alike.
+- WebSocket is the only transport (the web client asks for it too): a connection stays on the instance it reached, so instances behind a load balancer need no sticky sessions, as long-polling would.
+- Every namespace goes through the Redis streams adapter (`@socket.io/redis-streams-adapter`, on its own connection `socket.io`), so `server.to(room)` reaches the room's sockets on every instance. Rooms: `user:<userId>` (a user's private payloads), `table:<tableId>`, and `lobby` to come. The adapter appends each broadcast to the Redis stream `socket.io` before emitting to this instance's sockets, so a batch can arrive after an ack sent later; clients drop batches older than their snapshot. Its read blocks for 1 s (`ADAPTER_READ_BLOCK_MS`), within the 2 s command timeout its connections inherit. While Redis is down its publishes fail at once (`adapterClient`), so this instance's sockets still get every broadcast without delay and only other instances miss them. Its reading connections close gracefully when the server closes, so no pending command is left rejected.
+- `pnpm start:two` (`scripts/two-instances.mjs`) runs two built instances on `PORT + 1` and `PORT + 2` behind a round-robin TCP proxy on `PORT`, to try the app as production runs it.
 
 ## Persistence
 
@@ -337,7 +340,7 @@ The application side (`modules/table/application`):
 - The turn clock is public: after a change that starts or ends a turn, or that disconnects or brings back a player, everyone following the table and every player gets `timer { tableId, timer }` with absolute server times (`turnEndsAt`, then `timeBankMs` of bank), or `timer: null`. Snapshots carry the same `timer` and the server's clock (`serverTime`), so a client can correct for clock skew.
 - `leave`, or a socket disconnecting, stops it following the table; once none of the user's sockets on any instance does, a player is disconnected and a spectator stops watching (`TablePresence`).
 - `SocketRateLimit` (`shared/presentation/realtime`) refuses more than 10 commands a second per socket with 429 `request.rate-limited`, before validation.
-- Rooms go through the socket.io adapter, so with the Redis adapter (POK-78) they reach sockets on every instance. Which instance runs a table is POK-79's lease.
+- Rooms go through the Redis streams adapter, so they reach sockets on every instance (see "Realtime"). Which instance runs a table is POK-79's lease.
 
 - `SeededDeckProvider` shuffles each hand from a fresh 32-byte server seed out of the CSPRNG and keeps the seed in `table_hand_decks`, server-only, like the deck in the hand's stream. Right after the command that ends a hand, the runtime takes the seed out (`reveal`, which sets `revealedAt`) and queues `RevealDeck` before the next deal. So no payload carries the seed before the hand has ended.
 - `GET /api/hands/:handId/fairness` (`HandsController`, no session needed) answers `HandFairnessResponse`: the commitment, the revealed seed and the dealt cards (the deck's first cards, burns included, in order), all `verifyDeck` needs. While the hand runs it answers 409 `table.deck-not-revealed`; for an unknown hand 404 `table.hand-not-found`. Snapshots carry the current or last hand's commitment (`fairness`).
