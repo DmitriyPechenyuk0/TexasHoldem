@@ -249,6 +249,16 @@ How players appear to others lives in `modules/profile`: the nickname (any scrip
   3. `PUT /api/profile/avatar` with the key checks the file, not what the browser said about it: its size, its first bytes (PNG, JPEG or WebP), and that it decodes within 40 megapixels (a decompression bomb fits in 2 MB). `AvatarImages` (sharp) decodes two pictures at a time per instance (`MAX_CONCURRENT_ENCODES`), the others wait, and re-encodes each as a 256×256 WebP, which drops its metadata (where a photo was taken) and anything hidden after the image. It is stored once under `avatars/<userId>/<uuid>.webp`, cached for good (`immutable`), and the replaced avatar is deleted. The upload is deleted whatever happens. `DELETE /api/profile/avatar` goes back to none.
 - Only `avatars/*` is public (`infra/s3/avatars-policy.json`); pending uploads are private and expire after a day (`avatars-lifecycle.json`). The bucket allows uploads from `WEB_ORIGIN` (CORS); `infra/s3/init.sh` sets all three, locally and in CI. Responses carry `avatarUrl`, built from `S3_PUBLIC_URL`, ready for a CDN. A player without one gets an identicon the web app draws from the username; provider pictures are not used, so no third party learns who looks at a profile.
 
+## Table
+
+The table is an event-sourced decider in `modules/table/domain` (ADR-002): `decideTable(command, state)` answers the events a command produces or the `DomainError` it breaks (`table.*`), and `evolveTable` / `replayTable` fold events into the state. It is pure, like the hand decider in `@holdem/engine`, which only the table calls.
+
+- `TableConfig`: blinds, a buy-in range in big blinds (chips are unlimited, ADR-009), 2–9 seats, turn time (5–120 s), time bank (0–600 s) and visibility. `OpenTable` checks it.
+- A player sits down waiting for the big blind (`waiting-for-big-blind`), and is dealt in once it reaches the seat. Sitting back in after sitting out waits for it again, so sitting out dodges no blind; a player who sat out during a hand they are still in is `active` again.
+- Leaving during a hand the player is dealt into marks the seat `leaving` until the hand ends; otherwise the seat is freed at once. Rebuys (an empty stack, a full buy-in) and top-ups (up to the maximum buy-in) wait until the player's hand ends.
+- At most 50 users watch a table (`MAX_SPECTATORS`); a spectator who sits down stops watching. `CloseTable` lets everyone leave first and is refused during a hand.
+- The running hand (`state.hand`) is recorded by hand orchestration (POK-76). Until then the decider tests set it through `given(history, { hand, stacks })` in `test/support/table.ts`.
+
 ## HTTP and sockets
 
 - Every REST route lives under `/api` (`API_PREFIX` from `@holdem/shared`), so production can serve the web app and the api from one origin behind a reverse proxy (`/api/*` and `/socket.io/*` → api). Requests outside it get a 404 problem too.
@@ -275,6 +285,6 @@ How players appear to others lives in `modules/profile`: the nickname (any scrip
 
 - Coverage counts every file in `src` except `main.ts`, so untested files lower it too. The thresholds in `vitest.config.ts` are a baseline just under the current numbers: raise them when coverage grows, never lower them to make a change pass. `packages/engine` requires 100%.
 - Unit-test handlers by constructing them with fakes for their ports; no Nest container needed.
-- Unit-test domain code with plain inputs and outputs (Given/When/Then for deciders).
+- Unit-test domain code with plain inputs and outputs (Given/When/Then for deciders). Domain specs may use `test/support`; the code itself may not.
 - e2e tests boot the real app through `createTestApp()` from `test/support`, configured from `.env.example`.
 - Tests that touch the database call `createTestDatabase()`: it creates a fresh `holdem_test_*` database with every migration applied, and `drop()` removes it. Pass its `url` to `createTestApp({ config: { database: { url } } })`. They need the services from `pnpm infra:up`.
