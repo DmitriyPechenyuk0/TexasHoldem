@@ -16,10 +16,17 @@ const config: IConfiguration = {
 		{
 			name: "domain-is-pure",
 			comment:
-				"Domain code may only import its own domain, src/shared/domain and @holdem/engine: no NestJS, I/O libraries or Node built-ins.",
+				"Domain code may only import its own domain, src/shared/domain and @holdem/engine: no NestJS, I/O libraries or Node built-ins. Its specs may also use test support, which production-code-imports-no-tests keeps out of the code itself.",
 			severity: "error",
 			from: { path: `^(${UNIT})/domain/` },
-			to: { pathNot: ["^$1/domain/", "^src/shared/domain/", ENGINE] },
+			to: {
+				pathNot: [
+					"^$1/domain/",
+					"^src/shared/domain/",
+					ENGINE,
+					"^test/support/",
+				],
+			},
 		},
 		{
 			name: "application-depends-on-ports",
