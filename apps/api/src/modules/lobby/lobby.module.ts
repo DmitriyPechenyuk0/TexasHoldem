@@ -3,6 +3,9 @@ import { CreateTableHandler } from "./application/commands/create-table/create-t
 import { RedeemInviteHandler } from "./application/commands/redeem-invite/redeem-invite.handler.js";
 import { RegenerateInviteHandler } from "./application/commands/regenerate-invite/regenerate-invite.handler.js";
 import { PasswordHasher } from "./application/password-hasher.js";
+import { TableSummaryChangedHandler } from "./application/events/table-summary-changed.handler.js";
+import { GetLobbyTablesHandler } from "./application/queries/get-lobby-tables/get-lobby-tables.handler.js";
+import { GetMyTablesHandler } from "./application/queries/get-my-tables/get-my-tables.handler.js";
 import { CanJoinTableHandler } from "./application/queries/can-join-table/can-join-table.handler.js";
 import { GetStakePresetsHandler } from "./application/queries/get-stake-presets/get-stake-presets.handler.js";
 import { ResolveInviteHandler } from "./application/queries/resolve-invite/resolve-invite.handler.js";
@@ -12,6 +15,7 @@ import { DrizzleLobbyTableRepository } from "./infrastructure/persistence/drizzl
 import { RedisTableGrants } from "./infrastructure/redis-table-grants.js";
 import { ScryptPasswordHasher } from "./infrastructure/scrypt-password-hasher.js";
 import { LobbyController } from "./presentation/lobby.controller.js";
+import { LobbyGateway } from "./presentation/lobby.gateway.js";
 
 /**
  * Which tables there are, as players find and create them (Context Map, customer–supplier): the
@@ -30,6 +34,10 @@ import { LobbyController } from "./presentation/lobby.controller.js";
 		GetStakePresetsHandler,
 		ResolveInviteHandler,
 		CanJoinTableHandler,
+		GetLobbyTablesHandler,
+		GetMyTablesHandler,
+		TableSummaryChangedHandler,
+		LobbyGateway,
 	],
 })
 export class LobbyModule {}

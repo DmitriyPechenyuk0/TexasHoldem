@@ -6,24 +6,13 @@ import {
 	inTransaction,
 	isUniqueViolation,
 } from "@/shared/infrastructure/database/index.js";
-import type {
-	LobbyTable,
-	LobbyTableStatus,
-	TableVisibility,
-} from "../../domain/lobby-table.js";
+import type { LobbyTable, TableSummary } from "../../domain/lobby-table.js";
 import {
 	type AddOutcome,
 	LobbyTableRepository,
 } from "../../domain/lobby-table.repository.js";
+import { toLobbyTable as toTable } from "./rows.js";
 import { lobbyTables } from "./schema.js";
-
-type Row = typeof lobbyTables.$inferSelect;
-
-const toTable = (row: Row): LobbyTable => ({
-	...row,
-	visibility: row.visibility as TableVisibility,
-	status: row.status as LobbyTableStatus,
-});
 
 @Injectable()
 export class DrizzleLobbyTableRepository extends LobbyTableRepository {
@@ -50,7 +39,9 @@ export class DrizzleLobbyTableRepository extends LobbyTableRepository {
 				if ((open?.tables ?? 0) >= limit) {
 					return "over-limit";
 				}
-				await tx.insert(lobbyTables).values(table);
+				await tx
+					.insert(lobbyTables)
+					.values({ ...table, players: [...table.players] });
 				return "added";
 			});
 		} catch (error) {
@@ -80,6 +71,24 @@ export class DrizzleLobbyTableRepository extends LobbyTableRepository {
 			.where(
 				and(eq(lobbyTables.inviteCode, code), eq(lobbyTables.status, "open")),
 			);
+		return row ? toTable(row) : null;
+	}
+
+	async applySummary({
+		tableId,
+		status,
+		players,
+		handsSettled,
+	}: TableSummary): Promise<LobbyTable | null> {
+		const [row] = await this.db
+			.update(lobbyTables)
+			.set({
+				players: [...players],
+				handsPlayed: sql`${lobbyTables.handsPlayed} + ${handsSettled}`,
+				status: sql`case when ${lobbyTables.status} = 'closed' then 'closed' else ${status} end`,
+			})
+			.where(eq(lobbyTables.id, tableId))
+			.returning();
 		return row ? toTable(row) : null;
 	}
 

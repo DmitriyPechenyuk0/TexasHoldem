@@ -27,6 +27,22 @@ export interface LobbyTable {
 	readonly inviteCode: string | null;
 	/** The hash of a private table's password (never the password); null without one. */
 	readonly passwordHash: string | null;
+	/** Who sits where, as the table last told (`table.summary-changed`). */
+	readonly players: readonly SeatedPlayer[];
+	readonly handsPlayed: number;
+}
+
+export interface SeatedPlayer {
+	readonly seat: number;
+	readonly userId: string;
+}
+
+/** What the table tells the lobby after each change to its players or status. */
+export interface TableSummary {
+	readonly tableId: string;
+	readonly status: LobbyTableStatus;
+	readonly players: readonly SeatedPlayer[];
+	readonly handsSettled: number;
 }
 
 /** At most this many characters, once trimmed (shared contract `TABLE_NAME_LENGTH`). */
@@ -91,6 +107,8 @@ export function createLobbyTable({
 			status: "open",
 			inviteCode: table.visibility === "private" ? table.inviteCode : null,
 			passwordHash: null,
+			players: [],
+			handsPlayed: 0,
 		},
 		preset,
 	});

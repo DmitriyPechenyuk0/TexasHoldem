@@ -5,6 +5,9 @@ import {
 	InviteCode,
 	type InviteCodeResponse,
 	type InviteResponse,
+	LobbyTablesQuery,
+	type LobbyTablesResponse,
+	type MyTablesResponse,
 	RedeemInviteRequest,
 	type RedeemInviteResponse,
 	type StakePresetsResponse,
@@ -30,10 +33,13 @@ import { RequirePlayer } from "@/shared/presentation/require-player.guard.js";
 import {
 	ValidBody,
 	ValidParam,
+	ValidQuery,
 } from "@/shared/presentation/request-validation.js";
 import { CreateTableCommand } from "../application/commands/create-table/create-table.command.js";
 import { RedeemInviteCommand } from "../application/commands/redeem-invite/redeem-invite.command.js";
 import { RegenerateInviteCommand } from "../application/commands/regenerate-invite/regenerate-invite.command.js";
+import { GetLobbyTablesQuery } from "../application/queries/get-lobby-tables/get-lobby-tables.query.js";
+import { GetMyTablesQuery } from "../application/queries/get-my-tables/get-my-tables.query.js";
 import { GetStakePresetsQuery } from "../application/queries/get-stake-presets/get-stake-presets.query.js";
 import { ResolveInviteQuery } from "../application/queries/resolve-invite/resolve-invite.query.js";
 
@@ -57,6 +63,33 @@ export class LobbyController {
 	@Get("presets")
 	presets(): Promise<StakePresetsResponse> {
 		return this.queryBus.execute(new GetStakePresetsQuery());
+	}
+
+	/** The open public tables, fullest first. */
+	@Get("tables")
+	async tables(
+		@ValidQuery(LobbyTablesQuery) filters: LobbyTablesQuery,
+	): Promise<LobbyTablesResponse> {
+		const listings = await this.queryBus.execute(
+			new GetLobbyTablesQuery(filters),
+		);
+		return listings.map((listing) => ({
+			...listing,
+			tableId: asTableId(listing.tableId),
+		}));
+	}
+
+	/** The tables I created or sit at, private ones included. */
+	@Get("my-tables")
+	@UseGuards(AuthGuard)
+	async myTables(@CurrentUser() viewer: Viewer): Promise<MyTablesResponse> {
+		const tables = await this.queryBus.execute(
+			new GetMyTablesQuery(viewer.userId),
+		);
+		return tables.map((table) => ({
+			...table,
+			tableId: asTableId(table.tableId),
+		}));
 	}
 
 	/** Only a verified player creates a table: whoever creates one may sit at it. */

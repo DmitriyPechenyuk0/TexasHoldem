@@ -98,3 +98,53 @@ export type RedeemInviteResponse = z.infer<typeof RedeemInviteResponse>;
  */
 export const InviteCodeResponse = z.object({ inviteCode: z.string() });
 export type InviteCodeResponse = z.infer<typeof InviteCodeResponse>;
+
+/** A table as the lobby lists it: its stakes and how full it is. */
+export const LobbyTable = z.object({
+	tableId: TableId,
+	name: z.string(),
+	presetId: z.string(),
+	smallBlind: Chips,
+	bigBlind: Chips,
+	maxSeats: z.int().min(TABLE_SEATS.min).max(TABLE_SEATS.max),
+	/** Players seated now. */
+	playerCount: z.int().nonnegative(),
+	handsPlayed: z.int().nonnegative(),
+});
+export type LobbyTable = z.infer<typeof LobbyTable>;
+
+/**
+ * `GET /api/lobby/tables`: the open public tables, fullest first. Filters: one preset, a number of
+ * seats, and only tables with a free seat.
+ */
+export const LobbyTablesQuery = z.object({
+	presetId: z.string().min(1).max(32).optional(),
+	maxSeats: z.coerce
+		.number()
+		.int()
+		.min(TABLE_SEATS.min)
+		.max(TABLE_SEATS.max)
+		.optional(),
+	hasFreeSeat: z
+		.enum(["true", "false"])
+		.transform((value) => value === "true")
+		.optional(),
+});
+export type LobbyTablesQuery = z.infer<typeof LobbyTablesQuery>;
+
+export const LobbyTablesResponse = z.array(LobbyTable).readonly();
+export type LobbyTablesResponse = z.infer<typeof LobbyTablesResponse>;
+
+/** One of my tables: created by me or with me seated, private ones included. */
+export const MyTable = LobbyTable.extend({
+	visibility: z.enum(["public", "private"]),
+	/** I created it. */
+	mine: z.boolean(),
+	/** The invite code of a private table I created; null otherwise. */
+	inviteCode: z.string().nullable(),
+});
+export type MyTable = z.infer<typeof MyTable>;
+
+/** `GET /api/lobby/my-tables`, most recent first. */
+export const MyTablesResponse = z.array(MyTable).readonly();
+export type MyTablesResponse = z.infer<typeof MyTablesResponse>;

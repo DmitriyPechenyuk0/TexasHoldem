@@ -15,3 +15,4 @@ export const IntegrationEventEnvelope = z.object({
 export type IntegrationEventEnvelope = z.infer<typeof IntegrationEventEnvelope>;
 
 export * from "./identity.js";
+export * from "./table.js";

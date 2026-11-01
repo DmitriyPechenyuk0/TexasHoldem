@@ -1,4 +1,4 @@
-import type { LobbyTable } from "../../domain/lobby-table.js";
+import type { LobbyTable, TableSummary } from "../../domain/lobby-table.js";
 import {
 	type AddOutcome,
 	LobbyTableRepository,
@@ -47,6 +47,19 @@ export class InMemoryLobbyTables extends LobbyTableRepository {
 		);
 	}
 
+	async applySummary(summary: TableSummary): Promise<LobbyTable | null> {
+		const index = this.rows.findIndex((row) => row.id === summary.tableId);
+		if (index < 0) return null;
+		const row = this.rows[index]!;
+		this.rows[index] = {
+			...row,
+			players: summary.players,
+			handsPlayed: row.handsPlayed + summary.handsSettled,
+			status: row.status === "closed" ? "closed" : summary.status,
+		};
+		return this.rows[index]!;
+	}
+
 	async setInviteCode(tableId: string, code: string): Promise<boolean> {
 		if (this.rows.some((row) => row.inviteCode === code)) return false;
 		const index = this.rows.findIndex((row) => row.id === tableId);
@@ -92,5 +105,7 @@ export const privateTable = (
 	createdAt: new Date(0),
 	inviteCode: "K7MPQ2XZ",
 	passwordHash: null,
+	players: [],
+	handsPlayed: 0,
 	...overrides,
 });
