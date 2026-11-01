@@ -3,16 +3,6 @@ import {
 	type DealtDeck,
 	DeckProvider,
 } from "@/modules/table/application/deck-provider.js";
-import { HandScheduler } from "@/modules/table/application/hand-scheduler.js";
-
-/** Records the tables it was asked to deal; deals nothing itself. */
-export class RecordingHandScheduler extends HandScheduler {
-	readonly scheduled: string[] = [];
-
-	schedule(tableId: string): void {
-		this.scheduled.push(tableId);
-	}
-}
 
 /** The deck in canonical order for every hand, and the button on the first player. */
 export class FixedDeckProvider extends DeckProvider {

@@ -1,0 +1,248 @@
+import { Logger } from "@nestjs/common";
+import { InMemoryEventStore } from "../../../../../test/support/in-memory-event-store.js";
+import { seatTaken, tableConfig } from "../../../../../test/support/table.js";
+import { FixedDeckProvider } from "../../../../../test/support/table-ports.js";
+import { ConcurrencyError } from "@/shared/application/event-store.js";
+import type { TableCommandInput } from "../commands/execute-table-command/execute-table-command.command.js";
+import type { TableChanged } from "../events/table-changed.event.js";
+import type { TableStreamEvent } from "../game-streams.js";
+import { TableRuntime } from "./table-runtime.js";
+
+const HAND_PAUSE_MS = 3_000;
+
+function setUp() {
+	const store = new InMemoryEventStore<TableStreamEvent>();
+	const decks = new FixedDeckProvider();
+	const published: TableChanged[] = [];
+	let now = 0;
+	const runtime = new TableRuntime("t-1", {
+		store,
+		decks,
+		publish: (change) => published.push(change),
+		options: { handPauseMs: HAND_PAUSE_MS, idleMs: 60_000 },
+		now: () => now,
+	});
+	return {
+		store,
+		decks,
+		published,
+		runtime,
+		setNow: (ms: number) => {
+			now = ms;
+		},
+	};
+}
+
+const open: TableCommandInput = {
+	type: "OpenTable",
+	tableId: "t-1",
+	config: tableConfig(),
+};
+const takeSeat = (seat: number): TableCommandInput => ({
+	type: "TakeSeat",
+	userId: `u${seat}`,
+	verified: true,
+	seat,
+	buyIn: 200,
+});
+const spectators = Array.from({ length: 50 }, (_, i) => `s${i}`);
+
+describe("TableRuntime", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("runs 100 commands sent at once one at a time, in the order they came", async () => {
+		const { store, runtime } = setUp();
+		await runtime.execute(open);
+
+		// Each spectator joins, then leaves: only in order can every one of these be accepted.
+		const commands = spectators.flatMap((userId) => [
+			{ type: "JoinAsSpectator" as const, userId },
+			{ type: "LeaveSpectating" as const, userId },
+		]);
+		const outcomes = await Promise.allSettled(
+			commands.map((command) => runtime.execute(command)),
+		);
+
+		expect(outcomes.every((o) => o.status === "fulfilled")).toBe(true);
+		const stream = await store.readStream("table-t-1");
+		expect(stream.map((r) => r.version)).toEqual(
+			Array.from({ length: 101 }, (_, i) => i + 1),
+		);
+		expect(stream.slice(1).map(({ event }) => event)).toEqual(
+			commands.map(({ type, userId }) => ({
+				type: type === "JoinAsSpectator" ? "SpectatorJoined" : "SpectatorLeft",
+				v: 1,
+				userId,
+			})),
+		);
+	});
+
+	it("folds the streams once, then keeps the state in memory", async () => {
+		const { store, runtime } = setUp();
+		const reads = vi.spyOn(store, "readStream");
+
+		await runtime.execute(open);
+		await runtime.execute(takeSeat(0));
+		await runtime.execute(takeSeat(1));
+
+		expect(reads).toHaveBeenCalledTimes(1);
+	});
+
+	it("publishes each change with the table's version and state, in order", async () => {
+		const { published, runtime } = setUp();
+
+		await runtime.execute(open, { userId: "admin" });
+		await runtime.execute(takeSeat(0));
+
+		expect(
+			published.map(({ tableId, tableVersion, events }) => ({
+				tableId,
+				tableVersion,
+				events,
+			})),
+		).toEqual([
+			{
+				tableId: "t-1",
+				tableVersion: 1,
+				events: {
+					table: [expect.objectContaining({ type: "TableOpened" })],
+					hand: [],
+				},
+			},
+			{
+				tableId: "t-1",
+				tableVersion: 2,
+				events: { table: [seatTaken(0)], hand: [] },
+			},
+		]);
+		expect(published[1]?.state.table).toMatchObject({
+			status: "open",
+			players: [{ seat: 0, userId: "u0" }],
+		});
+	});
+
+	it("throws the rule a command breaks, and goes on with the next", async () => {
+		const { published, runtime } = setUp();
+
+		const refused = runtime.execute(takeSeat(0));
+		const accepted = runtime.execute(open);
+
+		await expect(refused).rejects.toMatchObject({ code: "table.not-open" });
+		await expect(accepted).resolves.toMatchObject({
+			table: [{ type: "TableOpened" }],
+		});
+		expect(published).toHaveLength(1);
+	});
+
+	it("reloads and decides again once when another writer got there first", async () => {
+		const { store, runtime } = setUp();
+		await runtime.execute(open);
+		// Another instance seats a player behind this runtime's back.
+		await store.append("table-t-1", 1, [seatTaken(0)]);
+
+		await expect(runtime.execute(takeSeat(0))).rejects.toMatchObject({
+			code: "table.already-seated",
+		});
+		await expect(runtime.execute(takeSeat(1))).resolves.toEqual({
+			table: [seatTaken(1)],
+			hand: [],
+		});
+	});
+
+	it("gives up after a second conflict in a row", async () => {
+		const { store, runtime } = setUp();
+		await runtime.execute(open);
+		const appendToStreams = vi
+			.spyOn(store, "appendToStreams")
+			.mockRejectedValue(new ConcurrencyError("table-t-1", 1));
+
+		await expect(runtime.execute(takeSeat(0))).rejects.toBeInstanceOf(
+			ConcurrencyError,
+		);
+		expect(appendToStreams).toHaveBeenCalledTimes(2);
+	});
+
+	it("reloads after a failed append before the next command", async () => {
+		const { store, runtime } = setUp();
+		await runtime.execute(open);
+		vi.spyOn(store, "appendToStreams").mockRejectedValueOnce(new Error("down"));
+		const reads = vi.spyOn(store, "readStream");
+
+		await expect(runtime.execute(takeSeat(0))).rejects.toThrow("down");
+		await runtime.execute(takeSeat(0));
+
+		expect(reads).toHaveBeenCalledTimes(1);
+	});
+
+	it("deals the next hand a pause after two players are ready, and after each hand", async () => {
+		vi.useFakeTimers();
+		const { decks, runtime } = setUp();
+		await runtime.execute(open);
+		await runtime.execute(takeSeat(0));
+		await runtime.execute(takeSeat(1));
+		expect(runtime.idle).toBe(false);
+
+		await vi.advanceTimersByTimeAsync(HAND_PAUSE_MS - 1);
+		expect(decks.dealt).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(decks.dealt).toHaveLength(1);
+
+		// Heads-up, the button (seat 0) acts first; folding ends the hand.
+		await runtime.execute({ type: "Act", userId: "u0", action: "fold" });
+		await vi.advanceTimersByTimeAsync(HAND_PAUSE_MS);
+		expect(decks.dealt).toHaveLength(2);
+	});
+
+	it("deals nothing when the table is not ready, and logs a deal that failed", async () => {
+		vi.useFakeTimers();
+		const error = vi
+			.spyOn(Logger.prototype, "error")
+			.mockImplementation(() => {});
+		const { decks, runtime } = setUp();
+		await runtime.execute(open);
+		expect(await runtime.dealNextHand()).toBeNull();
+
+		await runtime.execute(takeSeat(0));
+		await runtime.execute(takeSeat(1));
+		vi.spyOn(decks, "deal").mockRejectedValueOnce(new Error("no entropy"));
+		await vi.advanceTimersByTimeAsync(HAND_PAUSE_MS);
+
+		expect(error).toHaveBeenCalledWith(
+			expect.objectContaining({ msg: "next hand not dealt", tableId: "t-1" }),
+		);
+	});
+
+	it("is idle with nothing queued and no deal due, and knows when it was last used", async () => {
+		const { runtime, setNow } = setUp();
+		expect(runtime.idle).toBe(true);
+		expect(runtime.lastUsedAt).toBe(0);
+
+		setNow(5_000);
+		const opened = runtime.execute(open);
+		expect(runtime.idle).toBe(false);
+		setNow(6_000);
+		await opened;
+
+		expect(runtime.idle).toBe(true);
+		expect(runtime.lastUsedAt).toBe(6_000);
+	});
+
+	it("finishes queued commands on dispose, then deals no more and takes none", async () => {
+		vi.useFakeTimers();
+		const { decks, runtime } = setUp();
+		await runtime.execute(open);
+		await runtime.execute(takeSeat(0));
+		const last = runtime.execute(takeSeat(1));
+
+		await runtime.dispose();
+
+		await expect(last).resolves.toEqual({ table: [seatTaken(1)], hand: [] });
+		await vi.advanceTimersByTimeAsync(HAND_PAUSE_MS);
+		expect(decks.dealt).toEqual([]);
+		await expect(runtime.execute(takeSeat(2))).rejects.toThrow(
+			"Table t-1 is no longer running here",
+		);
+	});
+});
