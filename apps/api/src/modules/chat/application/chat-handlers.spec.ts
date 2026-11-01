@@ -66,6 +66,9 @@ describe("chat handlers", () => {
 		await expect(
 			send.execute(new SendChatMessageCommand("t-1", "u-1", "")),
 		).rejects.toMatchObject({ code: "chat.invalid-length" });
+		await expect(
+			send.execute(new SendChatMessageCommand("t-1", "u-1", "GL HF")),
+		).rejects.toMatchObject({ code: "chat.repeated" });
 		expect(history.messages.get("t-1")).toHaveLength(1);
 		expect({ min: MESSAGE_MIN_LENGTH, max: MESSAGE_MAX_LENGTH }).toEqual(
 			CHAT_MESSAGE_LENGTH,

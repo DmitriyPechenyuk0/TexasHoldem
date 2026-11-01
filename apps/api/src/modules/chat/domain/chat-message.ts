@@ -1,3 +1,4 @@
+import { maskProfanity } from "@/shared/domain/profanity.js";
 import { err, ok, type Result } from "@/shared/domain/result.js";
 import { InvalidMessageLengthError } from "./chat-errors.js";
 
@@ -28,13 +29,49 @@ export type ChatMessage =
 			readonly at: string;
 	  };
 
-/** The text a player's message carries: trimmed, and within the length. */
+/**
+ * Control and format characters, which no message needs: they hide text, reverse it, or break
+ * lines. The zero-width joiner stays, since emoji sequences are built with it.
+ */
+const INVISIBLE = /(?!\u200D)[\p{Cc}\p{Cf}]/gu;
+
+/**
+ * The text a player's message carries: without invisible characters, each run of spaces
+ * collapsed to one, trimmed, within the length, and with profanity masked.
+ */
 export function messageText(
 	input: string,
 ): Result<string, InvalidMessageLengthError> {
-	const text = input.trim();
+	const text = input
+		.replace(/\s+/gu, " ")
+		.replace(INVISIBLE, "")
+		.replace(/ {2,}/gu, " ")
+		.trim();
 	const length = Array.from(text).length;
 	return length < MESSAGE_MIN_LENGTH || length > MESSAGE_MAX_LENGTH
 		? err(new InvalidMessageLengthError(MESSAGE_MIN_LENGTH, MESSAGE_MAX_LENGTH))
-		: ok(text);
+		: ok(maskProfanity(text));
+}
+
+/** How long a player may not say the same thing again at a table. */
+export const REPEAT_WINDOW_MS = 30_000;
+
+/**
+ * Whether the player's message repeats their last one at the table, within the window: the same
+ * text in any case.
+ */
+export function repeatsLast(
+	text: string,
+	userId: string,
+	recent: readonly ChatMessage[],
+	now: Date,
+): boolean {
+	const last = recent.findLast(
+		(message) => message.kind === "player" && message.userId === userId,
+	);
+	return (
+		last?.kind === "player" &&
+		last.text.toLowerCase() === text.toLowerCase() &&
+		now.getTime() - Date.parse(last.at) < REPEAT_WINDOW_MS
+	);
 }

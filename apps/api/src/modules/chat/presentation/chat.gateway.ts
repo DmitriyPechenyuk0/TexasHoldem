@@ -23,6 +23,10 @@ import {
 import type { Subscription } from "rxjs";
 import type { DefaultEventsMap, Namespace, Socket } from "socket.io";
 import type { z } from "zod";
+import {
+	RateLimiter,
+	type RateLimitRule,
+} from "@/shared/application/rate-limiter.js";
 import { CanJoinTableQuery } from "@/shared/application/table-access.js";
 import type { Viewer } from "@/shared/application/viewer.js";
 import { CurrentUser } from "@/shared/presentation/auth.guard.js";
@@ -52,6 +56,9 @@ type Payload<Event extends { payload: z.ZodType }> = z.infer<Event["payload"]>;
 /** Every socket following one table's chat, on every instance (through the Redis adapter). */
 export const chatRoom = (tableId: string): string => `table:${tableId}`;
 
+/** Messages per player, across tables and instances: talk, not spam. */
+export const CHAT_SEND_RULE: RateLimitRule = { max: 5, windowSeconds: 10 };
+
 /** The message as the shared contract types it: its ids are branded there. */
 const asContract = (message: unknown): ChatMessage => message as ChatMessage;
 
@@ -71,6 +78,7 @@ export class ChatGateway implements OnModuleInit, OnModuleDestroy {
 		private readonly commandBus: CommandBus,
 		private readonly queryBus: QueryBus,
 		private readonly eventBus: EventBus,
+		private readonly limiter: RateLimiter,
 	) {}
 
 	onModuleInit(): void {
@@ -135,6 +143,17 @@ export class ChatGateway implements OnModuleInit, OnModuleDestroy {
 				409,
 				"chat.not-joined",
 				"Join the table's chat first",
+			);
+		}
+		const decision = await this.limiter.consume(
+			`chat:send:${viewer.userId}`,
+			CHAT_SEND_RULE,
+		);
+		if (!decision.allowed) {
+			throw new HttpProblem(
+				429,
+				"chat.too-fast",
+				"Too many messages. Wait a moment.",
 			);
 		}
 		const message = await this.commandBus.execute(
