@@ -539,6 +539,14 @@ Known and accepted:
 - **`/api/health/ready` is public.** It names the dependencies and whether they answer, for the load balancer. The reverse proxy may keep it internal.
 - **A hand's dealt cards are public once the hand ends** (`GET /api/hands/:handId/fairness`), folded hole cards included, since verifying the shuffle needs them. Hand ids reach only those who saw the hand.
 
+## Load
+
+`tools/loadtest` (POK-116) plays many tables with socket bots across two instances, and its README holds the latest results.
+
+- 20 tables of 6 played 1,103 hands in 10 minutes without an error.
+- A turn's round trip had a p95 of 6.2 ms, and fan-out to the other players 6.4 ms. Each instance used about 8 % of a core and 330–380 MB.
+- With one instance killed, every table played on in under 14 s: twice the lease TTL at most.
+
 ## Imports
 
 - Inside a module, use relative paths: `./take-seat.command.js`.

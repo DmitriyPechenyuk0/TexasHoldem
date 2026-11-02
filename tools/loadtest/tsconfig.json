@@ -1,0 +1,12 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"types": ["node", "vitest/globals"],
+		// Node runs the sources as they are (type stripping): imports name the .ts files, and
+		// only syntax that erases to JavaScript is allowed.
+		"allowImportingTsExtensions": true,
+		"erasableSyntaxOnly": true
+	},
+	"include": ["src"]
+}
