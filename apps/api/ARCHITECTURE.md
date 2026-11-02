@@ -291,7 +291,7 @@ How players appear to others lives in `modules/profile`: the nickname (any scrip
 - Avatars go to S3-compatible storage through the `ObjectStorage` port (`shared/application`; `S3ObjectStorage` in `shared/infrastructure/storage`). The browser uploads straight to storage, never through the api:
   1. `POST /api/profile/avatar/upload` with the content type answers a presigned POST for `uploads/<userId>/<uuid>`. Storage itself refuses more than 2 MB, another content type or another key. 10 requests an hour per player.
   2. The browser posts the file to storage.
-  3. `PUT /api/profile/avatar` with the key checks the file, not what the browser said about it: its size, its first bytes (PNG, JPEG or WebP), and that it decodes within 40 megapixels (a decompression bomb fits in 2 MB). `AvatarImages` (sharp) decodes two pictures at a time per instance (`MAX_CONCURRENT_ENCODES`), the others wait, and re-encodes each as a 256×256 WebP, which drops its metadata (where a photo was taken) and anything hidden after the image. It is stored once under `avatars/<userId>/<uuid>.webp`, cached for good (`immutable`), and the replaced avatar is deleted. The upload is deleted whatever happens. `DELETE /api/profile/avatar` goes back to none.
+  3. `PUT /api/profile/avatar` with the key checks the file, not what the browser said about it: its size, its first bytes (PNG, JPEG or WebP), and that it decodes within 40 megapixels (a decompression bomb fits in 2 MB). `AvatarImages` (sharp) decodes two pictures at a time per instance (`MAX_CONCURRENT_ENCODES`), the others wait, and re-encodes each as a 256×256 WebP, which drops its metadata (where a photo was taken) and anything hidden after the image. It is stored once under `avatars/<userId>/<uuid>.webp`, cached for good (`immutable`), and the replaced avatar is deleted. The upload is deleted whatever happens. A player confirms one upload at a time per instance (`profile.avatar-busy`), 20 an hour, so repeating a confirm cannot queue up decodes. `DELETE /api/profile/avatar` goes back to none.
 - Only `avatars/*` is public (`infra/s3/avatars-policy.json`); pending uploads are private and expire after a day (`avatars-lifecycle.json`). The bucket allows uploads from `WEB_ORIGIN` (CORS); `infra/s3/init.sh` sets all three, locally and in CI. Responses carry `avatarUrl`, built from `S3_PUBLIC_URL`, ready for a CDN. A player without one gets an identicon the web app draws from the username; provider pictures are not used, so no third party learns who looks at a profile.
 
 ## Table
@@ -453,6 +453,68 @@ Each table's chat (`modules/chat`, POK-104) lives on its own namespace, `/chat` 
 - Each client address may hold 20 open connections per instance (`MAX_CONNECTIONS_PER_ADDRESS`, room for a household behind one router) and open 60 a minute across instances (`HANDSHAKE_RULE`), since every handshake looks its session up. The address follows `TRUST_PROXY`, like Express's.
 - Sockets carry the session of their handshake cookie. `authenticateSockets` (`shared/presentation/realtime/socket-session.ts`) runs when a client joins a namespace; the composition root hands it to `SocketIoAdapter`, so the adapter knows no identity code. It resolves the viewer through `ViewerResolver` into `socket.data.viewer`. Without a session the viewer is null, and only `PUBLIC_NAMESPACES` (the root, for `ping`) let it in; elsewhere the client gets `connect_error` with a 401 problem. A failed lookup refuses with a 500 problem.
 - A socket outlives its session unless something checks: `@RealtimeGateway` re-reads the session before every command (`SocketSessionGuard`), and every signed-in socket is re-checked each minute while idle (`SESSION_RECHECK_MS`), since it still receives what its viewer may see. When the session is gone (signed out, expired, revoked by a password reset), the socket gets `session-expired` and is disconnected. The re-read also refreshes the viewer, so `RequirePlayer` in a gateway sees the email as it is now. `@CurrentUser()` works in gateway handlers too.
+
+## Security
+
+The checks the api runs, and what it leaves to others (POK-115). Each line points to where it is described.
+
+- **Sessions and CSRF.** The session cookie is HttpOnly and SameSite=Lax, and Secure with the `__Secure-` prefix in production. A state-changing request whose `Origin` is not `WEB_ORIGIN` is refused (`request.cross-origin`), before any route sees it. Sockets check the session on connect, on every command and every minute while idle. See "Identity and sessions" and "HTTP and sockets".
+- **CORS.** Only `WEB_ORIGIN`, with credentials, for both REST and socket.io. socket.io also refuses another `Origin` itself (cross-site WebSocket hijacking).
+- **Headers.** The api uses helmet. The web app sends its own (`apps/web/src/shared/config/security-headers.ts`):
+  - a CSP by allowlist, with `frame-ancestors 'none'`;
+  - HSTS outside `next dev`;
+  - `nosniff`, a referrer policy and a permissions policy.
+- **Input.** Every request body, query, route parameter and socket payload is parsed with a shared zod contract (`@ValidBody`, `@ValidQuery`, `@ValidParam`, `@ValidPayload`). `test/architecture/validated-input.spec.ts` fails if a handler takes input through Nest's unchecked decorators (`@Body`, `@Query`, `@Param`, `@MessageBody`, …). JSON bodies stop at 16 KiB and socket messages at 64 KiB.
+- **Abuse limits.** All per player unless noted, all in Redis so they hold across instances:
+
+  | What | Limit |
+  | --- | --- |
+  | Sign-in, sign-up, emails | see "Identity and sessions" |
+  | Socket handshakes | 60 a minute per address |
+  | Socket commands | 10 a second per socket |
+  | Table creation | 20 an hour, and 3 open tables |
+  | Invite code lookups and redemptions | 30 a minute |
+  | Table passwords | 5 tries per 15 minutes per table |
+  | Friend requests | 30 an hour |
+  | Player search | 60 a minute |
+  | Table invites | 1 a minute per friend and table |
+  | Chat | 5 messages per 10 s, no repeats within 30 s |
+  | Avatar uploads | 10 an hour |
+  | Avatar confirms | 20 an hour, one at a time |
+- **Secrets and errors.**
+  - Logs redact secret-looking keys at any depth, and never hold headers, bodies or query strings.
+  - An unexpected error answers `500 internal` with no message or stack; the stack goes to the log only.
+  - Production refuses to start with the public development secrets from `.env.example`: `AUTH_SECRET`, `S3_SECRET_ACCESS_KEY` and the database password. It also refuses `TRUST_PROXY=true`.
+- **Leaks.**
+  - Hand events and `state.hand` carry the deck, and only redacted views leave the api (redaction tests in the engine and the gateway).
+  - The server seed stays in `table_hand_decks` until the hand has ended, and a shorter seed than 16 bytes is refused (`deriveHandSeed`).
+  - Table, hand and user ids are random UUIDs.
+  - Private tables are never listed. Presence names a table only to friends who may join it. Invite codes take 31⁸ tries to guess, against 30 lookups a minute.
+- **Dependencies.**
+  - CI fails on a moderate or worse advisory (`pnpm audit`) and on unmet peers.
+  - The two ignored advisories reach only dev tools (steiger's zod 3, eslint's minimatch); `pnpm-workspace.yaml` says why and when to drop them.
+  - Dependabot proposes updates weekly, and CI actions are pinned by SHA.
+
+### Threat model
+
+STRIDE, for what a player could do to others or to the service.
+
+| Threat | Example | Mitigation |
+| --- | --- | --- |
+| **S**poofing | Acting as another player; a page on another site using the player's cookies | Sessions in HttpOnly cookies, origin checks on REST and sockets, the session re-read before every socket command |
+| **T**ampering | Forged table commands, out-of-turn actions, a rigged deck | Commands are validated, then decided by the engine on the server; the deck is committed before the deal and verifiable after (ADR-008) |
+| **R**epudiation | "I never folded" | Every table and hand event is stored in order with its metadata (event store); admin actions are audited (POK-114) |
+| **I**nformation disclosure | Other players' hole cards, the deck, private tables, which emails have accounts | Per-viewer redaction, the seed revealed only after the hand, private tables hidden from listings and presence, emails answered the same whether an account exists |
+| **D**enial of service | Floods of sign-ins, emails, sockets, chat, tables or invite guesses; decompression bombs | The limits above; body and message sizes; the pixel limit and per-player confirms for avatars; Redis outages fall back to per-instance limits |
+| **E**levation of privilege | Playing before verifying the email; joining a private table without access; admin routes | `RequirePlayer`; access checked before `join` and `take-seat`; admins by role, set outside the app (POK-114) |
+
+Known and accepted:
+
+- **The web CSP keeps `'unsafe-inline'` for scripts.** A nonce on every response would make every page dynamic and give up Cache Components' static rendering. The allowlist still stops loading code from other hosts and sending data to them.
+- **`SIGN_IN_ACCOUNT_RULE` can be spent by anyone** who knows a username. It is loose (30 in 15 minutes), and the owner can still sign in with a provider.
+- **The verification link signs its opener in.** Someone could send a victim the link of an account they own, which is login CSRF. Opening it only signs the victim into that other account, which holds nothing of theirs: chips are virtual. Checking who opens the link is not possible before a session exists.
+- **`/api/health/ready` is public.** It names the dependencies and whether they answer, for the load balancer. The reverse proxy may keep it internal.
+- **A hand's dealt cards are public once the hand ends** (`GET /api/hands/:handId/fairness`), folded hole cards included, since verifying the shuffle needs them. Hand ids reach only those who saw the hand.
 
 ## Imports
 

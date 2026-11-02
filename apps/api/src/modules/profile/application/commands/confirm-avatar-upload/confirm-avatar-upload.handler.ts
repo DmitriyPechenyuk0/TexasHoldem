@@ -4,6 +4,7 @@ import { CommandHandler, type ICommandHandler } from "@nestjs/cqrs";
 import { ObjectStorage } from "@/shared/application/object-storage.js";
 import {
 	AVATAR_MAX_BYTES,
+	AvatarBusyError,
 	AvatarTooLargeError,
 	AvatarUploadNotFoundError,
 	avatarKey,
@@ -24,10 +25,14 @@ export const AVATAR_CACHE_CONTROL = "public, max-age=31536000, immutable";
  * Checks the upload whatever the browser claimed: its size, its first bytes, and that it decodes.
  * It is re-encoded as a 256×256 WebP, which also drops its metadata and anything hidden after the
  * image. The upload is deleted in every case, and the replaced avatar once the profile is saved.
+ * A player confirms one upload at a time on each instance, so repeating a confirm cannot queue up
+ * decodes (the route also limits how often).
  */
 @CommandHandler(ConfirmAvatarUploadCommand)
 export class ConfirmAvatarUploadHandler implements ICommandHandler<ConfirmAvatarUploadCommand> {
 	private readonly logger = new Logger(ConfirmAvatarUploadHandler.name);
+	/** Players whose confirm is running on this instance. */
+	private readonly confirming = new Set<string>();
 
 	constructor(
 		private readonly profiles: ProfileRepository,
@@ -39,6 +44,18 @@ export class ConfirmAvatarUploadHandler implements ICommandHandler<ConfirmAvatar
 		if (!isUploadOf(userId, key)) {
 			throw new AvatarUploadNotFoundError();
 		}
+		if (this.confirming.has(userId)) {
+			throw new AvatarBusyError();
+		}
+		this.confirming.add(userId);
+		try {
+			await this.confirm(userId, key);
+		} finally {
+			this.confirming.delete(userId);
+		}
+	}
+
+	private async confirm(userId: string, key: string): Promise<void> {
 		const profile = await this.profiles.findByUserId(userId);
 		if (!profile) {
 			throw new ProfileNotFoundError();

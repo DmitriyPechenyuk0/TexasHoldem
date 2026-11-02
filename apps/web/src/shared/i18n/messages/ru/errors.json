@@ -36,6 +36,7 @@
 		"nickname-invalid-characters": "Только буквы, цифры, пробелы и _ . - '.",
 		"nickname-profane": "Выберите ник без брани.",
 		"avatar-invalid-image": "Этот файл не картинка PNG, JPEG или WebP.",
+		"avatar-busy": "Предыдущая картинка ещё обрабатывается. Попробуйте чуть позже.",
 		"avatar-too-large": "Эта картинка больше 2 МБ.",
 		"avatar-upload-not-found": "Загрузка не завершилась. Попробуйте ещё раз."
 	},

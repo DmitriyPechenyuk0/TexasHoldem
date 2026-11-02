@@ -8,6 +8,11 @@ import type { INestApplication } from "@nestjs/common";
 import type { Socket } from "socket.io-client";
 import request from "supertest";
 import type { App } from "supertest/types.js";
+import {
+	CREATE_TABLE_RULE,
+	INVITE_LOOKUP_RULE,
+} from "@/modules/lobby/presentation/lobby.controller.js";
+import { RateLimiter } from "@/shared/application/rate-limiter.js";
 import { createTestApp } from "./support/create-test-app.js";
 import {
 	browser,
@@ -151,6 +156,37 @@ describe("Lobby (e2e)", () => {
 			code: "lobby.too-many-tables",
 			params: { max: 3 },
 		});
+	});
+
+	it("limits how often a player creates tables, closed ones included", async () => {
+		const creator = await player();
+		const limiter = app.get(RateLimiter);
+		const consume = vi.spyOn(limiter, "consume");
+		consume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 60 });
+
+		const refused = await creator.post("/api/lobby/tables", table).expect(429);
+
+		expect(refused.headers["retry-after"]).toBe("60");
+		expect(consume).toHaveBeenCalledWith(
+			expect.stringMatching(/^lobby:create-table:/),
+			CREATE_TABLE_RULE,
+		);
+		consume.mockRestore();
+	});
+
+	it("limits how many invite codes a player tries", async () => {
+		const prober = await player();
+		const consume = vi.spyOn(app.get(RateLimiter), "consume");
+		consume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 30 });
+
+		await prober.get("/api/lobby/invites/ABCDEFGH").expect(429);
+		await prober.get("/api/lobby/invites/ABCDEFGH").expect(404);
+
+		expect(consume).toHaveBeenCalledWith(
+			expect.stringMatching(/^lobby:invite-lookup:/),
+			INVITE_LOOKUP_RULE,
+		);
+		consume.mockRestore();
 	});
 
 	it("lets only signed-in players create tables", async () => {

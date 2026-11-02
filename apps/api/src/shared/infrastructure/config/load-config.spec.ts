@@ -6,6 +6,7 @@ import {
 } from "./load-config.js";
 import {
 	DEVELOPMENT_AUTH_SECRET,
+	DEVELOPMENT_DATABASE_PASSWORD,
 	DEVELOPMENT_S3_SECRET_ACCESS_KEY,
 } from "./env.schema.js";
 
@@ -15,6 +16,8 @@ const productionEnv = () => ({
 	NODE_ENV: "production",
 	AUTH_SECRET: "a-real-secret-generated-for-production-0123",
 	S3_SECRET_ACCESS_KEY: "a-real-storage-secret",
+	DATABASE_URL:
+		"postgres://holdem:a-real-database-password@db.internal:5432/holdem",
 });
 
 const problemsOf = (
@@ -199,9 +202,15 @@ describe("production", () => {
 		expect(problemsOf({ ...exampleEnv(), NODE_ENV: "production" })).toEqual([
 			expect.stringMatching(/^AUTH_SECRET: is the public development value/),
 			expect.stringMatching(
+				/^DATABASE_URL: has the public development password/,
+			),
+			expect.stringMatching(
 				/^S3_SECRET_ACCESS_KEY: is the public development value/,
 			),
 		]);
+		expect(exampleEnv().DATABASE_URL).toContain(
+			`:${DEVELOPMENT_DATABASE_PASSWORD}@`,
+		);
 		expect(() => parseConfig(productionEnv())).not.toThrow();
 	});
 
