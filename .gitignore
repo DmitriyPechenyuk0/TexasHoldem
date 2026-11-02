@@ -9,3 +9,6 @@ coverage
 
 .DS_Store
 *.log
+
+# Load test reports (tools/loadtest)
+tools/loadtest/results/
