@@ -229,7 +229,9 @@ describe("Logging (e2e)", () => {
 			});
 		logger.log("outside");
 
-		expect(lines).toEqual([
+		// Only this logger's lines: the app logs on its own in the background too, such as the table
+		// registry looking for orphan tables at startup.
+		expect(lines.filter((line) => line.context === "TableGateway")).toEqual([
 			expect.objectContaining({
 				msg: "seat requested",
 				seat: 3,

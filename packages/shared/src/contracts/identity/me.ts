@@ -13,5 +13,7 @@ export const MeResponse = z.object({
 	email: z.string(),
 	emailVerified: z.boolean(),
 	locale: Locale,
+	/** `admin` opens `/admin` in the web app; the api checks it on every admin request anyway. */
+	role: z.enum(["user", "admin"]),
 });
 export type MeResponse = z.infer<typeof MeResponse>;

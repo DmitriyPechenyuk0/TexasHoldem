@@ -18,6 +18,11 @@ export type HandCommand =
 	 */
 	| { readonly type: "Timeout"; readonly seat: SeatIndex }
 	| { readonly type: "ShowCards"; readonly seat: SeatIndex }
-	| { readonly type: "MuckCards"; readonly seat: SeatIndex };
+	| { readonly type: "MuckCards"; readonly seat: SeatIndex }
+	/**
+	 * Calls the hand off before it is decided, as when the table is closed by force: every player
+	 * gets back what they put in, and nobody wins anything.
+	 */
+	| { readonly type: "CancelHand" };
 
 export type HandCommandType = HandCommand["type"];

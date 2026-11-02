@@ -34,6 +34,8 @@ export const users = table("users", {
 	username: text().unique(),
 	/** The language of the user's emails. */
 	locale: text().notNull().default("en"),
+	/** `user` | `admin`. Set outside the app only (`pnpm --filter api user:role`). */
+	role: text().notNull().default("user"),
 	createdAt: createdAt(),
 	updatedAt: updatedAt(),
 });

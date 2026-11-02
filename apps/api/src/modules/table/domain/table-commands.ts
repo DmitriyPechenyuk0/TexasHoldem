@@ -77,5 +77,14 @@ export type AbsenceCommand =
 	| { readonly type: "Reconnect"; readonly userId: string }
 	| { readonly type: "ExpireAbsences" };
 
+/**
+ * An admin closes the table whatever is going on at it (POK-114): a running hand is called off,
+ * everyone gets back what they put in, and every player and spectator leaves.
+ */
+export interface ForceCloseCommand {
+	readonly type: "ForceCloseTable";
+}
+
 /** Everything the table accepts: seats and spectators, the hands it runs, and who is away. */
-export type GameCommand = TableCommand | HandPlayCommand | AbsenceCommand;
+export type GameCommand =
+	TableCommand | HandPlayCommand | AbsenceCommand | ForceCloseCommand;

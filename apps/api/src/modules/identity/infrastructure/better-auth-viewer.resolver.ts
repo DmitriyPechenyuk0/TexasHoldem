@@ -26,6 +26,7 @@ export class BetterAuthViewerResolver extends ViewerResolver {
 			userId: UserId.parse(session.user.id),
 			username: session.user.username ?? null,
 			emailVerified: session.user.emailVerified,
+			role: session.user.role === "admin" ? "admin" : "user",
 		};
 	}
 }

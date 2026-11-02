@@ -22,6 +22,7 @@ describe("GetMeHandler", () => {
 					email: "alice@example.test",
 					emailVerified: true,
 					locale: "ru",
+					role: "admin",
 				},
 			]),
 		);
@@ -32,6 +33,7 @@ describe("GetMeHandler", () => {
 			email: "alice@example.test",
 			emailVerified: true,
 			locale: "ru",
+			role: "admin",
 		});
 	});
 
@@ -44,6 +46,7 @@ describe("GetMeHandler", () => {
 					email: "alice@example.test",
 					emailVerified: false,
 					locale: "de",
+					role: "user",
 				},
 			]),
 		);

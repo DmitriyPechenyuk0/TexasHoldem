@@ -221,6 +221,26 @@ export function evolve(state: HandState, event: HandEvent): HandState {
 		}
 		case "HandEnded":
 			return { ...active(state, event), status: "ended", toAct: null };
+		case "HandCancelled": {
+			const hand = active(state, event);
+			const refunded = new Map(
+				event.stacks.map(({ seat, stack }) => [seat, stack]),
+			);
+			return {
+				...hand,
+				status: "ended",
+				toAct: null,
+				currentBet: 0,
+				pots: [],
+				players: hand.players.map((player) => ({
+					...player,
+					// The event names every player of the hand.
+					stack: refunded.get(player.seat)!,
+					bet: 0,
+					committed: 0,
+				})),
+			};
+		}
 	}
 }
 

@@ -143,6 +143,14 @@ describe("table realtime contracts", () => {
 			viewer: "spectator",
 		});
 		expect(views).toBeGreaterThan(1_000);
+		// Played hands are never called off; an admin's forced close does that.
+		const cancelled = {
+			type: "HandCancelled",
+			v: 1,
+			stacks: [{ seat: 0, stack: 100 }],
+		};
+		expect(HandEventView.parse(cancelled)).toEqual(cancelled);
+		types.add(cancelled.type);
 		// Every kind of hand event came up.
 		expect([...types].toSorted()).toEqual(
 			HandEventView.options.map((option) => option.shape.type.value).toSorted(),
