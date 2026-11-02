@@ -7,6 +7,7 @@ const viewer = (username: string | null): Viewer => ({
 	email: "ada@example.test",
 	emailVerified: true,
 	locale: "en",
+	role: "user",
 });
 
 describe("usernameError", () => {

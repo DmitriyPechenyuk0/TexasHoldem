@@ -75,6 +75,28 @@ describe("ConfirmAvatarUploadHandler", () => {
 		expect([...storage.objects.keys()]).toEqual([avatarKey]);
 	});
 
+	it("confirms one upload at a time per player, so repeats cannot queue up decodes", async () => {
+		const { handler, images } = setUp();
+		let finish!: () => void;
+		vi.spyOn(images, "toAvatar").mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = () => resolve(ENCODED);
+				}),
+		);
+
+		const first = handler.execute(new ConfirmAvatarUploadCommand(userId, key));
+		await vi.waitFor(() => expect(finish).toBeDefined());
+		await expect(
+			handler.execute(new ConfirmAvatarUploadCommand(userId, key)),
+		).rejects.toMatchObject({ code: "profile.avatar-busy" });
+		finish();
+		await first;
+		await expect(
+			handler.execute(new ConfirmAvatarUploadCommand(userId, key)),
+		).rejects.toMatchObject({ code: "profile.avatar-upload-not-found" });
+	});
+
 	it("refuses another player's upload and leaves it alone", async () => {
 		const { handler, storage } = setUp();
 

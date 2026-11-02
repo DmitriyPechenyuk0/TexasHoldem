@@ -1,4 +1,4 @@
-import { startingWith } from "./search-players.handler.js";
+import { startingWith } from "./like-prefix.js";
 
 describe("startingWith", () => {
 	it("matches the prefix literally, wildcards included", () => {

@@ -50,6 +50,21 @@ export const TABLE_PASSWORD_RULE: RateLimitRule = {
 	windowSeconds: 15 * 60,
 };
 
+/**
+ * Invite codes looked up per player: plenty for following links, far too few to find private
+ * tables by trying codes (31⁸ of them).
+ */
+export const INVITE_LOOKUP_RULE: RateLimitRule = { max: 30, windowSeconds: 60 };
+
+/**
+ * Tables created per player: each opens a table runtime, and closing one frees a slot under the
+ * open-table limit, so without this a player could create and close tables in a loop.
+ */
+export const CREATE_TABLE_RULE: RateLimitRule = {
+	max: 20,
+	windowSeconds: 60 * 60,
+};
+
 const asTableId = (id: string) => id as CreateTableResponse["tableId"];
 
 /** `/api/lobby`: the stakes on offer, creating tables, and invites to private ones. */
@@ -99,7 +114,15 @@ export class LobbyController {
 	async create(
 		@CurrentUser() viewer: Viewer,
 		@ValidBody(CreateTableRequest) request: CreateTableRequest,
+		@Res({ passthrough: true }) response: Response,
 	): Promise<CreateTableResponse> {
+		const decision = await this.limiter.consume(
+			`lobby:create-table:${viewer.userId}`,
+			CREATE_TABLE_RULE,
+		);
+		if (!decision.allowed) {
+			throw rateLimited(response, decision.retryAfterSeconds);
+		}
 		const { tableId, inviteCode } = await this.commandBus.execute(
 			new CreateTableCommand(
 				viewer.userId,
@@ -143,8 +166,11 @@ export class LobbyController {
 	@Get("invites/:code")
 	@UseGuards(AuthGuard)
 	async invite(
+		@CurrentUser() viewer: Viewer,
 		@ValidParam("code", InviteCode) code: string,
+		@Res({ passthrough: true }) response: Response,
 	): Promise<InviteResponse> {
+		await this.limitLookups(viewer, response);
 		const summary = await this.queryBus.execute(new ResolveInviteQuery(code));
 		return { ...summary, tableId: asTableId(summary.tableId) };
 	}
@@ -159,6 +185,7 @@ export class LobbyController {
 		@ValidBody(RedeemInviteRequest) { password }: RedeemInviteRequest,
 		@Res({ passthrough: true }) response: Response,
 	): Promise<RedeemInviteResponse> {
+		await this.limitLookups(viewer, response);
 		const { tableId, passwordRequired } = await this.queryBus.execute(
 			new ResolveInviteQuery(code),
 		);
@@ -175,5 +202,19 @@ export class LobbyController {
 			new RedeemInviteCommand(code, viewer.userId, password),
 		);
 		return { tableId: asTableId(redeemed) };
+	}
+
+	/** Looking an invite code up, to see its table or to redeem it, counts against one limit. */
+	private async limitLookups(
+		viewer: Viewer,
+		response: Response,
+	): Promise<void> {
+		const decision = await this.limiter.consume(
+			`lobby:invite-lookup:${viewer.userId}`,
+			INVITE_LOOKUP_RULE,
+		);
+		if (!decision.allowed) {
+			throw rateLimited(response, decision.retryAfterSeconds);
+		}
 	}
 }

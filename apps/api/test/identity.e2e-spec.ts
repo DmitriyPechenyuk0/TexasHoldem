@@ -89,6 +89,8 @@ describe("Identity (e2e)", () => {
 					...account,
 					locale: "ru",
 					callbackURL: `${WEB_ORIGIN}/welcome`,
+					// Granted from the command line only: a request never sets it.
+					role: "admin",
 				})
 				// A forged Host must not leak into the emailed link.
 				.set("Host", "evil.example")
@@ -128,6 +130,7 @@ describe("Identity (e2e)", () => {
 				email: account.email,
 				emailVerified: true,
 				locale: "ru",
+				role: "user",
 			});
 
 			await client.post("/api/auth/sign-out").expect(200);

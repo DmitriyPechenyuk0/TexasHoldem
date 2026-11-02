@@ -36,6 +36,8 @@ describe("parseNickname", () => {
 		["ad​min", "profile.nickname-invalid-characters"],
 		["‮nimda", "profile.nickname-invalid-characters"],
 		["<script>", "profile.nickname-invalid-characters"],
+		["\u3164\u3164", "profile.nickname-invalid-characters"],
+		["ace\uFFA0", "profile.nickname-invalid-characters"],
 		["Big Fucker", "profile.nickname-profane"],
 		["сука 42", "profile.nickname-profane"],
 		["xуй", "profile.nickname-profane"],

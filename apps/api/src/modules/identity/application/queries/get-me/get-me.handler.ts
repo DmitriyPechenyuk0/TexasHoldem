@@ -22,6 +22,7 @@ export class GetMeHandler implements IQueryHandler<GetMeQuery> {
 				email: users.email,
 				emailVerified: users.emailVerified,
 				locale: users.locale,
+				role: users.role,
 			})
 			.from(users)
 			.where(eq(users.id, userId));
@@ -33,6 +34,7 @@ export class GetMeHandler implements IQueryHandler<GetMeQuery> {
 			id: UserId.parse(user.id),
 			// A locale the app no longer supports reads as the default.
 			locale: Locale.catch("en").parse(user.locale),
+			role: user.role === "admin" ? "admin" : "user",
 		};
 	}
 }

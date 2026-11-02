@@ -1,0 +1,29 @@
+{
+	"name": "@holdem/loadtest",
+	"version": "0.7.0",
+	"private": true,
+	"license": "MIT",
+	"description": "Socket bots playing many tables across two api instances (POK-116)",
+	"type": "module",
+	"scripts": {
+		"start": "node src/run.ts",
+		"typecheck": "tsc --noEmit",
+		"lint": "oxlint --type-aware --deny-warnings src/",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@holdem/shared": "workspace:*",
+		"pg": "^8.23.1",
+		"socket.io-client": "^4.8.4"
+	},
+	"devDependencies": {
+		"@types/node": "^24.19.2",
+		"@types/pg": "^8.23.1",
+		"@vitest/coverage-v8": "^5.0.5",
+		"oxlint": "^1.89.0",
+		"oxlint-tsgolint": "^7.0.2004",
+		"typescript": "^6.0.3",
+		"vitest": "^5.0.5"
+	}
+}

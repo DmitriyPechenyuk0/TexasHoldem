@@ -11,6 +11,7 @@ const viewer = (
 	userId: UserId.parse("0b7c6f1e-58a4-4f6b-9a39-5f0f6a8a1c2d"),
 	username,
 	emailVerified,
+	role: "user",
 });
 
 const httpContext = (request: object) =>

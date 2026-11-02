@@ -1,0 +1,47 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "4667d180-e475-41fd-8551-7e1a2f7def66",
+  "prevIds": [
+    "98709326-f11f-43e9-bc09-85d99120a0b0"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "identity_users",
+        "role"
+      ],
+      "writes": [
+        "s|col|public.identity_users.role",
+        "n|col|public.identity_users.role",
+        "e|col|public.identity_users.role"
+      ],
+      "reads": [
+        "n|tbl|public.identity_users",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "identity_users",
+        "name": "role",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'user'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

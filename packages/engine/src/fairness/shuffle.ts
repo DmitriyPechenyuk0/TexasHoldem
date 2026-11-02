@@ -13,7 +13,8 @@ const DECK_STREAM_LABEL = lengthPrefixed(utf8("holdem/deck-stream/v1"));
 export const MIN_SEED_BYTES = 16;
 
 /**
- * The seed of one hand's deck:
+ * The seed of one hand's deck, from a server seed of at least `MIN_SEED_BYTES` (a shorter one is a
+ * `RangeError`, since it could be guessed):
  * `HMAC-SHA256(key = serverSeed, field("holdem/hand-seed/v1") ‖ field(handId) ‖ field(clientSeed₁) ‖ …)`,
  * where `field(x)` is the UTF-8 bytes of `x` after their length as a 32-bit big-endian number.
  * Client seeds go in the order they were published with the hand. Without any, the server seed
@@ -23,8 +24,13 @@ export const deriveHandSeed = (
 	serverSeed: Uint8Array,
 	handId: string,
 	clientSeeds: readonly string[] = [],
-): Uint8Array =>
-	hmacSha256(
+): Uint8Array => {
+	if (serverSeed.byteLength < MIN_SEED_BYTES) {
+		throw new RangeError(
+			`A server seed has at least ${MIN_SEED_BYTES} bytes, got ${serverSeed.byteLength}`,
+		);
+	}
+	return hmacSha256(
 		serverSeed,
 		concatBytes(
 			...[HAND_SEED_LABEL, utf8(handId), ...clientSeeds.map(utf8)].map(
@@ -32,6 +38,7 @@ export const deriveHandSeed = (
 			),
 		),
 	);
+};
 
 /**
  * An endless stream of 32-bit numbers from a seed: block `i` is

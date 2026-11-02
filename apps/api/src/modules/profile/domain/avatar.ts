@@ -62,6 +62,16 @@ export class AvatarUploadNotFoundError extends DomainError {
 	}
 }
 
+/** The player's previous avatar is still being processed: one at a time per player. */
+export class AvatarBusyError extends DomainError {
+	readonly kind = "conflict";
+	readonly code = "profile.avatar-busy";
+
+	constructor() {
+		super("The previous avatar is still being processed");
+	}
+}
+
 export class AvatarTooLargeError extends DomainError {
 	readonly kind = "rule-violation";
 	readonly code = "profile.avatar-too-large";

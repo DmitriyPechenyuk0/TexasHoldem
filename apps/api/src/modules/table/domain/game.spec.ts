@@ -817,6 +817,83 @@ describe("the deck's fairness", () => {
 	});
 });
 
+describe("closing the table by force (POK-114)", () => {
+	it("calls a running hand off, gives every chip back, and closes the table", () => {
+		let { state } = start(
+			gameOf([
+				...tableWith(0, 1, 2),
+				{ type: "SpectatorJoined", v: 1, userId: "watcher" },
+			]),
+		);
+		state = run(state, {
+			type: "Act",
+			userId: userAt(state, toAct(state)),
+			action: "raise",
+			amount: 30,
+		}).state;
+
+		const { events, state: closed } = run(state, { type: "ForceCloseTable" });
+
+		expect(typesOf(events)).toEqual({
+			table: [
+				"HandSettled",
+				"SeatLeft",
+				"SeatLeft",
+				"SeatLeft",
+				"SpectatorLeft",
+				"TableClosed",
+			],
+			hand: ["HandCancelled"],
+		});
+		expect(settled(events)).toMatchObject({
+			handId: "hand-1",
+			stacks: [
+				{ seat: 0, stack: 200 },
+				{ seat: 1, stack: 200 },
+				{ seat: 2, stack: 200 },
+			],
+		});
+		expect(table(closed)).toMatchObject({
+			status: "closed",
+			hand: null,
+			turn: null,
+		});
+		expect(turnDueAt(closed.table)).toBeNull();
+	});
+
+	it("still reveals the deck of the hand it called off, and closes only once", () => {
+		const { state } = start(gameOf(tableWith(0, 1)));
+		const closed = run(state, { type: "ForceCloseTable" }).state;
+
+		const revealed = run(closed, {
+			type: "RevealDeck",
+			handId: "hand-1",
+			serverSeed: SEED,
+		});
+
+		expect(revealed.deck).toEqual([
+			{ type: "DeckRevealed", v: 1, handId: "hand-1", serverSeed: SEED },
+		]);
+		expect(refusal(closed, { type: "ForceCloseTable" })?.code).toBe(
+			"table.closed",
+		);
+		expect(refusal(initialGameState, { type: "ForceCloseTable" })?.code).toBe(
+			"table.not-open",
+		);
+	});
+
+	it("closes a table between hands as CloseTable would", () => {
+		const { events } = run(gameOf(tableWith(0, 1)), {
+			type: "ForceCloseTable",
+		});
+
+		expect(typesOf(events)).toEqual({
+			table: ["SeatLeft", "SeatLeft", "TableClosed"],
+			hand: [],
+		});
+	});
+});
+
 describe("HandRuleError", () => {
 	it("carries the hand's code, and its params when it has some", () => {
 		expect(new HandRuleError({ code: "hand.over" })).toMatchObject({

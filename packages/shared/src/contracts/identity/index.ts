@@ -20,4 +20,4 @@ export { SendVerificationEmailRequest } from "./send-verification-email.js";
 export { SESSION_COOKIE_NAMES, SESSION_COOKIE_PREFIX } from "./session.js";
 export { SignInEmailRequest, SignInUsernameRequest } from "./sign-in.js";
 export { SignUpRequest } from "./sign-up.js";
-export type { Viewer } from "./viewer.js";
+export type { Role, Viewer } from "./viewer.js";

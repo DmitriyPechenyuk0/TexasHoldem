@@ -26,6 +26,8 @@ apps/
 packages/
   engine/       @holdem/engine: the rules of the game, no I/O
   shared/       @holdem/shared: contracts between web and api
+tools/
+  loadtest/     @holdem/loadtest: bots playing many tables across two api instances
 infra/          init scripts for the local Docker services
 docker-compose.yml
 RULES.md        the rules of No-Limit Hold'em this game follows (Russian: RULES.ru.md)
@@ -102,6 +104,8 @@ Run from the repository root:
 | `pnpm db:studio` | Opens Drizzle Studio |
 
 A single workspace runs with `pnpm --filter <name> <script>`, for example `pnpm --filter @holdem/api test:e2e`.
+
+`pnpm --filter @holdem/api user:role <username or email> admin` makes an account an admin (the app has no endpoint for it). `pnpm --filter @holdem/loadtest start` runs the load smoke test (`tools/loadtest/README.md`).
 
 ## Architecture
 

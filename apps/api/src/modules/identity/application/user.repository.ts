@@ -1,4 +1,5 @@
 import type { Locale, UserId } from "@holdem/shared";
+import type { AccountSummary } from "@/shared/application/accounts.js";
 
 /** What a user without a username learns from choosing one. */
 export type ChooseUsernameOutcome =
@@ -18,4 +19,13 @@ export abstract class UserRepository {
 		userId: UserId,
 		username: string,
 	): Promise<ChooseUsernameOutcome>;
+
+	/** Accounts whose email is `search`, or whose username starts with it, in any case. */
+	abstract find(
+		search: string,
+		limit: number,
+	): Promise<readonly AccountSummary[]>;
+
+	/** Ends every session of the account; answers how many there were. */
+	abstract revokeSessions(userId: string): Promise<number>;
 }

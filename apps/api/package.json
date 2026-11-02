@@ -1,6 +1,6 @@
 {
 	"name": "@holdem/api",
-	"version": "0.6.0",
+	"version": "0.7.0",
 	"private": true,
 	"license": "MIT",
 	"type": "module",
@@ -11,6 +11,7 @@
 		"start:debug": "nest start --debug --watch --env-file .env",
 		"start:prod": "node --env-file-if-exists=.env dist/main",
 		"start:two": "node scripts/two-instances.mjs",
+		"user:role": "node --env-file-if-exists=.env scripts/user-role.mjs",
 		"lint": "oxlint --type-aware --deny-warnings src/ test/ && pnpm run lint:deps",
 		"lint:deps": "depcruise src test --output-type err-long",
 		"typecheck": "tsc --noEmit",

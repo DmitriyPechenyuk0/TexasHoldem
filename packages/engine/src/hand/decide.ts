@@ -325,6 +325,18 @@ function revealAtShowdown(
 		: reject({ code: "hand.not-your-turn", params: { seat } });
 }
 
+/** Gives every player back what they put in: antes, blinds and bets, in pots or not. */
+function cancelHand(hand: ActiveHand): Decision {
+	return accept({
+		type: "HandCancelled",
+		v: 1,
+		stacks: hand.players.map(({ seat, stack, committed }) => ({
+			seat,
+			stack: stack + committed,
+		})),
+	});
+}
+
 function decideCommand(command: HandCommand, state: HandState): Decision {
 	if (command.type === "StartHand") {
 		return state.status === "idle"
@@ -349,6 +361,8 @@ function decideCommand(command: HandCommand, state: HandState): Decision {
 			return revealAtShowdown(state, command.seat, true);
 		case "MuckCards":
 			return revealAtShowdown(state, command.seat, false);
+		case "CancelHand":
+			return cancelHand(state);
 	}
 }
 

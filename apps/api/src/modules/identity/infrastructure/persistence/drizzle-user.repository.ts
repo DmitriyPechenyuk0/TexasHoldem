@@ -1,16 +1,18 @@
 import type { Locale, UserId } from "@holdem/shared";
 import { Injectable } from "@nestjs/common";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, like, or, sql } from "drizzle-orm";
+import type { AccountSummary } from "@/shared/application/accounts.js";
 import {
 	type Database,
 	InjectDatabase,
 	isUniqueViolation,
+	startingWith,
 } from "@/shared/infrastructure/database/index.js";
 import {
 	type ChooseUsernameOutcome,
 	UserRepository,
 } from "../../application/user.repository.js";
-import { users } from "./schema.js";
+import { sessions, users } from "./schema.js";
 
 @Injectable()
 export class DrizzleUserRepository extends UserRepository {
@@ -50,5 +52,42 @@ export class DrizzleUserRepository extends UserRepository {
 			.from(users)
 			.where(eq(users.id, userId));
 		return { kind: existing ? "already-chosen" : "not-found" };
+	}
+
+	async find(
+		search: string,
+		limit: number,
+	): Promise<readonly AccountSummary[]> {
+		const term = search.toLowerCase();
+		const rows = await this.db
+			.select({
+				userId: users.id,
+				username: users.username,
+				email: users.email,
+				emailVerified: users.emailVerified,
+				role: users.role,
+				createdAt: users.createdAt,
+			})
+			.from(users)
+			.where(
+				or(
+					eq(sql`lower(${users.email})`, term),
+					like(users.username, startingWith(term)),
+				),
+			)
+			.orderBy(asc(users.username))
+			.limit(limit);
+		return rows.map((row) => ({
+			...row,
+			role: row.role === "admin" ? "admin" : "user",
+		}));
+	}
+
+	async revokeSessions(userId: string): Promise<number> {
+		const revoked = await this.db
+			.delete(sessions)
+			.where(eq(sessions.userId, userId))
+			.returning({ id: sessions.id });
+		return revoked.length;
 	}
 }

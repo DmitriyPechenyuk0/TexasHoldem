@@ -135,6 +135,16 @@ export type HandEvent =
 				readonly seat: SeatIndex;
 				readonly stack: Chips;
 			}[];
+	  }
+	| {
+			/** The hand was called off undecided (`CancelHand`); it ends here, as with `HandEnded`. */
+			readonly type: "HandCancelled";
+			readonly v: 1;
+			/** Every player's stack with all they put in this hand given back. */
+			readonly stacks: readonly {
+				readonly seat: SeatIndex;
+				readonly stack: Chips;
+			}[];
 	  };
 
 export type HandEventType = HandEvent["type"];
