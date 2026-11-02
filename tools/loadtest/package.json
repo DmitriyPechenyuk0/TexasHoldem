@@ -1,6 +1,6 @@
 {
 	"name": "@holdem/loadtest",
-	"version": "0.6.0",
+	"version": "0.7.0",
 	"private": true,
 	"license": "MIT",
 	"description": "Socket bots playing many tables across two api instances (POK-116)",
