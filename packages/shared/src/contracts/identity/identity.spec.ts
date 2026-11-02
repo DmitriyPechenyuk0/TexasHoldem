@@ -84,8 +84,10 @@ describe("identity contracts", () => {
 			email: "alice@example.test",
 			emailVerified: true,
 			locale: "en",
+			role: "user",
 		};
 		expect(MeResponse.parse(me)).toEqual(me);
+		expect(MeResponse.safeParse({ ...me, role: "root" }).success).toBe(false);
 		expect(MeResponse.safeParse({ ...me, id: "42" }).success).toBe(false);
 		// An OAuth account before its username is chosen.
 		expect(MeResponse.parse({ ...me, username: null }).username).toBeNull();

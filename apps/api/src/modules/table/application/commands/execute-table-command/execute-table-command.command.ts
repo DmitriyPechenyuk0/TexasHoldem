@@ -3,7 +3,7 @@ import type { EventMetadata } from "@/shared/application/event-store.js";
 import type { GameCommand } from "../../../domain/table-commands.js";
 
 /**
- * A command a player, the lobby, a connection or a timer sends to a table. Hands are dealt by
+ * A command a player, the lobby, an admin, a connection or a timer sends to a table. Hands are dealt by
  * `StartNextHandCommand`, and their decks revealed by the table's runtime.
  */
 export type TableCommandInput = Exclude<

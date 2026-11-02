@@ -17,6 +17,7 @@ import { decideTable } from "./decide-table.js";
 import { evolveTable } from "./evolve-table.js";
 import type {
 	AbsenceCommand,
+	ForceCloseCommand,
 	GameCommand,
 	HandPlayCommand,
 	TableCommand,
@@ -75,6 +76,7 @@ const GAME_COMMANDS: ReadonlySet<GameCommand["type"]> = new Set([
 	"Disconnect",
 	"Reconnect",
 	"ExpireAbsences",
+	"ForceCloseTable",
 ]);
 
 const isTableCommand = (command: GameCommand): command is TableCommand =>
@@ -175,9 +177,12 @@ class Game {
 				return;
 			}
 			const ended = this.events.hand.findLast(
-				(event) => event.type === "HandEnded",
+				(event) => event.type === "HandEnded" || event.type === "HandCancelled",
 			);
-			const stacks = ended?.type === "HandEnded" ? ended.stacks : [];
+			const stacks =
+				ended?.type === "HandEnded" || ended?.type === "HandCancelled"
+					? ended.stacks
+					: [];
 			this.addTable([
 				{ type: "HandSettled", v: 1, handId: hand.handId, stacks: [...stacks] },
 			]);
@@ -342,6 +347,14 @@ function startTurn(game: Game, before: OpenedTable["turn"]): void {
 			startedAt: game.now,
 		},
 	]);
+}
+
+/**
+ * A table that was opened, even if closed since: a closed table still reveals the deck of a hand
+ * it called off, and refuses a second close itself.
+ */
+function startedTable(table: TableState): Result<OpenedTable, TableError> {
+	return table.status === "unopened" ? err(new TableNotOpenError()) : ok(table);
 }
 
 function openTable(table: TableState): Result<OpenedTable, TableError> {
@@ -516,12 +529,32 @@ function reconnect(
 	return ok(undefined);
 }
 
+/**
+ * Closes the table by force: a running hand is called off and settled, every chip going back to
+ * whoever put it in, then the table closes as `CloseTable` does. Its deck is still revealed after.
+ */
+function forceClose(game: Game, table: OpenedTable): Result<void, TableError> {
+	if (table.status === "closed") return err(new TableClosedError());
+	if (game.hand.status === "in-progress") {
+		const cancelled = game.play({ type: "CancelHand" });
+		// A running hand can always be called off.
+		if (!cancelled.ok) return cancelled;
+	}
+	game.settle();
+	const closed = decideTable({ type: "CloseTable" }, game.table);
+	if (!closed.ok) return closed;
+	game.addTable(closed.value);
+	return ok(undefined);
+}
+
 function play(
 	game: Game,
 	table: OpenedTable,
-	command: HandPlayCommand | AbsenceCommand,
+	command: HandPlayCommand | AbsenceCommand | ForceCloseCommand,
 ): Result<void, TableError> {
 	switch (command.type) {
+		case "ForceCloseTable":
+			return forceClose(game, table);
 		case "StartHand":
 			return startHand(game, table, command);
 		case "Timeout":
@@ -559,7 +592,10 @@ export function decideGame(
 		if (!decision.ok) return decision;
 		game.addTable(decision.value);
 	} else {
-		const table = openTable(state.table);
+		const table =
+			command.type === "RevealDeck" || command.type === "ForceCloseTable"
+				? startedTable(state.table)
+				: openTable(state.table);
 		if (!table.ok) return table;
 		const played = play(game, table.value, command);
 		if (!played.ok) return played;

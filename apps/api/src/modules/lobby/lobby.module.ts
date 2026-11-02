@@ -9,6 +9,7 @@ import { RegenerateInviteHandler } from "./application/commands/regenerate-invit
 import { PasswordHasher } from "./application/password-hasher.js";
 import { TableSummaryChangedHandler } from "./application/events/table-summary-changed.handler.js";
 import { GetInvitableTableHandler } from "./application/queries/get-invitable-table/get-invitable-table.handler.js";
+import { ListOpenTablesHandler } from "./application/queries/list-open-tables/list-open-tables.handler.js";
 import { GetLobbyTablesHandler } from "./application/queries/get-lobby-tables/get-lobby-tables.handler.js";
 import { GetMyTablesHandler } from "./application/queries/get-my-tables/get-my-tables.handler.js";
 import { CanJoinTableHandler } from "./application/queries/can-join-table/can-join-table.handler.js";
@@ -43,6 +44,7 @@ import { LobbyGateway } from "./presentation/lobby.gateway.js";
 		ResolveInviteHandler,
 		CanJoinTableHandler,
 		GetInvitableTableHandler,
+		ListOpenTablesHandler,
 		GrantTableAccessHandler,
 		GetLobbyTablesHandler,
 		GetMyTablesHandler,

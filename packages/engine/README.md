@@ -4,7 +4,7 @@ The rules of No-Limit Texas Hold'em ([RULES.md](../../RULES.md)) as pure, determ
 
 ## Concepts
 
-- **Decider** (ADR-002). A hand is two pure functions: `decide(command, state)` returns the events a command causes, or a `HandError` with a stable `hand.*` code that clients translate; `evolve(state, event)` applies one event. `decide` never changes the state it is given. The commands are `StartHand`, `Act`, `Timeout`, `ShowCards` and `MuckCards`; a command that closes a betting round also carries everything that follows on its own, up to the next decision.
+- **Decider** (ADR-002). A hand is two pure functions: `decide(command, state)` returns the events a command causes, or a `HandError` with a stable `hand.*` code that clients translate; `evolve(state, event)` applies one event. `decide` never changes the state it is given. The commands are `StartHand`, `Act`, `Timeout`, `ShowCards`, `MuckCards` and `CancelHand` (calls a running hand off and gives everyone back what they put in: `HandCancelled`); a command that closes a betting round also carries everything that follows on its own, up to the next decision.
 - **Events are the record.** They are plain JSON with a `type` and a schema version `v`; a stored hand is its list of events, and `replayHand(events)` rebuilds the state. A schema change bumps `v` and adds an upcaster; stored events are never rewritten.
 - **One turn at a time.** `state.toAct` is the seat the hand waits for, while betting and at the showdown. `legalActions(state, seat)` says what that player may bet; the UI offers exactly that and `decide` enforces it.
 - **Views, not state, go to clients.** `toPlayerView(state, viewer)` and `redactEvent(event, viewer)` leave out the deck order, the burn cards and hole cards nobody has shown.

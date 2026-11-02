@@ -6,6 +6,7 @@ import {
 	RequestMethod,
 } from "@nestjs/common";
 import { CqrsModule } from "@nestjs/cqrs";
+import { AdminModule } from "@/modules/admin/admin.module.js";
 import { ChatModule } from "@/modules/chat/chat.module.js";
 import { IdentityModule } from "@/modules/identity/identity.module.js";
 import { LobbyModule } from "@/modules/lobby/lobby.module.js";
@@ -62,6 +63,7 @@ export class AppModule implements NestModule {
 				LobbyModule,
 				SocialModule,
 				ChatModule,
+				AdminModule,
 			],
 		};
 	}

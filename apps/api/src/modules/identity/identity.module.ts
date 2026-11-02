@@ -9,10 +9,12 @@ import {
 	DATABASE,
 } from "@/shared/infrastructure/database/index.js";
 import { AuthHttpHandler } from "./application/auth-http-handler.js";
+import { RevokeSessionsHandler } from "./application/commands/revoke-sessions/revoke-sessions.handler.js";
 import { ChooseUsernameHandler } from "./application/commands/choose-username/choose-username.handler.js";
 import { SetEmailLocaleHandler } from "./application/commands/set-email-locale/set-email-locale.handler.js";
 import { OAuthProviders } from "./application/oauth-providers.js";
 import { PasswordBreaches } from "./application/password-breaches.js";
+import { FindAccountsHandler } from "./application/queries/find-accounts/find-accounts.handler.js";
 import { GetMeHandler } from "./application/queries/get-me/get-me.handler.js";
 import { GetOAuthProvidersHandler } from "./application/queries/get-oauth-providers/get-oauth-providers.handler.js";
 import { UserRepository } from "./application/user.repository.js";
@@ -74,6 +76,8 @@ import { MeController } from "./presentation/me.controller.js";
 		GetOAuthProvidersHandler,
 		SetEmailLocaleHandler,
 		ChooseUsernameHandler,
+		FindAccountsHandler,
+		RevokeSessionsHandler,
 	],
 	exports: [ViewerResolver, AuthHttpHandler],
 })

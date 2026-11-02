@@ -454,6 +454,29 @@ Each table's chat (`modules/chat`, POK-104) lives on its own namespace, `/chat` 
 - Sockets carry the session of their handshake cookie. `authenticateSockets` (`shared/presentation/realtime/socket-session.ts`) runs when a client joins a namespace; the composition root hands it to `SocketIoAdapter`, so the adapter knows no identity code. It resolves the viewer through `ViewerResolver` into `socket.data.viewer`. Without a session the viewer is null, and only `PUBLIC_NAMESPACES` (the root, for `ping`) let it in; elsewhere the client gets `connect_error` with a 401 problem. A failed lookup refuses with a 500 problem.
 - A socket outlives its session unless something checks: `@RealtimeGateway` re-reads the session before every command (`SocketSessionGuard`), and every signed-in socket is re-checked each minute while idle (`SESSION_RECHECK_MS`), since it still receives what its viewer may see. When the session is gone (signed out, expired, revoked by a password reset), the socket gets `session-expired` and is disconnected. The re-read also refreshes the viewer, so `RequirePlayer` in a gateway sees the email as it is now. `@CurrentUser()` works in gateway handlers too.
 
+## Admin
+
+A limited admin (`modules/admin`, POK-114). The full admin panel comes after the MVP.
+
+- **Role.** `identity_users.role` is `user` or `admin`. It is a Better Auth additional field with `input: false`, so no request can set it, and it comes with the session as `Viewer.role` and `GET /api/me`'s `role`.
+  - It is granted only from the command line: `pnpm --filter api user:role <username or email> <admin|user>` (`scripts/user-role.mjs`), which also writes the change to the audit. The app has no endpoint for it.
+  - The role is read with the session on every request, so taking it away takes effect at once.
+- **`AdminGuard`** (`shared/presentation`), after `AuthGuard`, refuses everyone but admins with 403 `auth.admin-only`.
+- **Routes.** `/api/admin` serves:
+  - `GET tables`: every open table, private ones too, with its creator and players as cards;
+  - `POST tables/:tableId/close`;
+  - `GET users?q=`: an email, or the beginning of a username; at most 20 accounts, each with its profile's nickname and the open tables it sits at;
+  - `POST users/:userId/revoke-sessions`, answering how many sessions ended;
+  - `GET audit`: the latest 100 actions.
+- **Closing by force.** `POST tables/:tableId/close` sends `ForceCloseTable` to the table through its public API, wherever the table runs.
+  - A running hand is called off: the engine's `CancelHand` gives every player back what they put in, antes, blinds and bets, in pots or not (`HandCancelled`). The hand is then settled, and the table closes as `CloseTable` does.
+  - The deck of the cancelled hand is still revealed, since a closed table accepts `RevealDeck`.
+  - The lobby, presence and chat follow from the table's summary, as for any closed table.
+- **Revoking sessions.** Identity deletes every session of the account. Its REST requests fail at once, and its sockets at their next command or within a minute.
+- **The admin context owns only `admin_audit`.** It asks the others through the shared kernel: `FindAccountsQuery` and `RevokeSessionsCommand` (identity), `ListOpenTablesQuery` (lobby) and `GetPlayerCardsQuery` (profile).
+  - Every action that succeeded is logged (`admin action`) and recorded in `admin_audit`: admin, action, target, details and time. Entries are never edited or deleted.
+  - Changes made from the command line have no admin.
+
 ## Security
 
 The checks the api runs, and what it leaves to others (POK-115). Each line points to where it is described.

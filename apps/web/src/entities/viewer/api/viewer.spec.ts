@@ -17,6 +17,7 @@ describe("fetchViewer", () => {
 			email: "a@b.c",
 			emailVerified: true,
 			locale: "en",
+			role: "user",
 		};
 		const client = answering(async () => me);
 

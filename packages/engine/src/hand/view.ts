@@ -151,6 +151,7 @@ export function redactEvent(event: HandEvent, viewer: Viewer): PlayerEvent {
 		case "CardsMucked":
 		case "PotAwarded":
 		case "HandEnded":
+		case "HandCancelled":
 			return event;
 	}
 }

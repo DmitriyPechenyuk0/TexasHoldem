@@ -308,6 +308,13 @@ export function createBetterAuth({
 					defaultValue: "en",
 					input: true,
 				},
+				// Read with the session; no endpoint takes it from a request.
+				role: {
+					type: "string",
+					required: false,
+					defaultValue: "user",
+					input: false,
+				},
 			},
 		},
 		// Linking and unlinking providers need a sign-in younger than `freshAge`.

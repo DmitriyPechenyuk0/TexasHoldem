@@ -8,13 +8,10 @@ import {
 import {
 	type Database,
 	InjectDatabase,
+	startingWith,
 } from "@/shared/infrastructure/database/index.js";
 import { profiles } from "../../../infrastructure/persistence/schema.js";
 import { cardColumns, toPlayerCard } from "../player-cards.js";
-
-/** A LIKE pattern for values starting with `prefix`, whose wildcards match only themselves. */
-export const startingWith = (prefix: string): string =>
-	`${prefix.replace(/[\\%_]/g, "\\$&")}%`;
 
 /** Usernames are stored lowercase, and indexed for prefix matches (`text_pattern_ops`). */
 @QueryHandler(SearchPlayersQuery)

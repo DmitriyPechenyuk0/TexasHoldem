@@ -195,6 +195,9 @@ export const HandEventView = z.discriminatedUnion("type", [
 	event("HandEnded", {
 		stacks: z.array(z.object({ seat: SeatIndex, stack: Chips })).readonly(),
 	}),
+	event("HandCancelled", {
+		stacks: z.array(z.object({ seat: SeatIndex, stack: Chips })).readonly(),
+	}),
 ]);
 export type HandEventView = z.infer<typeof HandEventView>;
 
