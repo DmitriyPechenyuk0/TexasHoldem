@@ -110,6 +110,15 @@ describe("deriveHandSeed", () => {
 		const c = bytesToHex(deriveHandSeed(serverSeed, "abc"));
 		expect(new Set([a, b, c]).size).toBe(3);
 	});
+
+	it(`needs a server seed of at least ${MIN_SEED_BYTES} bytes, which cannot be guessed`, () => {
+		expect(() =>
+			deriveHandSeed(new Uint8Array(MIN_SEED_BYTES - 1), "hand-1"),
+		).toThrow(RangeError);
+		expect(
+			deriveHandSeed(new Uint8Array(MIN_SEED_BYTES), "hand-1"),
+		).toHaveLength(32);
+	});
 });
 
 describe("shuffleDeck", () => {

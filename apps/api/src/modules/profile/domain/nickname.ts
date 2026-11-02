@@ -12,6 +12,12 @@ export const NICKNAME_MAX_LENGTH = 24;
  */
 const ALLOWED = /^[\p{L}\p{M}\p{N} _.'-]+$/u;
 
+/**
+ * Characters drawn as nothing, though some count as letters: the Hangul fillers (U+3164, U+FFA0),
+ * which would make a nickname look empty or like another one.
+ */
+const INVISIBLE = /\p{Default_Ignorable_Code_Point}/u;
+
 /** The display name at the table: not unique, unlike the username. */
 export type Nickname = string & { readonly __brand: "Nickname" };
 
@@ -79,7 +85,7 @@ export function parseNickname(
 	if (length > NICKNAME_MAX_LENGTH) {
 		return err(new NicknameTooLongError());
 	}
-	if (!ALLOWED.test(nickname)) {
+	if (!ALLOWED.test(nickname) || INVISIBLE.test(nickname)) {
 		return err(new NicknameInvalidCharactersError());
 	}
 	if (hasProfanity(nickname)) {

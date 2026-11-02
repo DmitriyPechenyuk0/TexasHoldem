@@ -46,6 +46,12 @@ export const AVATAR_UPLOAD_RULE: RateLimitRule = {
 	windowSeconds: 60 * 60,
 };
 
+/** Avatar confirms per player: each decodes a picture, the costliest work a player can ask for. */
+export const AVATAR_CONFIRM_RULE: RateLimitRule = {
+	max: 20,
+	windowSeconds: 60 * 60,
+};
+
 /**
  * The signed-in player's own profile under `/api/profile`; anyone's public one under `/api/profiles`.
  * What others see is changed only by players: a username and a verified email.
@@ -115,7 +121,15 @@ export class ProfileController {
 	async confirmAvatarUpload(
 		@CurrentUser() viewer: Viewer,
 		@ValidBody(ConfirmAvatarUploadRequest) { key }: ConfirmAvatarUploadRequest,
+		@Res({ passthrough: true }) response: Response,
 	): Promise<MyProfileResponse> {
+		const decision = await this.limiter.consume(
+			`profile:avatar-confirm:${viewer.userId}`,
+			AVATAR_CONFIRM_RULE,
+		);
+		if (!decision.allowed) {
+			throw rateLimited(response, decision.retryAfterSeconds);
+		}
 		await this.commandBus.execute(
 			new ConfirmAvatarUploadCommand(viewer.userId, key),
 		);

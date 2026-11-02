@@ -42,6 +42,9 @@ export const DEVELOPMENT_AUTH_SECRET =
 /** The local storage's secret key in .env.example and docker-compose.yml; production refuses it. */
 export const DEVELOPMENT_S3_SECRET_ACCESS_KEY = "holdem-dev-secret";
 
+/** The local database's password in .env.example and docker-compose.yml; production refuses it. */
+export const DEVELOPMENT_DATABASE_PASSWORD = "holdem";
+
 /** Problems that only matter in production, checked alongside the schema like ENV_PAIRS. */
 export function productionProblems(
 	env: Readonly<Record<string, string>>,
@@ -58,6 +61,13 @@ export function productionProblems(
 		...(env.S3_SECRET_ACCESS_KEY === DEVELOPMENT_S3_SECRET_ACCESS_KEY
 			? [
 					"S3_SECRET_ACCESS_KEY: is the public development value from .env.example; use the storage's own credentials",
+				]
+			: []),
+		...(URL.canParse(env.DATABASE_URL ?? "") &&
+		decodeURIComponent(new URL(env.DATABASE_URL!).password) ===
+			DEVELOPMENT_DATABASE_PASSWORD
+			? [
+					"DATABASE_URL: has the public development password from .env.example; give the database a password of its own",
 				]
 			: []),
 		// Express then takes the client address from the leftmost X-Forwarded-For entry, which the
