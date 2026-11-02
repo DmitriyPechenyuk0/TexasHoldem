@@ -1,4 +1,5 @@
 import { DomainError } from "@/shared/domain/domain-error.js";
+import { hasProfanity } from "@/shared/domain/profanity.js";
 import { err, ok, type Result } from "@/shared/domain/result.js";
 
 /** In characters (code points), once trimmed; `NICKNAME_LENGTH` in the shared contract says the same. */
@@ -45,8 +46,21 @@ export class NicknameInvalidCharactersError extends DomainError {
 	}
 }
 
+/** Others read a nickname at every table, so it holds no swear words, however disguised. */
+export class NicknameProfaneError extends DomainError {
+	readonly kind = "rule-violation";
+	readonly code = "profile.nickname-profane";
+
+	constructor() {
+		super("A nickname may not hold swear words");
+	}
+}
+
 export type InvalidNicknameError =
-	NicknameTooShortError | NicknameTooLongError | NicknameInvalidCharactersError;
+	| NicknameTooShortError
+	| NicknameTooLongError
+	| NicknameInvalidCharactersError
+	| NicknameProfaneError;
 
 /**
  * A nickname from what the player typed: normalised to NFKC, trimmed, with each run of spaces
@@ -67,6 +81,9 @@ export function parseNickname(
 	}
 	if (!ALLOWED.test(nickname)) {
 		return err(new NicknameInvalidCharactersError());
+	}
+	if (hasProfanity(nickname)) {
+		return err(new NicknameProfaneError());
 	}
 	return ok(nickname as Nickname);
 }

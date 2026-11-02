@@ -68,3 +68,28 @@ export {
 	UnwatchLobbyEvent,
 	WatchLobbyEvent,
 } from "./lobby.js";
+export {
+	FriendAddedEvent,
+	FriendPresence,
+	FriendRequestReceivedEvent,
+	FriendsPresenceEvent,
+	Presence,
+	PresenceChangedEvent,
+	type SocialClientToServerEvents,
+	socialNamespace,
+	type SocialServerToClientEvents,
+	TableInviteReceivedEvent,
+} from "./social.js";
+export {
+	CHAT_MESSAGE_LENGTH,
+	type ChatClientToServerEvents,
+	ChatMessage,
+	ChatMessageEvent,
+	chatNamespace,
+	type ChatServerToClientEvents,
+	DealerChatMessage,
+	JoinChatEvent,
+	LeaveChatEvent,
+	PlayerChatMessage,
+	SendChatEvent,
+} from "./chat.js";

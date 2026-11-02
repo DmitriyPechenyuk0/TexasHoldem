@@ -1,0 +1,284 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "212080ad-15d8-419a-a0b0-77c8a60b12a4",
+  "prevIds": [
+    "abab9206-e5cd-4dbe-a78d-89d313127eb6"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "social_friend_requests"
+      ],
+      "writes": [
+        "s|tbl|public.social_friend_requests",
+        "n|tbl|public.social_friend_requests",
+        "e|tbl|public.social_friend_requests",
+        "n|rel|public.social_friend_requests",
+        "n|type|public.social_friend_requests",
+        "n|rel|public.social_friend_requests_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "social_friendships"
+      ],
+      "writes": [
+        "s|tbl|public.social_friendships",
+        "n|tbl|public.social_friendships",
+        "e|tbl|public.social_friendships",
+        "n|rel|public.social_friendships",
+        "n|type|public.social_friendships",
+        "n|rel|public.social_friendships_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "profile_profiles",
+        "profile_profiles_username_index"
+      ],
+      "writes": [
+        "s|idx|public.profile_profiles_username_index",
+        "n|idx|public.profile_profiles_username_index",
+        "e|idx|public.profile_profiles_username_index",
+        "n|rel|public.profile_profiles_username_index"
+      ],
+      "reads": [
+        "n|tbl|public.profile_profiles",
+        "n|sch|public",
+        "n|col|public.profile_profiles.username"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "social_friend_requests",
+        "social_friend_requests_to_id_index"
+      ],
+      "writes": [
+        "s|idx|public.social_friend_requests_to_id_index",
+        "n|idx|public.social_friend_requests_to_id_index",
+        "e|idx|public.social_friend_requests_to_id_index",
+        "n|rel|public.social_friend_requests_to_id_index"
+      ],
+      "reads": [
+        "n|tbl|public.social_friend_requests",
+        "n|sch|public",
+        "n|col|public.social_friend_requests.to_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "social_friend_requests",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "social_friendships",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friend_requests",
+        "name": "from_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friend_requests",
+        "name": "to_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friend_requests",
+        "name": "sent_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friendships",
+        "name": "user_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friendships",
+        "name": "friend_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friendships",
+        "name": "since",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "profile_profiles",
+        "name": "profile_profiles_username_index",
+        "nameExplicit": false,
+        "columns": [
+          {
+            "value": "username",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": {
+              "name": "text_pattern_ops",
+              "default": false
+            }
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friend_requests",
+        "name": "social_friend_requests_to_id_index",
+        "nameExplicit": false,
+        "columns": [
+          {
+            "value": "to_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friend_requests",
+        "name": "social_friend_requests_pkey",
+        "columns": [
+          "from_id",
+          "to_id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "social_friendships",
+        "name": "social_friendships_pkey",
+        "columns": [
+          "user_id",
+          "friend_id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

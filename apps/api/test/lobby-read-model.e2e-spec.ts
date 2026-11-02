@@ -112,8 +112,10 @@ describe("Lobby read model (e2e)", () => {
 		const tableId = await createTable(creator, "public");
 		await sit(0, creator.cookie, tableId);
 
-		await vi.waitFor(() =>
-			expect(upserted.at(-1)).toMatchObject({ tableId, playerCount: 1 }),
+		// It reaches the other instance through the adapter's Redis stream: slow under a full run.
+		await vi.waitFor(
+			() => expect(upserted.at(-1)).toMatchObject({ tableId, playerCount: 1 }),
+			{ timeout: 5_000 },
 		);
 		const watched = (await lobby.emitWithAck("watch", {})) as Ack<LobbyTable[]>;
 		expect(watched.ok && watched.data).toContainEqual(

@@ -6,16 +6,24 @@ import { browser, PASSWORD, signUpAndVerify, WEB_ORIGIN } from "./identity.js";
 
 let lastAddress = 0;
 
-/** Signs a new verified user in; answers the session cookie for a Cookie header, and the user id. */
+/** Signs a new verified user in; answers the session cookie for a Cookie header, the user id and email. */
 export async function signedInUser(
 	app: INestApplication<App>,
+): Promise<{ cookie: string; userId: string; email: string }> {
+	const { email } = await signUpAndVerify(browser(app));
+	return { ...(await signIn(app, email)), email };
+}
+
+/** Signs the user in once more, as another device would: a session of its own. */
+export async function signIn(
+	app: INestApplication<App>,
+	email: string,
 ): Promise<{ cookie: string; userId: string }> {
-	const account = await signUpAndVerify(browser(app));
 	const response = await request(app.getHttpServer())
 		.post("/api/auth/sign-in/email")
 		.set("Origin", WEB_ORIGIN)
 		.set("X-Forwarded-For", `198.51.100.${++lastAddress}`)
-		.send({ email: account.email, password: PASSWORD })
+		.send({ email, password: PASSWORD })
 		.expect(200);
 	const cookie = ([] as string[])
 		.concat(response.headers["set-cookie"] ?? [])
