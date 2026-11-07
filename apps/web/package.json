@@ -17,11 +17,11 @@
 	"dependencies": {
 		"@holdem/engine": "workspace:*",
 		"@holdem/shared": "workspace:*",
-		"@tanstack/react-query": "^5.104.5",
-		"@tanstack/react-query-devtools": "^5.104.5",
+		"@tanstack/react-query": "^5.105.3",
+		"@tanstack/react-query-devtools": "^5.105.3",
 		"clsx": "^2.1.1",
-		"lucide-react": "^1.61.0",
-		"next": "^16.4.2",
+		"lucide-react": "^1.68.0",
+		"next": "^16.4.5",
 		"next-intl": "^4.14.9",
 		"radix-ui": "^1.8.1",
 		"react": "^19.3.1",
@@ -33,19 +33,19 @@
 		"zustand": "^5.0.16"
 	},
 	"devDependencies": {
-		"@feature-sliced/steiger-plugin": "^0.8.0",
+		"@feature-sliced/steiger-plugin": "^0.8.2",
 		"@formatjs/icu-messageformat-parser": "^3.5.22",
-		"@tailwindcss/turbopack": "^4.3.3",
+		"@tailwindcss/turbopack": "^4.3.4",
 		"@types/node": "^24.19.2",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
-		"@vitest/coverage-v8": "^5.0.5",
+		"@vitest/coverage-v8": "^5.1.0",
 		"eslint": "^9.39.5",
-		"eslint-config-next": "^16.4.2",
+		"eslint-config-next": "^16.4.5",
 		"eslint-plugin-i18next": "^6.1.5",
-		"steiger": "^0.8.0",
-		"tailwindcss": "^4.3.3",
+		"steiger": "^0.9.0",
+		"tailwindcss": "^4.3.4",
 		"typescript": "^6.0.3",
-		"vitest": "^5.0.5"
+		"vitest": "^5.1.0"
 	}
 }
